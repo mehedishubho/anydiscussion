@@ -146,13 +146,90 @@ Which phases cover which requirements. Updated during roadmap creation (Step 8).
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| _Filled by `gsd-roadmapper`_ | — | Pending |
+| FOUND-01 | Phase 1 — Foundation | Pending |
+| FOUND-02 | Phase 1 — Foundation | Pending |
+| FOUND-03 | Phase 1 — Foundation | Pending |
+| FOUND-04 | Phase 1 — Foundation | Pending |
+| FOUND-05 | Phase 1 — Foundation | Pending |
+| FOUND-06 | Phase 1 — Foundation | Pending |
+| AUTH-01 | Phase 2 — Auth + RBAC | Pending |
+| AUTH-02 | Phase 2 — Auth + RBAC | Pending |
+| AUTH-03 | Phase 2 — Auth + RBAC | Pending |
+| AUTH-04 | Phase 2 — Auth + RBAC | Pending |
+| AUTH-05 | Phase 2 — Auth + RBAC | Pending |
+| AUTH-06 | Phase 2 — Auth + RBAC | Pending |
+| AUTH-07 | Phase 2 — Auth + RBAC | Pending |
+| AUTH-08 | Phase 2 — Auth + RBAC | Pending |
+| CONT-01 | Phase 3 — Content Engine | Pending |
+| CONT-02 | Phase 3 — Content Engine | Pending |
+| CONT-03 | Phase 3 — Content Engine | Pending |
+| CONT-04 | Phase 3 — Content Engine | Pending |
+| CONT-05 | Phase 3 — Content Engine | Pending |
+| CONT-06 | Phase 3 — Content Engine | Pending |
+| CONT-07 | Phase 3 — Content Engine | Pending |
+| CONT-08 | Phase 3 — Content Engine | Pending |
+| CONT-09 | Phase 3 — Content Engine | Pending |
+| CONT-10 | Phase 3 — Content Engine | Pending |
+| CONT-11 | Phase 3 — Content Engine | Pending |
+| MEDIA-01 | Phase 3 — Content Engine | Pending |
+| MEDIA-02 | Phase 3 — Content Engine | Pending |
+| MEDIA-03 | Phase 3 — Content Engine | Pending |
+| DASH-01 | Phase 4 — Dashboard Chrome | Pending |
+| DASH-02 | Phase 4 — Dashboard Chrome | Pending |
+| DASH-03 | Phase 4 — Dashboard Chrome | Pending |
+| DASH-04 | Phase 4 — Dashboard Chrome | Pending |
+| DASH-05 | Phase 4 — Dashboard Chrome | Pending |
+| DASH-06 | Phase 4 — Dashboard Chrome | Pending |
+| DASH-07 | Phase 4 — Dashboard Chrome | Pending |
+| DASH-08 | Phase 4 — Dashboard Chrome | Pending |
+| SEO-01 | Phase 5 — SEO Basics | Pending |
+| SEO-02 | Phase 5 — SEO Basics | Pending |
+| SEO-03 | Phase 5 — SEO Basics | Pending |
+| SEO-04 | Phase 5 — SEO Basics | Pending |
+| SEO-05 | Phase 5 — SEO Basics | Pending |
+| SEO-06 | Phase 5 — SEO Basics | Pending |
+| SEO-07 | Phase 5 — SEO Basics | Pending |
+| SEO-08 | Phase 5 — SEO Basics | Pending |
+| SITE-01 | Phase 6 — Public Frontend | Pending |
+| SITE-02 | Phase 6 — Public Frontend | Pending |
+| SITE-03 | Phase 6 — Public Frontend | Pending |
+| SITE-04 | Phase 6 — Public Frontend | Pending |
+| SITE-05 | Phase 6 — Public Frontend | Pending |
+| SITE-06 | Phase 6 — Public Frontend | Pending |
+| SITE-07 | Phase 6 — Public Frontend | Pending |
+| SITE-08 | Phase 6 — Public Frontend | Pending |
+| SITE-09 | Phase 6 — Public Frontend | Pending |
+| SITE-10 | Phase 6 — Public Frontend | Pending |
+| SITE-11 | Phase 6 — Public Frontend | Pending |
+| SITE-12 | Phase 6 — Public Frontend | Pending |
+| SITE-13 | Phase 6 — Public Frontend | Pending |
+| SITE-14 | Phase 6 — Public Frontend | Pending |
+| SITE-15 | Phase 6 — Public Frontend | Pending |
+| SITE-16 | Phase 6 — Public Frontend | Pending |
+| SITE-17 | Phase 6 — Public Frontend | Pending |
+| ANAL-01 | Phase 6 — Public Frontend | Pending |
+| ANAL-02 | Phase 6 — Public Frontend | Pending |
+| PERF-01 | Phase 7 — Performance & Deploy | Pending |
+| PERF-02 | Phase 7 — Performance & Deploy | Pending |
+| PERF-03 | Phase 7 — Performance & Deploy | Pending |
+| PERF-04 | Phase 7 — Performance & Deploy | Pending |
+| PERF-05 | Phase 7 — Performance & Deploy | Pending |
+| PERF-06 | Phase 7 — Performance & Deploy | Pending |
 
 **Coverage:**
 - v1 requirements: 69 total
-- Mapped to phases: 0 (pending roadmap creation)
-- Unmapped: 69 ⚠️ (resolved when roadmap is created)
+- Mapped to phases: 69 (100%)
+- Unmapped: 0
+
+**Per-phase counts:**
+- Phase 1 — Foundation: 6 (FOUND-01..06)
+- Phase 2 — Auth + RBAC: 8 (AUTH-01..08)
+- Phase 3 — Content Engine: 14 (CONT-01..11, MEDIA-01..03)
+- Phase 4 — Dashboard Chrome: 8 (DASH-01..08)
+- Phase 5 — SEO Basics: 8 (SEO-01..08)
+- Phase 6 — Public Frontend: 19 (SITE-01..17, ANAL-01..02)
+- Phase 7 — Performance & Deploy: 6 (PERF-01..06)
 
 ---
 *Requirements defined: 2026-07-01*
-*Last updated: 2026-07-01 after initial definition*
+*Last updated: 2026-07-01 after roadmap creation — traceability filled (69/69 mapped)*
