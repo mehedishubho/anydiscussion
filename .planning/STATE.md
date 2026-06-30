@@ -83,7 +83,7 @@ Recent decisions affecting current work:
 
 [From .planning/todos/pending/ — ideas captured during sessions]
 
-None yet.
+- **Configurable multi-destination backup system** (area: database; captured 2026-06-30) — Phase 7 scope expansion (founder chose option B). PERF-05 must grow from "Postgres backups scheduled" to a configurable, settings-driven system (destinations: R2 · Google Drive · local as multi-select; configurable frequency/retention/off-site/restore-drill cadence; tooling + R2-object-backup left to Phase 7 research; Google Drive OAuth caveat flagged). Roadmap/requirements update via GSD handlers required before Phase 7 planning. See `.planning/todos/pending/2026-06-30-configurable-multi-destination-backup-system.md`.
 
 ### Blockers/Concerns
 
