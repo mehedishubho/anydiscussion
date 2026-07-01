@@ -29,6 +29,9 @@ yarn-error.log*
 # local env files
 .env*.local
 
+# pnpm-only — never commit npm's package-lock.json (Pitfall 5)
+package-lock.json
+
 # vercel
 .vercel
 
