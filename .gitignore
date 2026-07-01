@@ -42,5 +42,6 @@ next-env.d.ts
 # local tooling / runtime state (not shared across the team)
 .claude/settings.local.json
 .claude/.gsd-profile
+.claude/worktrees/
 .codex/
 .agents/

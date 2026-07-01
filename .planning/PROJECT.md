@@ -123,4 +123,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-30 after initialization*
+*Last updated: 2026-07-02 — Phase 1 (Foundation) complete: Next.js 16 config (cacheComponents/standalone/CDN loader), 8-table Drizzle schema + first migration (zero hand-written SQL), R2/sharp media pipeline, (site)/(admin) ESLint isolation. FOUND-01..06 validated. Dev ports remapped to 5435/5436 (host 5432/5433 taken by sibling projects).*
