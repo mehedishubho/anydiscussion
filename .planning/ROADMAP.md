@@ -15,7 +15,7 @@ The journey follows the dependency spine the research consistently surfaced: Fou
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Foundation** - Next.js 16 config, Drizzle schema + first migration, R2/sharp pipeline, route-group isolation
+- [x] **Phase 1: Foundation** - Next.js 16 config, Drizzle schema + first migration, R2/sharp pipeline, route-group isolation
 - [ ] **Phase 2: Auth + RBAC** - Better Auth + admin plugin, proxy cookie gate, permission helpers, review-workflow status enum shipped together
 - [ ] **Phase 3: Content Engine** - Posts CRUD + Tiptap JSON round-trip, double-sanitization, categories/tags, R2 media library, revalidation wired in
 - [ ] **Phase 4: Dashboard Chrome** - TailAdmin wired to real data (posts, taxonomy, media, users, pages), RHF+Zod, TanStack Query, demo cleanup
@@ -39,7 +39,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   4. The public route group `app/(site)` cannot import anything from `app/(admin)` (and vice-versa) — the ESLint `no-restricted-imports` rule fails the build on any cross-group import, keeping TailAdmin/editor JS out of the public bundle.
   5. A test upload through `lib/r2` writes an object to Cloudflare R2 with `sharp`-derived optimized variants, confirming the media pipeline works end-to-end before features depend on it.
 
-**Plans**: 2/3 plans executed
+**Plans**: 3/3 plans executed
 
 Plans:
 **Wave 1**
@@ -49,7 +49,7 @@ Plans:
 **Wave 2** *(blocked on Wave 1 completion)*
 
 - [x] 01-02-PLAN.md — DB backbone: Drizzle config + 8-table schema + client singleton + first migration + clean-room drift test (the [BLOCKING] schema-apply task)
-- [ ] 01-03-PLAN.md — R2/sharp media pipeline (minimal lib/r2 upload helper, consuming the Plan 01 compose + env) + pnpm setup onboarding + pnpm verify orchestrator (all 5 success criteria, R2 smoke via node --experimental-strip-types)
+- [x] 01-03-PLAN.md — R2/sharp media pipeline (minimal lib/r2 upload helper, consuming the Plan 01 compose + env) + pnpm setup onboarding + pnpm verify orchestrator (all 5 success criteria, R2 smoke via node --experimental-strip-types)
 
 **Pitfalls owned:** #5 (Drizzle migration drift — generate-then-commit-in-same-PR + clean-room test established day one).
 **Research flag:** LOW — re-verify `getTableColumns` (not `getColumns`, a 1.0-only API), the sharp postinstall `pnpm approve-builds` flow, and the 2-arg `images.qualities` default.
@@ -222,7 +222,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 0/TBD | Not started | - |
+| 1. Foundation | 3/3 | Complete | 2026-07-02 |
 | 2. Auth + RBAC | 0/TBD | Not started | - |
 | 3. Content Engine | 0/TBD | Not started | - |
 | 4. Dashboard Chrome | 0/TBD | Not started | - |

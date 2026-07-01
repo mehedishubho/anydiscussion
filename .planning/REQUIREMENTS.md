@@ -9,11 +9,11 @@ v1 = authoring + public-site MVP, extended with the full agreed feature set. Eac
 
 ### Foundation
 
-- [ ] **FOUND-01**: Next.js 16 app configured for the locked stack — App Router, `cacheComponents:true` (PPR), Turbopack, `output:"standalone"`, custom `next/image` loader pointed at cdn.anydiscussion.com
+- [x] **FOUND-01**: Next.js 16 app configured for the locked stack — App Router, `cacheComponents:true` (PPR), Turbopack, `output:"standalone"`, custom `next/image` loader pointed at cdn.anydiscussion.com
 - [x] **FOUND-02**: Drizzle ORM + Postgres connection established (`db/` client instance, `drizzle.config.ts`)
 - [x] **FOUND-03**: Base schema defined and first migration generated via `drizzle-kit generate` (posts, post_seo, categories, tags, post_tags, media, settings, pages — 8 tables; the `users` table is deferred to Phase 2 per D-07, where Better Auth generates it)
-- [ ] **FOUND-04**: `app/(site)` and `app/(admin)` route-group isolation enforced (ESLint `no-restricted-imports` preventing cross-group imports; public bundle stays free of TailAdmin/editor JS)
-- [ ] **FOUND-05**: Cloudflare R2 client + `sharp` resize-at-upload pipeline in `lib/r2`
+- [x] **FOUND-04**: `app/(site)` and `app/(admin)` route-group isolation enforced (ESLint `no-restricted-imports` preventing cross-group imports; public bundle stays free of TailAdmin/editor JS)
+- [x] **FOUND-05**: Cloudflare R2 client + `sharp` resize-at-upload pipeline in `lib/r2`
 - [x] **FOUND-06**: Drizzle migration hygiene — generate-then-commit-in-same-PR + clean-room migration test (empty Postgres ← all migrations reproduces schema)
 
 ### Auth & RBAC
@@ -150,11 +150,11 @@ Which phases cover which requirements. Updated during roadmap creation (Step 8).
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FOUND-01 | Phase 1 — Foundation | Pending |
+| FOUND-01 | Phase 1 — Foundation | Complete |
 | FOUND-02 | Phase 1 — Foundation | Complete |
 | FOUND-03 | Phase 1 — Foundation | Complete |
-| FOUND-04 | Phase 1 — Foundation | Pending |
-| FOUND-05 | Phase 1 — Foundation | Pending |
+| FOUND-04 | Phase 1 — Foundation | Complete |
+| FOUND-05 | Phase 1 — Foundation | Complete |
 | FOUND-06 | Phase 1 — Foundation | Complete |
 | AUTH-01 | Phase 2 — Auth + RBAC | Pending |
 | AUTH-02 | Phase 2 — Auth + RBAC | Pending |

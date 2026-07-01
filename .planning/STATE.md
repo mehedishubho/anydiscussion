@@ -5,16 +5,16 @@ milestone_name: milestone
 current_phase: 01
 current_phase_name: foundation
 status: executing
-stopped_at: Phase 1 context gathered
-last_updated: "2026-07-01T20:01:03.481Z"
-last_activity: 2026-07-01
-last_activity_desc: Phase 01 execution started
+stopped_at: Phase 1 complete (all 3 plans done)
+last_updated: "2026-07-02T00:05:00.000Z"
+last_activity: 2026-07-02
+last_activity_desc: Phase 01 Plan 03 (R2/sharp + setup/verify) complete — pnpm verify passes all 6 checks
 progress:
   total_phases: 7
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 3
-  completed_plans: 2
-  percent: 0
+  completed_plans: 3
+  percent: 14
 ---
 
 # Project State
@@ -28,12 +28,12 @@ See: .planning/PROJECT.md (updated 2026-07-01)
 
 ## Current Position
 
-Phase: 01 (foundation) — EXECUTING
-Plan: 2 of 3
-Status: Ready to execute
-Last activity: 2026-07-01 — Phase 01 execution started
+Phase: 01 (foundation) — COMPLETE (3/3 plans)
+Plan: 3 of 3
+Status: Phase 1 complete — ready for Phase 2 (Auth + RBAC) planning
+Last activity: 2026-07-02 — Phase 01 Plan 03 (R2/sharp + setup/verify) complete
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [█░░░░░░░░░] 14%
 
 ## Roadmap Snapshot
 
@@ -68,6 +68,7 @@ Progress: [░░░░░░░░░░] 0%
 
 *Updated after each plan completion*
 | Phase 01 P02 | 5min | 2 tasks | 8 files |
+| Phase 01 P03 | 12min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -81,6 +82,7 @@ Recent decisions affecting current work:
 - [Roadmap]: Phase 6 (Public Frontend) flagged HIGHEST research risk — Cache Components + `<Suspense>` on the single-post page is the most likely spike candidate.
 - [Phase ?]: Drizzle pinned at 0.45.2 — Better Auth peer prevents upgrading to 1.x RC
 - [Phase 01]: posts.author_id/categoryId plain integer columns in Phase 1 (no FK) — added Phase 2 per D-07
+- [Phase 01]: tsconfig.json excludes scripts/ so r2-smoke.ts's .ts-extension import (required by node --experimental-strip-types) does not break next build — scripts are dev-time tooling, not app code
 
 ### Pending Todos
 
@@ -109,6 +111,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-01T20:00:44.070Z
-Stopped at: Phase 1 context gathered
-Resume file: .planning/phases/01-foundation/01-CONTEXT.md
+Last session: 2026-07-02T00:05:00.000Z
+Stopped at: Phase 1 complete (all 3 plans done — pnpm verify passes all 6 checks)
+Resume file: .planning/phases/01-foundation/01-03-SUMMARY.md
