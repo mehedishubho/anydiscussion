@@ -20,7 +20,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 4: Dashboard Chrome** - TailAdmin wired to real data (posts, taxonomy, media, users, pages), RHF+Zod, TanStack Query, demo cleanup
 - [ ] **Phase 5: SEO Basics** - generateMetadata per route, dynamic sitemap + robots, JSON-LD, canonical, OG/Twitter cards, RSS
 - [ ] **Phase 6: Public Frontend** - Home/blog/archive, category/tag/author archives, single post (Cache Components + Suspense), search, About/Contact/legal, dark mode
-- [ ] **Phase 7: Performance & Deploy** - Lighthouse/CWV pass, bundle-budget audit, revalidation audit end-to-end, rate limiting, backups, Coolify staging
+- [ ] **Phase 7: Performance & Deploy** - Lighthouse/CWV pass, bundle-budget audit, revalidation audit end-to-end, rate limiting, backups, Coolify staging, Dokploy, self host
 
 ## Phase Details
 
@@ -35,11 +35,12 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. Applying every committed migration to a clean empty Postgres reproduces the schema exactly (clean-room migration test passes) — no drift.
   4. The public route group `app/(site)` cannot import anything from `app/(admin)` (and vice-versa) — the ESLint `no-restricted-imports` rule fails the build on any cross-group import, keeping TailAdmin/editor JS out of the public bundle.
   5. A test upload through `lib/r2` writes an object to Cloudflare R2 with `sharp`-derived optimized variants, confirming the media pipeline works end-to-end before features depend on it.
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 01-01: TBD (planning pending)
-- [ ] 01-02: TBD (planning pending)
+- [ ] 01-01-PLAN.md — Framework config (cacheComponents/standalone/CDN image loader) + ESLint route-group isolation + foundation conventions (log/error/cleanup) + package.json script wiring
+- [ ] 01-02-PLAN.md — DB backbone: Drizzle config + 8-table schema + client singleton + first migration + clean-room drift test (the [BLOCKING] schema-apply task)
+- [ ] 01-03-PLAN.md — R2/sharp media pipeline (upload helper + Docker Compose + .env.example) + pnpm setup onboarding + pnpm verify orchestrator (all 5 success criteria)
 
 **Pitfalls owned:** #5 (Drizzle migration drift — generate-then-commit-in-same-PR + clean-room test established day one).
 **Research flag:** LOW — re-verify `getTableColumns` (not `getColumns`, a 1.0-only API), the sharp postinstall `pnpm approve-builds` flow, and the 2-arg `images.qualities` default.
