@@ -866,17 +866,17 @@ git diff --exit-code src/db/migrations/
 
 **A1-A4 are all Claude's-discretion items from CONTEXT.md. No user confirmation needed — these are implementation choices the planner can make.**
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **CI service-container vs docker-in-CI for the clean-room test**
    - What we know: The clean-room test needs a throwaway Postgres. Docker Compose provides `postgres-test` on port 5433.
    - What's unclear: Whether CI uses GitHub Actions service containers (recommended, cleaner) or docker-in-docker.
-   - Recommendation: Use GitHub Actions service containers for Postgres in CI. The `pnpm verify` script runs locally against Docker Compose; CI runs the same script against the service container. This is Claude's discretion per CONTEXT.md.
+   - RESOLVED: Use GitHub Actions service containers for Postgres in CI. The `pnpm verify` script runs locally against Docker Compose; CI runs the same script against the service container. This is Claude's discretion per CONTEXT.md. Both plans (01-02 clean-room test, 01-03 verify orchestrator) already follow this recommendation — the local path is `docker compose up -d postgres-test` against the compose file shipped in Plan 01 Task 1c.
 
 2. **Exact sharp variant sizes and formats**
    - What we know: The minimal helper needs to produce "optimized variants" (D-14). Three widths (640, 1024, 1920) in WebP is a standard responsive set.
    - What's unclear: Whether to also produce JPEG/PNG fallbacks, AVIF, or a thumbnail.
-   - Recommendation: Start with WebP-only at three widths (sm/md/lg). AVIF can be added later (sharp supports it). This is Claude's discretion per CONTEXT.md.
+   - RESOLVED: WebP-only at three widths (sm/md/lg). AVIF can be added later (sharp supports it). This is Claude's discretion per CONTEXT.md. Plan 01-03 Task 1 already implements exactly this — three WebP variants at 640/1024/1920, quality 80, `fit: "inside"`, `withoutEnlargement: true`.
 
 ## Environment Availability
 

@@ -48,7 +48,7 @@ Establish the locked Next.js 16 + Drizzle + Postgres + R2 backbone and conventio
 - **D-14 (Phase 1 = minimal helper):** Ship **only a minimal server-side `lib/r2` function** (file/buffer → `sharp` variants → write object). Enough for FOUND-05 and to prove the pipeline end-to-end. The **presigned-URL direct-to-storage flow + media-library UI are Phase 3** (MEDIA-01). Keep the phase boundary clean.
 
 ### Verification shape
-- **D-15 (`pnpm verify`):** A **`pnpm verify` script** that machine-checks each Phase 1 success criterion 1:1: validates `next.config` (cacheComponents/standalone/image-loader env URL), runs `drizzle-kit check` + the clean-room migration test, runs the ESLint isolation rule against a **planted cross-group import that must fail**, runs `next build` (succeeds), and runs the `lib/r2` upload smoke against MinIO. Repeatable, CI-able.
+- **D-15 (`pnpm verify`):** A **`pnpm verify` script** that machine-checks each Phase 1 success criterion 1:1: validates `next.config` (cacheComponents/standalone/image-loader env URL), runs the drift gate (`drizzle-kit generate` + `git diff --exit-code src/db/migrations/` — NOT `drizzle-kit check` alone, which only validates snapshot/journal consistency per RESEARCH.md Pitfall 1) + the clean-room migration test, runs the ESLint isolation rule against a **planted cross-group import that must fail**, runs `next build` (succeeds), and runs the `lib/r2` upload smoke against MinIO. Repeatable, CI-able.
 
 ### Foundation conventions (smaller locks)
 - **D-16 (Path aliases):** **`@/*` → `src/*` only.** No extra specific aliases — everything (db, lib, actions) lives under `src/`, so the single default alias covers it.

@@ -38,9 +38,9 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 3 plans
 
 Plans:
-- [ ] 01-01-PLAN.md — Framework config (cacheComponents/standalone/CDN image loader) + ESLint route-group isolation + foundation conventions (log/error/cleanup) + package.json script wiring
+- [ ] 01-01-PLAN.md — Framework config (cacheComponents/standalone/CDN image loader) + locked-stack package installs + foundation conventions (log/error/cleanup) + Docker Compose + .env.example (Wave 2 unblocker) + ESLint route-group isolation + package.json script wiring
 - [ ] 01-02-PLAN.md — DB backbone: Drizzle config + 8-table schema + client singleton + first migration + clean-room drift test (the [BLOCKING] schema-apply task)
-- [ ] 01-03-PLAN.md — R2/sharp media pipeline (upload helper + Docker Compose + .env.example) + pnpm setup onboarding + pnpm verify orchestrator (all 5 success criteria)
+- [ ] 01-03-PLAN.md — R2/sharp media pipeline (minimal lib/r2 upload helper, consuming the Plan 01 compose + env) + pnpm setup onboarding + pnpm verify orchestrator (all 5 success criteria, R2 smoke via node --experimental-strip-types)
 
 **Pitfalls owned:** #5 (Drizzle migration drift — generate-then-commit-in-same-PR + clean-room test established day one).
 **Research flag:** LOW — re-verify `getTableColumns` (not `getColumns`, a 1.0-only API), the sharp postinstall `pnpm approve-builds` flow, and the 2-arg `images.qualities` default.
