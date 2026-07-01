@@ -5,16 +5,16 @@ milestone_name: milestone
 current_phase: 2
 current_phase_name: Auth + RBAC
 status: planning
-stopped_at: Phase 1 complete (all 3 plans done — pnpm verify passes all 6 checks)
-last_updated: "2026-07-01T20:23:42.981Z"
+stopped_at: Phase 2 context gathered
+last_updated: "2026-07-01T22:13:33.881Z"
 last_activity: 2026-07-01
 last_activity_desc: Phase 01 complete, transitioned to Phase 2
 progress:
-  total_phases: 7
+  total_phases: 8
   completed_phases: 1
   total_plans: 3
   completed_plans: 3
-  percent: 14
+  percent: 13
 ---
 
 # Project State
@@ -39,13 +39,14 @@ Progress: [█░░░░░░░░░] 14%
 
 | Phase | Goal (one-line) | Reqs |
 |-------|-----------------|------|
-| 1. Foundation | Next.js 16 + Drizzle + R2 backbone, route-group isolation, migration hygiene | 6 |
+| 1. Foundation | Next.js 16 + Drizzle + storage backbone, route-group isolation, migration hygiene | 6 |
 | 2. Auth + RBAC | Better Auth + admin plugin, proxy gate, permission helpers + status enum shipped together | 8 |
-| 3. Content Engine | Posts CRUD + Tiptap JSON round-trip, double-sanitize, categories/tags, R2 media, revalidation | 14 |
-| 4. Dashboard Chrome | TailAdmin wired to real data, RHF+Zod, TanStack Query, demo cleanup | 8 |
+| 3. Content Engine | Posts CRUD + Tiptap JSON round-trip, double-sanitize, categories/tags, provider-based media (local default + R2), revalidation | 15 |
+| 4. Dashboard Chrome | TailAdmin wired to real data + Storage Settings (Cloudinary/push-CDN providers), RHF+Zod, TanStack Query, demo cleanup | 9 |
 | 5. SEO Basics | generateMetadata, dynamic sitemap/robots, JSON-LD, canonical, OG, RSS | 8 |
 | 6. Public Frontend | Home/feeds/archives, single post (Cache Components + Suspense), search, About/Contact/legal, dark mode | 19 |
-| 7. Performance & Deploy | Lighthouse/CWV pass, bundle audit, revalidation audit, rate limiting, backups, Coolify staging | 6 |
+| 7. Performance & Deploy | Lighthouse/CWV pass, bundle audit, revalidation audit, auth rate limiting, Coolify staging (backups moved to P8) | 5 |
+| 8. Backup & Disaster Recovery | Configurable multi-destination backups (local default/Drive/R2), schedule+retention, restore-drill, dashboard page | 5 |
 
 ## Performance Metrics
 
@@ -88,7 +89,7 @@ Recent decisions affecting current work:
 
 [From .planning/todos/pending/ — ideas captured during sessions]
 
-- **Configurable multi-destination backup system** (area: database; captured 2026-06-30) — Phase 7 scope expansion (founder chose option B). PERF-05 must grow from "Postgres backups scheduled" to a configurable, settings-driven system (destinations: R2 · Google Drive · local as multi-select; configurable frequency/retention/off-site/restore-drill cadence; tooling + R2-object-backup left to Phase 7 research; Google Drive OAuth caveat flagged). Roadmap/requirements update via GSD handlers required before Phase 7 planning. See `.planning/todos/pending/2026-06-30-configurable-multi-destination-backup-system.md`.
+- **Configurable multi-destination backup system** (area: database; captured 2026-06-30) — **ROADMAP MUTATION APPLIED 2026-07-02.** Split into two configurable features: (A) image storage is now a provider abstraction (local default / Cloudinary / R2 / push-CDN, admin-selectable — MEDIA-01..04 + DASH-09), and (B) backups moved OUT of Phase 7 into the new Phase 8 — Backup & Disaster Recovery (BACKUP-01..05). PERF-05 is superseded. Backup destinations: **local (default)** · Google Drive · Cloudflare R2 (multi-select). Cloudinary was considered for backups and deliberately DROPPED (image-only). Tooling selection + Google Drive OAuth caveat left to Phase 8 research. See `.planning/todos/pending/2026-06-30-configurable-multi-destination-backup-system.md`.
 
 ### Blockers/Concerns
 
@@ -111,6 +112,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-02T00:05:00.000Z
-Stopped at: Phase 1 complete (all 3 plans done — pnpm verify passes all 6 checks)
-Resume file: .planning/phases/01-foundation/01-03-SUMMARY.md
+Last session: 2026-07-01T22:13:33.874Z
+Stopped at: Phase 2 context gathered
+Resume file: .planning/phases/02-auth-rbac/02-CONTEXT.md
