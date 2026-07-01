@@ -6,14 +6,14 @@ current_phase: 01
 current_phase_name: foundation
 status: executing
 stopped_at: Phase 1 context gathered
-last_updated: "2026-07-01T15:49:28.610Z"
+last_updated: "2026-07-01T20:01:03.481Z"
 last_activity: 2026-07-01
 last_activity_desc: Phase 01 execution started
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 3
-  completed_plans: 0
+  completed_plans: 2
   percent: 0
 ---
 
@@ -29,8 +29,8 @@ See: .planning/PROJECT.md (updated 2026-07-01)
 ## Current Position
 
 Phase: 01 (foundation) — EXECUTING
-Plan: 1 of 3
-Status: Executing Phase 01
+Plan: 2 of 3
+Status: Ready to execute
 Last activity: 2026-07-01 — Phase 01 execution started
 
 Progress: [░░░░░░░░░░] 0%
@@ -67,6 +67,7 @@ Progress: [░░░░░░░░░░] 0%
 - Trend: —
 
 *Updated after each plan completion*
+| Phase 01 P02 | 5min | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -78,6 +79,8 @@ Recent decisions affecting current work:
 - [Roadmap]: 7-phase dependency spine from research (Foundation → Auth+RBAC → Content → Dashboard → SEO → Public → Perf/Deploy); media folded into Content Engine (3 reqs, tightly coupled to R2 pipeline); analytics folded into Public Frontend (2 reqs, one-line script injection). Both avoid single-purpose phases.
 - [Roadmap]: Phase 2 ships RBAC helpers AND the post status enum together — a status column without role/ownership checks is decoration, not a workflow (Pitfall 1 owned in Phase 2, reinforced in Phase 3).
 - [Roadmap]: Phase 6 (Public Frontend) flagged HIGHEST research risk — Cache Components + `<Suspense>` on the single-post page is the most likely spike candidate.
+- [Phase ?]: Drizzle pinned at 0.45.2 — Better Auth peer prevents upgrading to 1.x RC
+- [Phase 01]: posts.author_id/categoryId plain integer columns in Phase 1 (no FK) — added Phase 2 per D-07
 
 ### Pending Todos
 
@@ -106,6 +109,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-30T20:56:27.074Z
+Last session: 2026-07-01T20:00:44.070Z
 Stopped at: Phase 1 context gathered
 Resume file: .planning/phases/01-foundation/01-CONTEXT.md

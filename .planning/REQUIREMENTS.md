@@ -10,11 +10,11 @@ v1 = authoring + public-site MVP, extended with the full agreed feature set. Eac
 ### Foundation
 
 - [ ] **FOUND-01**: Next.js 16 app configured for the locked stack — App Router, `cacheComponents:true` (PPR), Turbopack, `output:"standalone"`, custom `next/image` loader pointed at cdn.anydiscussion.com
-- [ ] **FOUND-02**: Drizzle ORM + Postgres connection established (`db/` client instance, `drizzle.config.ts`)
-- [ ] **FOUND-03**: Base schema defined and first migration generated via `drizzle-kit generate` (posts, post_seo, categories, tags, post_tags, media, settings, pages — 8 tables; the `users` table is deferred to Phase 2 per D-07, where Better Auth generates it)
+- [x] **FOUND-02**: Drizzle ORM + Postgres connection established (`db/` client instance, `drizzle.config.ts`)
+- [x] **FOUND-03**: Base schema defined and first migration generated via `drizzle-kit generate` (posts, post_seo, categories, tags, post_tags, media, settings, pages — 8 tables; the `users` table is deferred to Phase 2 per D-07, where Better Auth generates it)
 - [ ] **FOUND-04**: `app/(site)` and `app/(admin)` route-group isolation enforced (ESLint `no-restricted-imports` preventing cross-group imports; public bundle stays free of TailAdmin/editor JS)
 - [ ] **FOUND-05**: Cloudflare R2 client + `sharp` resize-at-upload pipeline in `lib/r2`
-- [ ] **FOUND-06**: Drizzle migration hygiene — generate-then-commit-in-same-PR + clean-room migration test (empty Postgres ← all migrations reproduces schema)
+- [x] **FOUND-06**: Drizzle migration hygiene — generate-then-commit-in-same-PR + clean-room migration test (empty Postgres ← all migrations reproduces schema)
 
 ### Auth & RBAC
 
@@ -108,19 +108,23 @@ v1 = authoring + public-site MVP, extended with the full agreed feature set. Eac
 Deferred — tracked but not in the current roadmap. Moving any of these into v1 requires a roadmap update.
 
 ### Settings & Customization (fast-follow cluster)
+
 - **SETT-01**: Menu builder (`menus`, `menu_items`, nested + ordered, dnd-kit)
 - **SETT-02**: Header/footer custom-code injection (security-sensitive — gated behind a proven sanitization story)
 - **SETT-03**: Redirects manager UI (table ships in v1 schema; UI deferred — greenfield DB means no urgent continuity)
 
 ### Content & Search
+
 - **CONTv2-01**: Revision history / draft versions
 - **SEARCH-01**: Meilisearch upgrade path if Postgres FTS relevance proves insufficient
 - **SEARCH-02**: Bangla-aware Postgres FTS stemming (no built-in Bengali stemmer until partial PG 17 support)
 
 ### Scale & Ops
+
 - **SCALE-01**: Multi-instance ISR — Redis-backed shared cache handler (needed before a second Coolify replica)
 
 ### Other
+
 - **NOTF-01**: Newsletter / email marketing integration
 - **COMM-01**: Comments / reader discussion (treated as a new milestone, not v1.x creep, if ever revisited)
 
@@ -147,11 +151,11 @@ Which phases cover which requirements. Updated during roadmap creation (Step 8).
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | FOUND-01 | Phase 1 — Foundation | Pending |
-| FOUND-02 | Phase 1 — Foundation | Pending |
-| FOUND-03 | Phase 1 — Foundation | Pending |
+| FOUND-02 | Phase 1 — Foundation | Complete |
+| FOUND-03 | Phase 1 — Foundation | Complete |
 | FOUND-04 | Phase 1 — Foundation | Pending |
 | FOUND-05 | Phase 1 — Foundation | Pending |
-| FOUND-06 | Phase 1 — Foundation | Pending |
+| FOUND-06 | Phase 1 — Foundation | Complete |
 | AUTH-01 | Phase 2 — Auth + RBAC | Pending |
 | AUTH-02 | Phase 2 — Auth + RBAC | Pending |
 | AUTH-03 | Phase 2 — Auth + RBAC | Pending |
@@ -217,11 +221,13 @@ Which phases cover which requirements. Updated during roadmap creation (Step 8).
 | PERF-06 | Phase 7 — Performance & Deploy | Pending |
 
 **Coverage:**
+
 - v1 requirements: 69 total
 - Mapped to phases: 69 (100%)
 - Unmapped: 0
 
 **Per-phase counts:**
+
 - Phase 1 — Foundation: 6 (FOUND-01..06)
 - Phase 2 — Auth + RBAC: 8 (AUTH-01..08)
 - Phase 3 — Content Engine: 14 (CONT-01..11, MEDIA-01..03)
