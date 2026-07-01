@@ -39,12 +39,12 @@ Decimal phases appear between their surrounding integers in numeric order.
   4. The public route group `app/(site)` cannot import anything from `app/(admin)` (and vice-versa) — the ESLint `no-restricted-imports` rule fails the build on any cross-group import, keeping TailAdmin/editor JS out of the public bundle.
   5. A test upload through `lib/r2` writes an object to Cloudflare R2 with `sharp`-derived optimized variants, confirming the media pipeline works end-to-end before features depend on it.
 
-**Plans**: 3 plans
+**Plans**: 1/3 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 01-01-PLAN.md — Framework config (cacheComponents/standalone/CDN image loader) + locked-stack package installs + foundation conventions (log/error/cleanup) + Docker Compose + .env.example (Wave 2 unblocker) + ESLint route-group isolation + package.json script wiring
+- [x] 01-01-PLAN.md — Framework config (cacheComponents/standalone/CDN image loader) + locked-stack package installs + foundation conventions (log/error/cleanup) + Docker Compose + .env.example (Wave 2 unblocker) + ESLint route-group isolation + package.json script wiring
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
