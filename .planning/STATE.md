@@ -5,10 +5,10 @@ milestone_name: milestone
 current_phase: 02
 current_phase_name: auth-rbac
 status: executing
-stopped_at: Completed 02-02-PLAN.md
-last_updated: "2026-07-02T16:39:33.373Z"
+stopped_at: 02-03 at checkpoint:human-verify (Task 3 — manual email round-trip; RESEND_API_KEY required)
+last_updated: "2026-07-02T16:56:00.000Z"
 last_activity: 2026-07-02
-last_activity_desc: Phase 02 execution started
+last_activity_desc: 02-03 Tasks 1+2 done (lib/email + hooks + ban/revoke tests); awaiting Task 3 manual email round-trip
 progress:
   total_phases: 8
   completed_phases: 1
@@ -120,6 +120,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-02T16:39:33.368Z
-Stopped at: Completed 02-02-PLAN.md
-Resume file: .planning/phases/02-auth-rbac/02-02-SUMMARY.md
+Last session: 2026-07-02T16:56:00.000Z
+Stopped at: 02-03 at checkpoint:human-verify (Task 3 — manual email round-trip; RESEND_API_KEY required)
+Resume file: .planning/phases/02-auth-rbac/02-03-PLAN.md
