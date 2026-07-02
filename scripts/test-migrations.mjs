@@ -3,10 +3,11 @@
 // Clean-room migration drift test (FOUND-06, D-09).
 //
 // Applies every committed migration to a FRESH EMPTY Postgres and asserts all
-// 8 expected tables are present in information_schema.tables. This is the
+// 12 expected tables are present in information_schema.tables. This is the
 // drift gate that catches schema-vs-migration drift: if a developer edits
 // schema.ts but forgets to run `pnpm db:generate`, the generated migration
 // set will either fail to apply or produce a schema that doesn't match.
+// (8 Phase-1 tables + user/session/account/verification Phase-2 auth tables.)
 //
 // Port note: the throwaway postgres-test service is on host port 5436
 // (remapped from the original 5433 because host 5433 was already bound by a
@@ -15,9 +16,11 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Pool } from "pg";
 
+// Default matches docker-compose.yml postgres-test service creds (port 5436).
+// Override via TEST_DATABASE_URL in .env.local for non-default setups.
 const TEST_DB_URL =
   process.env.TEST_DATABASE_URL ||
-  "postgres://postgres:postgres@localhost:5436/anydiscussion_test";
+  "postgresql://anydiscussion:125524@localhost:5436/anydiscussion_test";
 const MIGRATIONS_FOLDER = "./src/db/migrations";
 
 async function runCleanRoomTest() {
@@ -48,6 +51,11 @@ async function runCleanRoomTest() {
       "media",
       "settings",
       "pages",
+      // Phase 2 auth tables (Better Auth CLI-generated, merged into schema.ts):
+      "user",
+      "session",
+      "account",
+      "verification",
     ];
     const missing = expected.filter((t) => !tables.includes(t));
     if (missing.length > 0) {

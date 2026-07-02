@@ -27,6 +27,7 @@
     "@tailwindcss/postcss": "^4.1.17",
     "apexcharts": "^4.7.0",
     "autoprefixer": "^10.4.22",
+    "better-auth": "^1.6.23",
     "drizzle-orm": "^0.45.2",
     "flatpickr": "^4.6.13",
     "next": "^16.1.6",
@@ -37,6 +38,7 @@
     "react-dnd-html5-backend": "^16.0.1",
     "react-dom": "^19.2.0",
     "react-dropzone": "^14.3.8",
+    "resend": "^6.16.0",
     "sharp": "^0.35.2",
     "swiper": "^11.2.10",
     "tailwind-merge": "^2.6.0"
