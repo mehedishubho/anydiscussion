@@ -2,9 +2,9 @@
 
 ## Overview
 
-Any Discussion is a self-hosted, full-stack blog CMS where one Next.js 16 app serves both an extremely fast public blog (Cache Components + `<Suspense>`, near-zero client JS) and an auth-gated, role-based admin dashboard (TailAdmin UI kit), backed by one PostgreSQL database and Cloudflare R2 media. v1 is an **authoring + public-site MVP**: a small editorial team (admin/editor/author) can manage the full content lifecycle (draft → review → publish) and readers consume well-optimized, SEO-sound posts at maximum speed.
+Any Discussion is a self-hosted, full-stack blog CMS where one Next.js 16 app serves both an extremely fast public blog (Cache Components + `<Suspense>`, near-zero client JS) and an auth-gated, role-based admin dashboard (TailAdmin UI kit), backed by one PostgreSQL database and a configurable storage layer (local by default, with Cloudflare R2 / Cloudinary / push-CDN as selectable image providers, and local / Google Drive / R2 as selectable backup destinations). v1 is an **authoring + public-site MVP**: a small editorial team (admin/editor/author) can manage the full content lifecycle (draft → review → publish) and readers consume well-optimized, SEO-sound posts at maximum speed.
 
-The journey follows the dependency spine the research consistently surfaced: Foundation (Drizzle schema + R2 pipeline) → Auth + RBAC (Better Auth + permission helpers, shipped alongside the post status enum so the review workflow is real on day one) → Content Engine (Tiptap JSON round-trip, double-sanitization, media) → Dashboard Chrome (TailAdmin wired to real data) → SEO Basics → Public Frontend (the highest-complexity phase — Cache Components + Suspense on the single post page) → Performance & Deploy (verified on the real Coolify/Cloudflare stack). The architecture's central rule — the `(site)` and `(admin)` route groups never import each other, both depend on shared `actions/`/`lib/`/`db/` — is established in Phase 1 and audited end-to-end in Phase 7.
+The journey follows the dependency spine the research consistently surfaced: Foundation (Drizzle schema + storage pipeline) → Auth + RBAC (Better Auth + permission helpers, shipped alongside the post status enum so the review workflow is real on day one) → Content Engine (Tiptap JSON round-trip, double-sanitization, media) → Dashboard Chrome (TailAdmin wired to real data) → SEO Basics → Public Frontend (the highest-complexity phase — Cache Components + Suspense on the single post page) → Performance & Deploy (verified on the real Coolify/Cloudflare stack). The architecture's central rule — the `(site)` and `(admin)` route groups never import each other, both depend on shared `actions/`/`lib/`/`db/` — is established in Phase 1 and audited end-to-end in Phase 7.
 
 ## Phases
 
@@ -17,11 +17,12 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Foundation** - Next.js 16 config, Drizzle schema + first migration, R2/sharp pipeline, route-group isolation
 - [ ] **Phase 2: Auth + RBAC** - Better Auth + admin plugin, proxy cookie gate, permission helpers, review-workflow status enum shipped together
-- [ ] **Phase 3: Content Engine** - Posts CRUD + Tiptap JSON round-trip, double-sanitization, categories/tags, R2 media library, revalidation wired in
-- [ ] **Phase 4: Dashboard Chrome** - TailAdmin wired to real data (posts, taxonomy, media, users, pages), RHF+Zod, TanStack Query, demo cleanup
+- [ ] **Phase 3: Content Engine** - Posts CRUD + Tiptap JSON round-trip, double-sanitization, categories/tags, provider-based media (local default + R2), revalidation wired in
+- [ ] **Phase 4: Dashboard Chrome** - TailAdmin wired to real data (posts, taxonomy, media, users, pages) + Storage Settings (Cloudinary/push-CDN providers), RHF+Zod, TanStack Query, demo cleanup
 - [ ] **Phase 5: SEO Basics** - generateMetadata per route, dynamic sitemap + robots, JSON-LD, canonical, OG/Twitter cards, RSS
 - [ ] **Phase 6: Public Frontend** - Home/blog/archive, category/tag/author archives, single post (Cache Components + Suspense), search, About/Contact/legal, dark mode
-- [ ] **Phase 7: Performance & Deploy** - Lighthouse/CWV pass, bundle-budget audit, revalidation audit end-to-end, rate limiting, backups, Coolify staging, Dokploy, self host
+- [ ] **Phase 7: Performance & Deploy** - Lighthouse/CWV pass, bundle-budget audit, revalidation audit end-to-end, auth rate limiting, Coolify staging, Dokploy, self host
+- [ ] **Phase 8: Backup & Disaster Recovery** - Configurable multi-destination backups (local default/Google Drive/R2), schedule + retention, automated restore-drill with alerting, Backup Settings dashboard page
 
 ## Phase Details
 
@@ -68,28 +69,37 @@ Plans:
   4. A user can reset a forgotten password via an email link and verify their email on account creation (Better Auth defaults + SMTP working).
   5. A user record carries the profile fields (bio, avatar) needed for byline/author pages, and the post status enum (`draft` / `pending_review` / `published`) and review workflow primitives exist so Phase 3 can enforce author → submit-for-review → editor/admin-approve → publish.
 
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
 
-- [ ] 02-01: TBD (planning pending)
-- [ ] 02-02: TBD (planning pending)
+**Wave 1**
+
+- [ ] 02-01-PLAN.md — Test infra (Vitest) + schema migration (auth tables + role/bio/avatar + FKs + 12-table clean-room test) + Better Auth instance + RBAC config + permission helpers + proxy.ts UX gate + status-transition helpers
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 02-02-PLAN.md — First-run admin setup wizard (createFirstAdmin with D-08 self-disable + repurposed signup page) + auth browser client + signin form wired to Better Auth (remember-me + deep-link callbackURL)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 02-03-PLAN.md — Email flows (lib/email Resend helper + verification/reset hooks + customSyntheticUser enumeration protection) + ban/revoke session primitives (D-16/D-17) + manual email round-trip checkpoint
 
 **Pitfalls owned:** #1 (missing server-side auth on mutating actions) and #4 (proxy-does-cookie-check / action-does-real-check split). Shipped with the status enum so the review workflow is real, not decoration.
 **Research flag:** MEDIUM — re-verify the Better Auth `admin` plugin API (`createAccessControl`, `userHasPermission`), whether the `access` plugin is needed beyond the three roles, `nextCookies()`-last placement, and the exact `proxy.ts` matcher against current docs.
 
 ### Phase 3: Content Engine
 
-**Goal**: An author or editor can write a post in the Tiptap editor, attach media from R2, categorize/tag it, and move it through the review/publish workflow — with the post body surviving a sanitized JSON → HTML → render round-trip and publish reliably invalidating cached pages.
+**Goal**: An author or editor can write a post in the Tiptap editor, attach media via a configurable storage provider (local by default, R2 available), categorize/tag it, and move it through the review/publish workflow — with the post body surviving a sanitized JSON → HTML → render round-trip and publish reliably invalidating cached pages.
 **Mode**: mvp
 **Depends on**: Phase 2
-**Requirements**: CONT-01, CONT-02, CONT-03, CONT-04, CONT-05, CONT-06, CONT-07, CONT-08, CONT-09, CONT-10, CONT-11, MEDIA-01, MEDIA-02, MEDIA-03
+**Requirements**: CONT-01, CONT-02, CONT-03, CONT-04, CONT-05, CONT-06, CONT-07, CONT-08, CONT-09, CONT-10, CONT-11, MEDIA-01, MEDIA-02, MEDIA-03, MEDIA-04
 **Success Criteria** (what must be TRUE):
 
   1. An author can save a draft and submit it for review; an editor/admin can then approve and publish it; an author cannot publish directly — the workflow enforced server-side (consumes the Phase 2 status enum + RBAC).
   2. A post written in the lazy-loaded Tiptap v3 editor is stored as ProseMirror JSON and renders on the server as correct HTML via `@tiptap/html` `generateHTML` using the same extensions array (the SSR round-trip is validated here before all rendering depends on it).
   3. A malicious payload (e.g. `<img src=x onerror=...>`) submitted in any HTML-capable field is stripped both before storage and before render by one shared `lib/sanitize` config (Pitfall 2 — double-sanitization — owned here).
-  4. An editor can upload an image via a presigned URL direct-to-R2, have `sharp` produce optimized variants server-side at upload time, browse it in the media library with alt text, and every content image is served through `next/image` with the R2/CDN loader (never a raw `<img>`).
+  4. An editor can upload an image through the storage-provider abstraction (`lib/storage/`), with `sharp` producing optimized variants server-side at upload time; the active provider is read from `settings` (local by default, R2 available), the media record stores provider + key + alt text + dimensions, and every content image is served through `next/image` (loader resolves to the active provider's public URL — never a raw `<img>`).
   5. Publishing or updating a post triggers the correct `revalidatePath` / 2-arg `revalidateTag` calls inside the publish Server Action with concrete paths (not template strings), so cached pages refresh without a full rebuild (Pitfall 3 wired here, audited in Phase 7).
 
 **Plans**: TBD
@@ -104,10 +114,10 @@ Plans:
 
 ### Phase 4: Dashboard Chrome
 
-**Goal**: The editorial team manages the full content lifecycle through a polished TailAdmin dashboard wired to real data — posts, taxonomy, media, users/roles, and dashboard-managed pages — with a lean initial load and a single shared form/validation pattern.
+**Goal**: The editorial team manages the full content lifecycle through a polished TailAdmin dashboard wired to real data — posts, taxonomy, media, users/roles, dashboard-managed pages, AND the active image storage destination (local/Cloudinary/R2/push-CDN) — with a lean initial load and a single shared form/validation pattern.
 **Mode**: mvp
 **Depends on**: Phase 3
-**Requirements**: DASH-01, DASH-02, DASH-03, DASH-04, DASH-05, DASH-06, DASH-07, DASH-08
+**Requirements**: DASH-01, DASH-02, DASH-03, DASH-04, DASH-05, DASH-06, DASH-07, DASH-08, DASH-09
 **Success Criteria** (what must be TRUE):
 
   1. A team member can list, create, and edit posts/categories/tags/media through TailAdmin pages wired to the real Server Actions from Phase 3 (no demo data).
@@ -115,6 +125,7 @@ Plans:
   3. An editor can edit legal/contact page content (T&C, Privacy, Contact) through the same Tiptap editor used for posts, stored in the `pages` table (no dev intervention needed for non-post content).
   4. Every dashboard form uses React Hook Form + a Zod schema that is the same file reused server-side for Server Action validation, with TanStack Query powering optimistic UI on mutations.
   5. The `ecommerce/` demo folder and unused chart/table demos are removed, the heavy editor/charts are lazy-loaded, and dark mode works across the dashboard — initial dashboard load stays lean.
+  6. An admin can open a Storage Settings page, pick the active image destination (local/Cloudinary/R2/push-CDN), enter per-provider credentials, and persist the choice to `settings` — the Cloudinary + push-CDN providers are implemented here (extending the `lib/storage/` abstraction from MEDIA-04), and the save action re-checks admin permission server-side.
 
 **Plans**: TBD
 
@@ -176,16 +187,16 @@ Plans:
 
 ### Phase 7: Performance & Deploy
 
-**Goal**: The blog ships on the real self-hosted stack (Coolify + Postgres + Cloudflare) meeting the non-negotiable performance/SEO bar, with the publish→visible loop, bundle isolation, auth rate limiting, and backups all verified in production-like conditions.
+**Goal**: The blog ships on the real self-hosted stack (Coolify + Postgres + Cloudflare) meeting the non-negotiable performance/SEO bar, with the publish→visible loop, bundle isolation, and auth rate limiting verified in production-like conditions. (Backups moved to Phase 8.)
 **Mode**: mvp
 **Depends on**: Phase 6
-**Requirements**: PERF-01, PERF-02, PERF-03, PERF-04, PERF-05, PERF-06
+**Requirements**: PERF-01, PERF-02, PERF-03, PERF-04, PERF-06 (PERF-05 superseded — backups moved to Phase 8)
 **Success Criteria** (what must be TRUE):
 
   1. Public-site pages pass the Lighthouse / Core Web Vitals bar on the real Coolify + Cloudflare stack (the non-negotiable PROJECT.md performance requirement).
   2. A bundle-budget check proves no TailAdmin or Tiptap/editor JS leaks into the public chunk — and a deliberate cross-group import fails CI (Pitfall 3-style silent breakage caught automatically).
   3. A published post is visible to readers immediately after publish on the real stack — every mutating action's `revalidatePath`/`revalidateTag` is audited and publish→visible is verified end-to-end (Pitfall 3 closed).
-  4. Auth endpoints (sign-in, password reset) are rate-limited, and Postgres backups are scheduled and restorable.
+  4. Auth endpoints (sign-in, password reset) are rate-limited. (Backup scheduling moved to Phase 8.)
   5. The app deploys to staging on Coolify via git-push with managed SSL, build-vs-runtime env secrets correctly separated, and the single-instance ISR scaling cliff (multi-replica needs a shared Redis cache handler) documented for v2.
 
 **Plans**: TBD
@@ -196,29 +207,53 @@ Plans:
 - [ ] 07-02: TBD (planning pending)
 
 **Pitfalls owned:** #3 (publish→visible verified on real stack), #6 (document single-replica ISR scaling cliff before adding a second Coolify replica), R2 op-count/sharp-CPU cost monitoring + billing alerts, Coolify build-vs-runtime env secret separation.
-**Research flag:** MEDIUM — Coolify + self-hosted Postgres backup/ops strategy needs its own ops check (not architecture research); verify current Coolify UI specifics for backup config and env handling.
+**Research flag:** LOW — Coolify staging deploy + env-handling verification (backup/ops strategy moved to Phase 8).
+
+### Phase 8: Backup & Disaster Recovery
+
+**Goal**: An admin can configure (from the dashboard) where database backups are stored, how often they run, and how long they're kept — and an automated restore-drill proves backups are restorable. Local is the default destination; Google Drive and Cloudflare R2 are selectable, multi-select destinations.
+**Mode**: mvp
+**Depends on**: Phase 7 (needs the deployed/runtime environment on Coolify + the `lib/storage` abstraction established in Phase 3/4)
+**Requirements**: BACKUP-01, BACKUP-02, BACKUP-03, BACKUP-04, BACKUP-05
+**Success Criteria** (what must be TRUE):
+
+  1. An admin can open the Backup Settings dashboard page, select one or more backup destinations (local default / Google Drive / Cloudflare R2), set schedule (frequency/RPO) + retention (keep N days/weeks), and persist the config to `settings` — with a server-side admin permission check on save.
+  2. A backup runs on the configured schedule and writes to every selected destination; the backup is restorable (a real restore succeeds against a throwaway Postgres instance).
+  3. An automated restore-drill runs on a configurable cadence: it restores the latest backup to a throwaway DB, verifies integrity, and alerts on failure — closing the "backup-never-restored" gamble.
+  4. Provider credentials for each destination (Google OAuth tokens, R2 keys, local paths) are stored securely as runtime secrets / encrypted `settings` values — never exposed in client-visible state or shipped into the build bundle.
+
+**Plans**: TBD
+
+Plans:
+
+- [ ] 08-01: TBD (planning pending)
+
+**Pitfalls owned:** backup-never-restored gamble (closed by restore-drill BACKUP-04); Google Drive OAuth external-dependency caveat (mild tension vs self-hosted / no-paid-API ethos — research before committing); build-vs-runtime secret separation for provider credentials (must not leak into the standalone build output).
+**Research flag:** MEDIUM — backup tooling selection (pg_dump cron vs WAL-G vs Coolify built-in vs pg_backrest, chosen against the configurable multi-destination requirement) + Google Drive OAuth / Drive API integration specifics.
+**UI hint**: yes
 
 ## Coverage
 
-**v1 requirements:** 69 total
-**Mapped to phases:** 69 (100%)
+**v1 requirements:** 75 total (69 original + MEDIA-04, DASH-09, BACKUP-01..05; PERF-05 superseded/moved)
+**Mapped to phases:** 75 (100%)
 **Unmapped:** 0
 
 | Phase | Requirements | Count |
 |-------|--------------|-------|
 | 1. Foundation | FOUND-01..06 | 6 |
 | 2. Auth + RBAC | AUTH-01..08 | 8 |
-| 3. Content Engine | CONT-01..11, MEDIA-01..03 | 14 |
-| 4. Dashboard Chrome | DASH-01..08 | 8 |
+| 3. Content Engine | CONT-01..11, MEDIA-01..04 | 15 |
+| 4. Dashboard Chrome | DASH-01..09 | 9 |
 | 5. SEO Basics | SEO-01..08 | 8 |
 | 6. Public Frontend | SITE-01..17, ANAL-01..02 | 19 |
-| 7. Performance & Deploy | PERF-01..06 | 6 |
-| **Total** | | **69** |
+| 7. Performance & Deploy | PERF-01..04, PERF-06 (PERF-05 superseded) | 5 |
+| 8. Backup & Disaster Recovery | BACKUP-01..05 | 5 |
+| **Total** | | **75** |
 
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -229,3 +264,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 5. SEO Basics | 0/TBD | Not started | - |
 | 6. Public Frontend | 0/TBD | Not started | - |
 | 7. Performance & Deploy | 0/TBD | Not started | - |
+| 8. Backup & Disaster Recovery | 0/TBD | Not started | - |
