@@ -2,18 +2,18 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 2
-current_phase_name: Auth + RBAC
+current_phase: 02
+current_phase_name: auth-rbac
 status: executing
 stopped_at: Phase 2 context gathered
-last_updated: "2026-07-02T12:15:14.604Z"
-last_activity: 2026-07-01
-last_activity_desc: Phase 01 complete, transitioned to Phase 2
+last_updated: "2026-07-02T13:12:01.619Z"
+last_activity: 2026-07-02
+last_activity_desc: Phase 02 execution started
 progress:
   total_phases: 8
   completed_phases: 1
-  total_plans: 3
-  completed_plans: 3
+  total_plans: 6
+  completed_plans: 4
   percent: 13
 ---
 
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-01)
 
 **Core value:** Editors/authors can publish well-optimized blog posts and readers can consume them at maximum speed — fast/SEO-sound public blog + a dashboard that lets a small team manage the full content lifecycle (draft → review → publish) without touching code.
-**Current focus:** Phase 01 — foundation
+**Current focus:** Phase 02 — auth-rbac
 
 ## Current Position
 
-Phase: 2 — Auth + RBAC
-Plan: Not started
+Phase: 02 (auth-rbac) — EXECUTING
+Plan: 2 of 3
 Status: Ready to execute
-Last activity: 2026-07-01 — Phase 01 complete, transitioned to Phase 2
+Last activity: 2026-07-02 — Phase 02 execution started
 
 Progress: [█░░░░░░░░░] 14%
 
@@ -70,6 +70,7 @@ Progress: [█░░░░░░░░░] 14%
 *Updated after each plan completion*
 | Phase 01 P02 | 5min | 2 tasks | 8 files |
 | Phase 01 P03 | 12min | 2 tasks | 5 files |
+| Phase 02 P01 | 27min | 3 tasks | 19 files |
 
 ## Accumulated Context
 
@@ -84,6 +85,9 @@ Recent decisions affecting current work:
 - [Phase ?]: Drizzle pinned at 0.45.2 — Better Auth peer prevents upgrading to 1.x RC
 - [Phase 01]: posts.author_id/categoryId plain integer columns in Phase 1 (no FK) — added Phase 2 per D-07
 - [Phase 01]: tsconfig.json excludes scripts/ so r2-smoke.ts's .ts-extension import (required by node --experimental-strip-types) does not break next build — scripts are dev-time tooling, not app code
+- [Phase ?]: drizzle-orm pinned at ^0.45.2 — Better Auth peer prevents 1.x RC bump (R5 gate verified in 02-01)
+- [Phase ?]: RBAC via admin plugin createAccessControl — author role LACKS post.publish, double-enforced in TRANSITIONS table + requireCan (02-01)
+- [Phase ?]: proxy.ts is UX-only (Next 16) — matcher targets resolved /dashboard paths, not (admin) route group (02-01)
 
 ### Pending Todos
 
@@ -112,6 +116,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-01T22:13:33.874Z
+Last session: 2026-07-02T13:12:01.613Z
 Stopped at: Phase 2 context gathered
 Resume file: .planning/phases/02-auth-rbac/02-CONTEXT.md

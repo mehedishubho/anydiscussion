@@ -5,12 +5,12 @@
 services:
   # Primary dev database
   postgres:
-    image: postgres:16-alpine
+    image: postgres:17-alpine
     ports:
       - "5435:5432"
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: anydiscussion
+      POSTGRES_PASSWORD: 125524
       POSTGRES_DB: anydiscussion
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -22,12 +22,12 @@ services:
 
   # Throwaway DB for clean-room migration test (FOUND-06) — no volume (ephemeral)
   postgres-test:
-    image: postgres:16-alpine
+    image: postgres:17-alpine
     ports:
       - "5436:5432"
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: anydiscussion
+      POSTGRES_PASSWORD: 125524
       POSTGRES_DB: anydiscussion_test
 
   # MinIO — local S3-compatible storage (R2 parity for dev)

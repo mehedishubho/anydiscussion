@@ -18,14 +18,14 @@ v1 = authoring + public-site MVP, extended with the full agreed feature set. Eac
 
 ### Auth & RBAC
 
-- [ ] **AUTH-01**: Better Auth configured with the `admin` plugin; roles `admin`, `editor`, `author` via `createAccessControl`
+- [x] **AUTH-01**: Better Auth configured with the `admin` plugin; roles `admin`, `editor`, `author` via `createAccessControl`
 - [ ] **AUTH-02**: Sign-in page working; user accounts created by an admin in the dashboard (no open public sign-up)
-- [ ] **AUTH-03**: `proxy.ts` cookie-existence gate redirecting unauthenticated users away from `(admin)`
-- [ ] **AUTH-04**: `lib/permissions` helpers (`requireRole`, `requireCan`, `assertOwnsPost`); every mutating Server Action starts with the appropriate server-side check
-- [ ] **AUTH-05**: Author → submit-for-review → editor/admin-approve → publish workflow enforced server-side via post status
+- [x] **AUTH-03**: `proxy.ts` cookie-existence gate redirecting unauthenticated users away from `(admin)`
+- [x] **AUTH-04**: `lib/permissions` helpers (`requireRole`, `requireCan`, `assertOwnsPost`); every mutating Server Action starts with the appropriate server-side check
+- [x] **AUTH-05**: Author → submit-for-review → editor/admin-approve → publish workflow enforced server-side via post status
 - [ ] **AUTH-06**: Password reset via email link (Better Auth default + SMTP)
 - [ ] **AUTH-07**: Email verification on account creation (Better Auth default + SMTP)
-- [ ] **AUTH-08**: Author profile fields on `users` (bio, avatar) to support byline/author pages
+- [x] **AUTH-08**: Author profile fields on `users` (bio, avatar) to support byline/author pages
 
 ### Content Engine
 
@@ -43,9 +43,10 @@ v1 = authoring + public-site MVP, extended with the full agreed feature set. Eac
 
 ### Media
 
-- [ ] **MEDIA-01**: Upload to R2 via presigned URL (client direct-to-R2, avoiding VPS egress) + `sharp` resize-at-upload producing optimized variants
-- [ ] **MEDIA-02**: Media library — `media` records (R2 key, alt text, `uploaded_by`, dimensions) + dashboard browser
-- [ ] **MEDIA-03**: All content images served through `next/image` with the R2/CDN custom loader (never raw `<img>`)
+- [ ] **MEDIA-01**: Upload via a storage-provider abstraction; the active provider is configurable (local by default), not hardcoded to R2 — `sharp` resize-at-upload still produces optimized variants regardless of provider
+- [ ] **MEDIA-02**: Media library — `media` records store the active provider + object key, alt text, `uploaded_by`, dimensions; dashboard browser works across providers
+- [ ] **MEDIA-03**: All content images served through `next/image` (never raw `<img>`) — the loader resolves to the active provider's public URL
+- [ ] **MEDIA-04**: Storage provider abstraction (`lib/storage/`) with a common `StorageProvider` interface + a registry that reads the active provider from the `settings` table; ships with local (default) + R2 providers in this phase (R2 wraps the existing Phase-1 `lib/r2`) — Cloudinary + push-CDN providers are added in Phase 4 (DASH-09)
 
 ### Dashboard Chrome
 
@@ -57,6 +58,7 @@ v1 = authoring + public-site MVP, extended with the full agreed feature set. Eac
 - [ ] **DASH-06**: Forms via React Hook Form + Zod (schema shared server-side for Server Action validation); TanStack Query for mutations/optimistic UI
 - [ ] **DASH-07**: Remove `ecommerce/` demo + unused chart/table demos; keep initial dashboard load lean (lazy-load editor/charts)
 - [ ] **DASH-08**: Dark mode applied to the dashboard (existing ThemeContext)
+- [ ] **DASH-09**: Storage Settings page (admin-only) — choose the active image destination (local/Cloudinary/R2/push-CDN) + enter per-provider credentials, persisted to `settings`; the underlying action re-checks admin permission server-side. Adds the Cloudinary + push-CDN image providers so they become selectable from this UI (extends the `lib/storage/` abstraction from MEDIA-04)
 
 ### SEO
 
@@ -100,8 +102,16 @@ v1 = authoring + public-site MVP, extended with the full agreed feature set. Eac
 - [ ] **PERF-02**: Bundle-budget check enforcing no TailAdmin/editor JS leaking into the public chunk
 - [ ] **PERF-03**: `revalidatePath` / `revalidateTag` audit — every mutating action triggers correct revalidation; publish→visible verified end-to-end
 - [ ] **PERF-04**: Rate limiting on auth endpoints (sign-in, password reset)
-- [ ] **PERF-05**: Postgres backups scheduled
+- [ ] ~~**PERF-05**: Postgres backups scheduled~~ — **SUPERSEDED**: replaced by BACKUP-01..05 (new Phase 8 — Backup & Disaster Recovery). Backup system moved out of Phase 7 into its own configurable, dashboard-driven phase.
 - [ ] **PERF-06**: Staging deployment on Coolify (git-push, managed SSL)
+
+### Backup & Disaster Recovery
+
+- [ ] **BACKUP-01**: Backup storage via the `lib/storage` abstraction; destinations local (default), Google Drive, Cloudflare R2 (multi-select, configurable in dashboard) — Cloudinary was considered and deliberately dropped (image-only, not suitable for DB dumps)
+- [ ] **BACKUP-02**: Google Drive destination via Google OAuth / Drive API (research caveat: external dependency with mild tension vs the self-hosted / no-paid-API ethos — flag for Phase 8 research)
+- [ ] **BACKUP-03**: Configurable schedule (frequency / RPO) + retention (keep N days/weeks) — tooling selection left to Phase 8 research (pg_dump cron, WAL-G, Coolify built-in, etc.)
+- [ ] **BACKUP-04**: Automated restore-drill on a configurable cadence (restore to a throwaway DB, verify integrity, alert on failure) — closes the "backup-never-restored" gamble
+- [ ] **BACKUP-05**: Backup Settings dashboard page (admin-only) — destinations, schedule, retention, restore-drill cadence; server-side admin permission check
 
 ## v2 Requirements
 
@@ -156,14 +166,14 @@ Which phases cover which requirements. Updated during roadmap creation (Step 8).
 | FOUND-04 | Phase 1 — Foundation | Complete |
 | FOUND-05 | Phase 1 — Foundation | Complete |
 | FOUND-06 | Phase 1 — Foundation | Complete |
-| AUTH-01 | Phase 2 — Auth + RBAC | Pending |
+| AUTH-01 | Phase 2 — Auth + RBAC | Complete |
 | AUTH-02 | Phase 2 — Auth + RBAC | Pending |
-| AUTH-03 | Phase 2 — Auth + RBAC | Pending |
-| AUTH-04 | Phase 2 — Auth + RBAC | Pending |
-| AUTH-05 | Phase 2 — Auth + RBAC | Pending |
+| AUTH-03 | Phase 2 — Auth + RBAC | Complete |
+| AUTH-04 | Phase 2 — Auth + RBAC | Complete |
+| AUTH-05 | Phase 2 — Auth + RBAC | Complete |
 | AUTH-06 | Phase 2 — Auth + RBAC | Pending |
 | AUTH-07 | Phase 2 — Auth + RBAC | Pending |
-| AUTH-08 | Phase 2 — Auth + RBAC | Pending |
+| AUTH-08 | Phase 2 — Auth + RBAC | Complete |
 | CONT-01 | Phase 3 — Content Engine | Pending |
 | CONT-02 | Phase 3 — Content Engine | Pending |
 | CONT-03 | Phase 3 — Content Engine | Pending |
@@ -178,6 +188,7 @@ Which phases cover which requirements. Updated during roadmap creation (Step 8).
 | MEDIA-01 | Phase 3 — Content Engine | Pending |
 | MEDIA-02 | Phase 3 — Content Engine | Pending |
 | MEDIA-03 | Phase 3 — Content Engine | Pending |
+| MEDIA-04 | Phase 3 — Content Engine | Pending |
 | DASH-01 | Phase 4 — Dashboard Chrome | Pending |
 | DASH-02 | Phase 4 — Dashboard Chrome | Pending |
 | DASH-03 | Phase 4 — Dashboard Chrome | Pending |
@@ -186,6 +197,7 @@ Which phases cover which requirements. Updated during roadmap creation (Step 8).
 | DASH-06 | Phase 4 — Dashboard Chrome | Pending |
 | DASH-07 | Phase 4 — Dashboard Chrome | Pending |
 | DASH-08 | Phase 4 — Dashboard Chrome | Pending |
+| DASH-09 | Phase 4 — Dashboard Chrome | Pending |
 | SEO-01 | Phase 5 — SEO Basics | Pending |
 | SEO-02 | Phase 5 — SEO Basics | Pending |
 | SEO-03 | Phase 5 — SEO Basics | Pending |
@@ -217,25 +229,31 @@ Which phases cover which requirements. Updated during roadmap creation (Step 8).
 | PERF-02 | Phase 7 — Performance & Deploy | Pending |
 | PERF-03 | Phase 7 — Performance & Deploy | Pending |
 | PERF-04 | Phase 7 — Performance & Deploy | Pending |
-| PERF-05 | Phase 7 — Performance & Deploy | Pending |
+| ~~PERF-05~~ | ~~Phase 7~~ — **SUPERSEDED**, moved to Phase 8 (BACKUP-01..05) | Superseded |
 | PERF-06 | Phase 7 — Performance & Deploy | Pending |
+| BACKUP-01 | Phase 8 — Backup & Disaster Recovery | Pending |
+| BACKUP-02 | Phase 8 — Backup & Disaster Recovery | Pending |
+| BACKUP-03 | Phase 8 — Backup & Disaster Recovery | Pending |
+| BACKUP-04 | Phase 8 — Backup & Disaster Recovery | Pending |
+| BACKUP-05 | Phase 8 — Backup & Disaster Recovery | Pending |
 
 **Coverage:**
 
-- v1 requirements: 69 total
-- Mapped to phases: 69 (100%)
+- v1 requirements: 75 total (69 original + MEDIA-04, DASH-09, BACKUP-01..05 added; PERF-05 superseded — net 69 + 7 - 1 = 75)
+- Mapped to phases: 75 (100%)
 - Unmapped: 0
 
 **Per-phase counts:**
 
 - Phase 1 — Foundation: 6 (FOUND-01..06)
 - Phase 2 — Auth + RBAC: 8 (AUTH-01..08)
-- Phase 3 — Content Engine: 14 (CONT-01..11, MEDIA-01..03)
-- Phase 4 — Dashboard Chrome: 8 (DASH-01..08)
+- Phase 3 — Content Engine: 15 (CONT-01..11, MEDIA-01..04)
+- Phase 4 — Dashboard Chrome: 9 (DASH-01..09)
 - Phase 5 — SEO Basics: 8 (SEO-01..08)
 - Phase 6 — Public Frontend: 19 (SITE-01..17, ANAL-01..02)
-- Phase 7 — Performance & Deploy: 6 (PERF-01..06)
+- Phase 7 — Performance & Deploy: 5 (PERF-01..04, PERF-06 — PERF-05 superseded/moved to Phase 8)
+- Phase 8 — Backup & Disaster Recovery: 5 (BACKUP-01..05)
 
 ---
 *Requirements defined: 2026-07-01*
-*Last updated: 2026-07-01 after roadmap creation — traceability filled (69/69 mapped)*
+*Last updated: 2026-07-02 — in-place revision: storage-provider abstraction (MEDIA-01..04, DASH-09), backups moved to new Phase 8 (BACKUP-01..05), PERF-05 superseded. Traceability re-validated (75/75 mapped).*
