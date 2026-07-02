@@ -241,6 +241,7 @@ None beyond what was already documented in the Task 1/Task 2 commits.
 - FOUND: c8f347a (Task 1 GREEN)
 - FOUND: 975a5a6 (Task 2)
 - FOUND: 691624f (checkpoint record)
+- FOUND: 83f1ab3 (finalization — Task 3 deferred to UAT)
 
 ### Acceptance gates
 - FOUND: pnpm test → 53 passed (9 files)
