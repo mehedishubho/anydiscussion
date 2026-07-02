@@ -34,8 +34,24 @@ export const auth = betterAuth({
     enabled: true,
     // D-09 — unverified accounts cannot sign in.
     requireEmailVerification: true,
-    // Hooks are stubs now (Plan 02-01); Plan 02-03 wires lib/email to real Resend.
-    // Fire-and-forget (void) per R8 — avoid timing attacks.
+    // T-02-04 — email-enumeration protection. When requireEmailVerification:true
+    // AND the admin plugin is active, sign-up returns a synthetic user instead of
+    // surfacing "email already exists". The docs require customSyntheticUser to
+    // include the admin-plugin fields (role/banned/banReason/banExpires) so the
+    // response shape matches a real user + the additionalField placeholders.
+    // [CITED: better-auth email-password.mdx — Email Enumeration Protection →
+    //  Plugins that add user fields; RESEARCH.md Code Examples lines 860-879]
+    customSyntheticUser: ({ coreFields, additionalFields, id }) => ({
+      ...coreFields,
+      role: "author",
+      banned: false,
+      banReason: null,
+      banExpires: null,
+      ...additionalFields,
+      id,
+    }),
+    // Hooks wired to the Resend-backed lib/email helper (Plan 02-03).
+    // Fire-and-forget (void) per R8 — awaiting leaks send timing (timing attack).
     sendResetPassword: async ({ user, url }) => {
       void sendEmail({
         to: user.email,
