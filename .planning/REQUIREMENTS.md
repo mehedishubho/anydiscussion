@@ -19,7 +19,7 @@ v1 = authoring + public-site MVP, extended with the full agreed feature set. Eac
 ### Auth & RBAC
 
 - [x] **AUTH-01**: Better Auth configured with the `admin` plugin; roles `admin`, `editor`, `author` via `createAccessControl`
-- [ ] **AUTH-02**: Sign-in page working; user accounts created by an admin in the dashboard (no open public sign-up)
+- [x] **AUTH-02**: Sign-in page working; user accounts created by an admin in the dashboard (no open public sign-up)
 - [x] **AUTH-03**: `proxy.ts` cookie-existence gate redirecting unauthenticated users away from `(admin)`
 - [x] **AUTH-04**: `lib/permissions` helpers (`requireRole`, `requireCan`, `assertOwnsPost`); every mutating Server Action starts with the appropriate server-side check
 - [x] **AUTH-05**: Author → submit-for-review → editor/admin-approve → publish workflow enforced server-side via post status
@@ -167,7 +167,7 @@ Which phases cover which requirements. Updated during roadmap creation (Step 8).
 | FOUND-05 | Phase 1 — Foundation | Complete |
 | FOUND-06 | Phase 1 — Foundation | Complete |
 | AUTH-01 | Phase 2 — Auth + RBAC | Complete |
-| AUTH-02 | Phase 2 — Auth + RBAC | Pending |
+| AUTH-02 | Phase 2 — Auth + RBAC | Complete |
 | AUTH-03 | Phase 2 — Auth + RBAC | Complete |
 | AUTH-04 | Phase 2 — Auth + RBAC | Complete |
 | AUTH-05 | Phase 2 — Auth + RBAC | Complete |

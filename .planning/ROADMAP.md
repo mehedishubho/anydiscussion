@@ -69,7 +69,7 @@ Plans:
   4. A user can reset a forgotten password via an email link and verify their email on account creation (Better Auth defaults + SMTP working).
   5. A user record carries the profile fields (bio, avatar) needed for byline/author pages, and the post status enum (`draft` / `pending_review` / `published`) and review workflow primitives exist so Phase 3 can enforce author → submit-for-review → editor/admin-approve → publish.
 
-**Plans**: 1/3 plans executed
+**Plans**: 2/3 plans executed
 
 Plans:
 
@@ -79,7 +79,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 02-02-PLAN.md — First-run admin setup wizard (createFirstAdmin with D-08 self-disable + repurposed signup page) + auth browser client + signin form wired to Better Auth (remember-me + deep-link callbackURL)
+- [x] 02-02-PLAN.md — First-run admin setup wizard (createFirstAdmin with D-08 self-disable + repurposed signup page) + auth browser client + signin form wired to Better Auth (remember-me + deep-link callbackURL)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 

@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 02
 current_phase_name: auth-rbac
 status: executing
-stopped_at: Phase 2 context gathered
-last_updated: "2026-07-02T13:12:01.619Z"
+stopped_at: Completed 02-02-PLAN.md
+last_updated: "2026-07-02T16:39:33.373Z"
 last_activity: 2026-07-02
 last_activity_desc: Phase 02 execution started
 progress:
   total_phases: 8
   completed_phases: 1
   total_plans: 6
-  completed_plans: 4
+  completed_plans: 5
   percent: 13
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-01)
 ## Current Position
 
 Phase: 02 (auth-rbac) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
 Last activity: 2026-07-02 — Phase 02 execution started
 
@@ -71,6 +71,7 @@ Progress: [█░░░░░░░░░] 14%
 | Phase 01 P02 | 5min | 2 tasks | 8 files |
 | Phase 01 P03 | 12min | 2 tasks | 5 files |
 | Phase 02 P01 | 27min | 3 tasks | 19 files |
+| Phase 02 P02 | 22min | 2 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -88,6 +89,9 @@ Recent decisions affecting current work:
 - [Phase ?]: drizzle-orm pinned at ^0.45.2 — Better Auth peer prevents 1.x RC bump (R5 gate verified in 02-01)
 - [Phase ?]: RBAC via admin plugin createAccessControl — author role LACKS post.publish, double-enforced in TRANSITIONS table + requireCan (02-01)
 - [Phase ?]: proxy.ts is UX-only (Next 16) — matcher targets resolved /dashboard paths, not (admin) route group (02-01)
+- [Phase ?]: D-08 createFirstAdmin self-disable proven by structural test (02-02)
+- [Phase ?]: adminApi type cast: Better Auth plugin endpoints flat in TS but nested at runtime (02-02)
+- [Phase ?]: signup page uses Suspense-wrapped async child for PPR-compatible dynamic count query (02-02)
 
 ### Pending Todos
 
@@ -116,6 +120,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-02T13:12:01.613Z
-Stopped at: Phase 2 context gathered
-Resume file: .planning/phases/02-auth-rbac/02-CONTEXT.md
+Last session: 2026-07-02T16:39:33.368Z
+Stopped at: Completed 02-02-PLAN.md
+Resume file: .planning/phases/02-auth-rbac/02-02-SUMMARY.md
