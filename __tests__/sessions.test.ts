@@ -29,9 +29,7 @@ const {
 vi.mock("@/lib/auth", () => ({
   auth: {
     api: {
-      admin: {
-        revokeUserSessions: revokeUserSessionsMock,
-      },
+      revokeUserSessions: revokeUserSessionsMock,
     },
   },
 }));

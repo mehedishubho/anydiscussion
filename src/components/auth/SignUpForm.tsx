@@ -33,7 +33,10 @@ async function setupAction(
   try {
     await createFirstAdmin({ name, email, password });
     return { status: "success" };
-  } catch {
+  } catch (error) {
+    // Log the real cause server-side (dev diagnosis); return a generic message
+    // to the client so we don't leak whether an admin exists (T-02-04 email/enum).
+    console.error("[createFirstAdmin] failed:", error);
     return {
       status: "error",
       message:

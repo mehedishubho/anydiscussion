@@ -19,29 +19,12 @@ import { eq, count } from "drizzle-orm";
 import { log } from "@/lib/log";
 import { requireCan } from "@/lib/permissions";
 
-// The admin plugin exposes its endpoints under `auth.api.admin.*` at runtime
-// (createUser, banUser, unbanUser, revokeUserSessions). Better Auth's TS inference
-// surfaces the endpoints flat (not nested under `admin`) because of how plugin
-// endpoints are merged via UnionToIntersection. The runtime nesting is correct —
-// we use a minimal cast so the action bodies type-check without `any`.
-// [CITED: better-auth/docs/plugins/admin.mdx — server-side admin API]
-type AdminApi = {
-  createUser: (args: {
-    body: {
-      email: string;
-      password: string;
-      name: string;
-      role: string;
-      data?: Record<string, unknown>;
-    };
-  }) => Promise<unknown>;
-  banUser: (args: {
-    body: { userId: string; banReason?: string; banExpiresIn?: number };
-  }) => Promise<unknown>;
-  unbanUser: (args: { body: { userId: string } }) => Promise<unknown>;
-  revokeUserSessions: (args: { body: { userId: string } }) => Promise<unknown>;
-};
-const adminApi = (auth.api as unknown as { admin: AdminApi }).admin;
+// The admin plugin exposes its endpoints FLAT on `auth.api` (verified at runtime
+// against better-auth@1.6.23 — auth.api.admin is undefined; there is NO nested
+// namespace). Call auth.api.createUser / banUser / unbanUser / revokeUserSessions
+// directly. The earlier `as { admin }` cast was wrong and made every action throw
+// "Cannot read properties of undefined (reading 'createUser')" at runtime.
+// [CITED: better-auth@1.6.23 dist/plugins/admin/admin.mjs — endpoints {} → flat auth.api]
 
 /**
  * createFirstAdmin — the first-run admin-creation bootstrap action.
@@ -77,7 +60,7 @@ export async function createFirstAdmin(input: {
   // D-08 STEP 3 — only when count===0: create the first admin via Better Auth.
   // emailVerified:true so the bootstrap admin can sign in immediately (D-09 still
   // gates all subsequently-created users via the normal createUser action).
-  const result = await adminApi.createUser({
+  const result = await auth.api.createUser({
     body: {
       email: input.email,
       password: input.password,
@@ -102,7 +85,7 @@ export async function createUser(input: {
 }) {
   await requireCan({ user: ["create"] });
 
-  return adminApi.createUser({
+  return auth.api.createUser({
     body: {
       email: input.email,
       password: input.password,
@@ -124,7 +107,7 @@ export async function banUser(
 ) {
   await requireCan({ user: ["ban"] });
 
-  return adminApi.banUser({
+  return auth.api.banUser({
     body: {
       userId,
       ...(options?.banReason ? { banReason: options.banReason } : {}),
@@ -141,7 +124,7 @@ export async function banUser(
 export async function unbanUser(userId: string) {
   await requireCan({ user: ["ban"] });
 
-  return adminApi.unbanUser({
+  return auth.api.unbanUser({
     body: { userId },
   });
 }
@@ -158,7 +141,7 @@ export async function unbanUser(userId: string) {
 export async function revokeSessions(input: { userId: string }) {
   await requireCan({ user: ["revoke-session"] });
 
-  return adminApi.revokeUserSessions({
+  return auth.api.revokeUserSessions({
     body: { userId: input.userId },
   });
 }

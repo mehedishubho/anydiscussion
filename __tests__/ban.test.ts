@@ -29,10 +29,8 @@ const {
 vi.mock("@/lib/auth", () => ({
   auth: {
     api: {
-      admin: {
-        banUser: banUserMock,
-        unbanUser: unbanUserMock,
-      },
+      banUser: banUserMock,
+      unbanUser: unbanUserMock,
     },
   },
 }));

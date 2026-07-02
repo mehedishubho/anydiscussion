@@ -33,16 +33,15 @@ const {
   getSessionOrThrowMock: vi.fn(),
 }));
 
-// auth.api — the Better Auth admin endpoints. createUser is the spy we assert on / throw from.
+// auth.api — the Better Auth admin endpoints, exposed FLAT (no `admin` namespace at
+// runtime — see src/actions/users.ts). createUser is the spy we assert on / throw from.
 vi.mock("@/lib/auth", () => ({
   auth: {
     api: {
-      admin: {
-        createUser: createUserMock,
-        banUser: banUserMock,
-        unbanUser: unbanUserMock,
-        revokeUserSessions: revokeUserSessionsMock,
-      },
+      createUser: createUserMock,
+      banUser: banUserMock,
+      unbanUser: unbanUserMock,
+      revokeUserSessions: revokeUserSessionsMock,
       // getSession + userHasPermission are used inside requireCan/getSessionOrThrow;
       // stubbed per-test as needed via the permissions mock below.
       getSession: vi.fn(),
