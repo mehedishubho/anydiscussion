@@ -16,7 +16,7 @@ The journey follows the dependency spine the research consistently surfaced: Fou
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Foundation** - Next.js 16 config, Drizzle schema + first migration, R2/sharp pipeline, route-group isolation
-- [x] **Phase 2: Auth + RBAC** - Better Auth + admin plugin, proxy cookie gate, permission helpers, review-workflow status enum shipped together (completed 2026-07-02)
+- [ ] **Phase 2: Auth + RBAC** - Better Auth + admin plugin, proxy cookie gate, permission helpers, review-workflow status enum shipped together (code complete 2026-07-02; pending UAT — email round-trip deferred, see 02-VERIFICATION.md / 02-UAT.md)
 - [ ] **Phase 3: Content Engine** - Posts CRUD + Tiptap JSON round-trip, double-sanitization, categories/tags, provider-based media (local default + R2), revalidation wired in
 - [ ] **Phase 4: Dashboard Chrome** - TailAdmin wired to real data (posts, taxonomy, media, users, pages) + Storage Settings (Cloudinary/push-CDN providers), RHF+Zod, TanStack Query, demo cleanup
 - [ ] **Phase 5: SEO Basics** - generateMetadata per route, dynamic sitemap + robots, JSON-LD, canonical, OG/Twitter cards, RSS
@@ -258,7 +258,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation | 3/3 | Complete | 2026-07-02 |
-| 2. Auth + RBAC | 3/3 | Complete | 2026-07-02 |
+| 2. Auth + RBAC | 3/3 | Pending UAT | 2026-07-02 (code) |
 | 3. Content Engine | 0/TBD | Not started | - |
 | 4. Dashboard Chrome | 0/TBD | Not started | - |
 | 5. SEO Basics | 0/TBD | Not started | - |

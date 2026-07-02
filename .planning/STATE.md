@@ -4,17 +4,17 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 02
 current_phase_name: auth-rbac
-status: phase_complete
-stopped_at: Phase 02 complete (02-03 finalized — Task 3 manual email round-trip deferred to UAT)
+status: pending_verification
+stopped_at: Phase 02 code complete + verified (human_needed) — email round-trip UAT deferred (02-UAT.md UAT-02-01)
 last_updated: "2026-07-02T17:30:00.000Z"
 last_activity: 2026-07-02
-last_activity_desc: 02-03 finalized — Tasks 1+2 done (lib/email + hooks + ban/revoke tests, 53 green); Task 3 manual email round-trip deferred to UAT (02-UAT.md UAT-02-01)
+last_activity_desc: 02-03 finalized — Tasks 1+2 done (lib/email + hooks + ban/revoke tests, 53 green); Task 3 manual email round-trip deferred to UAT (02-UAT.md UAT-02-01). Verifier: human_needed (17/18 truths, all 8 AUTH reqs, no impl gaps) — phase NOT auto-advanced.
 progress:
   total_phases: 8
-  completed_phases: 2
+  completed_phases: 1
   total_plans: 6
   completed_plans: 6
-  percent: 25
+  percent: 13
 ---
 
 # Project State
@@ -28,12 +28,12 @@ See: .planning/PROJECT.md (updated 2026-07-01)
 
 ## Current Position
 
-Phase: 02 (auth-rbac) — COMPLETE
+Phase: 02 (auth-rbac) — code complete, pending human verification
 Plan: 3 of 3 (done)
-Status: Phase 02 complete; ready for Phase 03 planning
+Status: Phase 02 code complete + verified (53 tests, build, 12-table migration green; all 8 AUTH reqs satisfied; 17/18 must-have truths). Verifier status: human_needed — 1 deferred UAT item (manual email round-trip, 02-UAT.md UAT-02-01). Run /gsd-verify-work 2 to clear it.
 Last activity: 2026-07-02 — 02-03 finalized (Task 3 deferred to UAT)
 
-Progress: [██░░░░░░░░] 25%
+Progress: [█░░░░░░░░░] 13%
 
 ## Roadmap Snapshot
 
