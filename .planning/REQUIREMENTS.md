@@ -23,8 +23,8 @@ v1 = authoring + public-site MVP, extended with the full agreed feature set. Eac
 - [x] **AUTH-03**: `proxy.ts` cookie-existence gate redirecting unauthenticated users away from `(admin)`
 - [x] **AUTH-04**: `lib/permissions` helpers (`requireRole`, `requireCan`, `assertOwnsPost`); every mutating Server Action starts with the appropriate server-side check
 - [x] **AUTH-05**: Author → submit-for-review → editor/admin-approve → publish workflow enforced server-side via post status
-- [ ] **AUTH-06**: Password reset via email link (Better Auth default + SMTP)
-- [ ] **AUTH-07**: Email verification on account creation (Better Auth default + SMTP)
+- [x] **AUTH-06**: Password reset via email link (Better Auth default + SMTP) — *verification-debt: automated hook-firing test green (02-03); real-inbox delivery deferred to UAT (`.planning/phases/02-auth-rbac/02-UAT.md` UAT-02-01 — requires operator `RESEND_API_KEY` + DNS deliverability, Phase 7 / D-04)*
+- [x] **AUTH-07**: Email verification on account creation (Better Auth default + SMTP) — *verification-debt: automated hook-firing test green (02-03); real-inbox delivery deferred to UAT (`.planning/phases/02-auth-rbac/02-UAT.md` UAT-02-01 — requires operator `RESEND_API_KEY` + DNS deliverability, Phase 7 / D-04)*
 - [x] **AUTH-08**: Author profile fields on `users` (bio, avatar) to support byline/author pages
 
 ### Content Engine
@@ -171,8 +171,8 @@ Which phases cover which requirements. Updated during roadmap creation (Step 8).
 | AUTH-03 | Phase 2 — Auth + RBAC | Complete |
 | AUTH-04 | Phase 2 — Auth + RBAC | Complete |
 | AUTH-05 | Phase 2 — Auth + RBAC | Complete |
-| AUTH-06 | Phase 2 — Auth + RBAC | Pending |
-| AUTH-07 | Phase 2 — Auth + RBAC | Pending |
+| AUTH-06 | Phase 2 — Auth + RBAC | Complete |
+| AUTH-07 | Phase 2 — Auth + RBAC | Complete |
 | AUTH-08 | Phase 2 — Auth + RBAC | Complete |
 | CONT-01 | Phase 3 — Content Engine | Pending |
 | CONT-02 | Phase 3 — Content Engine | Pending |

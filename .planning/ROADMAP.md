@@ -16,7 +16,7 @@ The journey follows the dependency spine the research consistently surfaced: Fou
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Foundation** - Next.js 16 config, Drizzle schema + first migration, R2/sharp pipeline, route-group isolation
-- [ ] **Phase 2: Auth + RBAC** - Better Auth + admin plugin, proxy cookie gate, permission helpers, review-workflow status enum shipped together
+- [x] **Phase 2: Auth + RBAC** - Better Auth + admin plugin, proxy cookie gate, permission helpers, review-workflow status enum shipped together (completed 2026-07-02)
 - [ ] **Phase 3: Content Engine** - Posts CRUD + Tiptap JSON round-trip, double-sanitization, categories/tags, provider-based media (local default + R2), revalidation wired in
 - [ ] **Phase 4: Dashboard Chrome** - TailAdmin wired to real data (posts, taxonomy, media, users, pages) + Storage Settings (Cloudinary/push-CDN providers), RHF+Zod, TanStack Query, demo cleanup
 - [ ] **Phase 5: SEO Basics** - generateMetadata per route, dynamic sitemap + robots, JSON-LD, canonical, OG/Twitter cards, RSS
@@ -69,7 +69,7 @@ Plans:
   4. A user can reset a forgotten password via an email link and verify their email on account creation (Better Auth defaults + SMTP working).
   5. A user record carries the profile fields (bio, avatar) needed for byline/author pages, and the post status enum (`draft` / `pending_review` / `published`) and review workflow primitives exist so Phase 3 can enforce author → submit-for-review → editor/admin-approve → publish.
 
-**Plans**: 2/3 plans executed
+**Plans**: 3/3 plans complete
 
 Plans:
 
@@ -83,7 +83,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 02-03-PLAN.md — Email flows (lib/email Resend helper + verification/reset hooks + customSyntheticUser enumeration protection) + ban/revoke session primitives (D-16/D-17) + manual email round-trip checkpoint
+- [x] 02-03-PLAN.md — Email flows (lib/email Resend helper + verification/reset hooks + customSyntheticUser enumeration protection) + ban/revoke session primitives (D-16/D-17) + manual email round-trip checkpoint
 
 **Pitfalls owned:** #1 (missing server-side auth on mutating actions) and #4 (proxy-does-cookie-check / action-does-real-check split). Shipped with the status enum so the review workflow is real, not decoration.
 **Research flag:** MEDIUM — re-verify the Better Auth `admin` plugin API (`createAccessControl`, `userHasPermission`), whether the `access` plugin is needed beyond the three roles, `nextCookies()`-last placement, and the exact `proxy.ts` matcher against current docs.
@@ -258,7 +258,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation | 3/3 | Complete | 2026-07-02 |
-| 2. Auth + RBAC | 0/TBD | Not started | - |
+| 2. Auth + RBAC | 3/3 | Complete | 2026-07-02 |
 | 3. Content Engine | 0/TBD | Not started | - |
 | 4. Dashboard Chrome | 0/TBD | Not started | - |
 | 5. SEO Basics | 0/TBD | Not started | - |

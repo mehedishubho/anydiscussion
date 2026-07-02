@@ -4,17 +4,17 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 02
 current_phase_name: auth-rbac
-status: executing
-stopped_at: 02-03 at checkpoint:human-verify (Task 3 — manual email round-trip; RESEND_API_KEY required)
-last_updated: "2026-07-02T16:56:00.000Z"
+status: phase_complete
+stopped_at: Phase 02 complete (02-03 finalized — Task 3 manual email round-trip deferred to UAT)
+last_updated: "2026-07-02T17:30:00.000Z"
 last_activity: 2026-07-02
-last_activity_desc: 02-03 Tasks 1+2 done (lib/email + hooks + ban/revoke tests); awaiting Task 3 manual email round-trip
+last_activity_desc: 02-03 finalized — Tasks 1+2 done (lib/email + hooks + ban/revoke tests, 53 green); Task 3 manual email round-trip deferred to UAT (02-UAT.md UAT-02-01)
 progress:
   total_phases: 8
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 6
-  completed_plans: 5
-  percent: 13
+  completed_plans: 6
+  percent: 25
 ---
 
 # Project State
@@ -28,12 +28,12 @@ See: .planning/PROJECT.md (updated 2026-07-01)
 
 ## Current Position
 
-Phase: 02 (auth-rbac) — EXECUTING
-Plan: 3 of 3
-Status: Ready to execute
-Last activity: 2026-07-02 — Phase 02 execution started
+Phase: 02 (auth-rbac) — COMPLETE
+Plan: 3 of 3 (done)
+Status: Phase 02 complete; ready for Phase 03 planning
+Last activity: 2026-07-02 — 02-03 finalized (Task 3 deferred to UAT)
 
-Progress: [█░░░░░░░░░] 14%
+Progress: [██░░░░░░░░] 25%
 
 ## Roadmap Snapshot
 
@@ -52,7 +52,7 @@ Progress: [█░░░░░░░░░] 14%
 
 **Velocity:**
 
-- Total plans completed: 3
+- Total plans completed: 6
 - Average duration: — min
 - Total execution time: 0 hours
 
@@ -61,6 +61,7 @@ Progress: [█░░░░░░░░░] 14%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01 | 3 | - | - |
+| 02 | 3 | - | - |
 
 **Recent Trend:**
 
@@ -72,6 +73,7 @@ Progress: [█░░░░░░░░░] 14%
 | Phase 01 P03 | 12min | 2 tasks | 5 files |
 | Phase 02 P01 | 27min | 3 tasks | 19 files |
 | Phase 02 P02 | 22min | 2 tasks | 9 files |
+| Phase 02 P03 | 18min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -92,6 +94,9 @@ Recent decisions affecting current work:
 - [Phase ?]: D-08 createFirstAdmin self-disable proven by structural test (02-02)
 - [Phase ?]: adminApi type cast: Better Auth plugin endpoints flat in TS but nested at runtime (02-02)
 - [Phase ?]: signup page uses Suspense-wrapped async child for PPR-compatible dynamic count query (02-02)
+- [Phase 02]: lib/email thin Resend wrapper (D-03) — all hooks fire-and-forget (`void sendEmail`); lib/email never throws on error (R8) (02-03)
+- [Phase 02]: customSyntheticUser with admin-plugin fields for email-enumeration protection (T-02-04) (02-03)
+- [Phase 02]: AUTH-06/07 automated-hook-firing tests green (53 total); real-inbox delivery deferred to UAT — requires operator RESEND_API_KEY + DNS (Phase 7 / D-04) (02-03)
 
 ### Pending Todos
 
@@ -105,6 +110,7 @@ Recent decisions affecting current work:
 
 - [Phase 3]: Tiptap v3 SSR round-trip (`@tiptap/html` `generateHTML` with chosen extensions) is MEDIUM-confidence — validate before wiring all rendering.
 - [Phase 6]: Cache Components + `<Suspense>` boundary placement on `/[slug]` is HIGHEST-confidence open question — plan a spike before building all archive routes.
+- [Phase 2 → UAT]: **Verification debt** — AUTH-06/07 real-inbox email delivery deferred to UAT (`.planning/phases/02-auth-rbac/02-UAT.md` UAT-02-01). Automated hook-firing tests pass (53 green); the manual round-trip requires operator `RESEND_API_KEY` + DNS deliverability (DKIM/SPF/DMARC — Phase 7 / D-04). Must close before production launch.
 - [Phase 2]: Better Auth `admin` vs `access` plugin split — confirm whether `access` plugin is needed for fine-grained permissions beyond the three roles.
 
 ## Deferred Items
@@ -120,6 +126,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-02T16:56:00.000Z
-Stopped at: 02-03 at checkpoint:human-verify (Task 3 — manual email round-trip; RESEND_API_KEY required)
-Resume file: .planning/phases/02-auth-rbac/02-03-PLAN.md
+Last session: 2026-07-02T17:30:00.000Z
+Stopped at: Phase 02 complete (02-03 finalized — Task 3 manual email round-trip deferred to UAT)
+Resume file: .planning/phases/02-auth-rbac/02-UAT.md (pending UAT item UAT-02-01)
