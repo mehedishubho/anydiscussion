@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint .",
     "db:generate": "drizzle-kit generate",
+    "test": "vitest run",
     "test:migrations": "node scripts/test-migrations.mjs",
     "setup": "node scripts/setup.mjs",
     "verify": "node scripts/verify.mjs"
@@ -53,7 +54,8 @@
     "eslint-config-next": "16.0.7",
     "postcss": "^8.5.6",
     "tailwindcss": "^4.1.17",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.9"
   },
   "overrides": {
     "@react-jvectormap/core": {
@@ -64,8 +66,5 @@
       "react": "^16.8.0 || ^17 || ^18 || ^19",
       "react-dom": "^16.8.0 || ^17 || ^18 || ^19"
     }
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": ["sharp"]
   }
 }
