@@ -1,47 +1,80 @@
-# Phase 02 — Auth + RBAC: UAT / Verification Debt
-
-Pending human-verification items deferred from plan execution. `/gsd-verify-work` and `/gsd-audit-uat` surface these.
-
+---
+status: partial
+phase: 02-auth-rbac
+source: [02-03-SUMMARY.md, 02-VERIFICATION.md]
+started: 2026-07-02T17:30:00.000Z
+updated: 2026-07-03T15:10:00.000Z
 ---
 
-## UAT-02-01 — Manual email verification + password-reset round-trip to a real inbox
+## Current Test
 
-**Status:** pending
-**Deferred from:** Plan 02-03, Task 3 (`checkpoint:human-verify`, gate `blocking`)
-**Requirements covered:** AUTH-06 (password reset via email link), AUTH-07 (email verification on account creation)
-**Decision:** User explicitly accepted deferral — automated tests prove the hooks fire with a stubbed sender; the deferred item only proves Resend actually delivers to a real inbox.
+[testing paused — forgot/reset-password UI gap blocks the email round-trip; route to /gsd-plan-phase 2 --gaps]
 
-### What automation already proves
+## Tests
 
-- `__tests__/email-flows.test.ts` "verification sent" — `admin.createUser` fires `sendVerificationEmail` → `sendEmail` called with the verification URL (AUTH-07).
-- `__tests__/email-flows.test.ts` "unverified blocked" — an unverified account's sign-in attempt is rejected (`requireEmailVerification:true` — D-09).
-- `__tests__/email-flows.test.ts` "password reset" — a reset request triggers `sendResetPassword` → `sendEmail` called with the reset URL (AUTH-06).
+### 1. Signup → create first admin
+expected: Submit /signup form → admin created → "Account created. Redirecting to sign in…" → redirect to /signin.
+result: pass
+note: After 3 inline fixes during UAT (see Issues Resolved). Admin created with email_verified=t (auto-verified by design — createFirstAdmin passes emailVerified:true). Redirect to /signin now works.
 
-These run with a stubbed `sendEmail` (`vi.hoisted()` spy), so they prove the hooks fire correctly without a real Resend key.
+### 2. Sign in as the admin
+expected: /signin with admin email + password → reach /dashboard.
+result: pending
+note: Admin is auto-verified so requireEmailVerification (D-09) passes. Should work — user to confirm when continuing.
 
-### What the manual round-trip proves (the gap)
+### 3. Forgot-password → reset email → reset password (AUTH-06)
+expected: /signin "Forgot password?" → enter email → reset email arrives → click link → /reset-password → set new password → sign in.
+result: blocked
+blocked_by: prior-phase
+reason: "Forgot-password + reset-password UI pages were never built. SignInForm.tsx:138 links to /reset-password which 404s."
 
-That Resend actually delivers the email to a real inbox — i.e. the SDK send succeeds, the from-domain is accepted, and DKIM/SPF/DMARC (if configured) lets it land in inbox (not spam).
+### 4. Verification email on signup (AUTH-07)
+expected: New (non-admin) user signup → verification email arrives → click link → verified.
+result: skipped
+reason: "AUTH-07's verification email is suppressed for the bootstrap admin (createFirstAdmin passes emailVerified:true by design — D-09). Full delivery test requires a non-admin user (Phase 4 user-management UI). AUTH-06's reset email exercises the same sendEmail/Resend path, so AUTH-07 delivery is implied once AUTH-06's reset email lands."
 
-### Prerequisites
+## Summary
 
-1. A real `RESEND_API_KEY=re_xxx` in `.env.local` (source: https://resend.com/api-keys).
-2. For the dev sandbox sender `onboarding@resend.dev` (the `EMAIL_FROM` default), mail delivers ONLY to the Resend account owner's inbox. For other recipients, a verified from-domain is needed.
-3. DNS deliverability (DKIM/SPF/DMARC on the from-domain) — a Phase 7 / D-04 concern. Not required for the dev sandbox sender.
+total: 4
+passed: 1
+issues: 0
+pending: 1
+skipped: 1
+blocked: 1
 
-### Steps
+## Gaps
 
-1. `pnpm dev` — start the app.
-2. Create a user via the dashboard (or the first-run setup wizard) using an email you control (the Resend account owner's email for the sandbox sender).
-3. Check that inbox for the verification email from `onboarding@resend.dev` (or your verified from-domain). Click the verification link.
-4. Confirm the user can now sign in (previously blocked by `requireEmailVerification`).
-5. Sign out, then trigger "forgot password" — confirm the reset email arrives. Click the reset link, set a new password, and sign in with the new password.
-6. If either email lands in spam, note it — this is the D-04 DNS deliverability gate (DKIM/SPF/DMARC), flagged for Phase 7.
+- truth: "A user can request a password reset via a forgot-password page and complete the reset via the emailed link (AUTH-06)"
+  status: failed
+  reason: "Forgot-password + reset-password UI pages were never built in Phase 2. SignInForm.tsx:138 links to /reset-password which 404s. The email hook (sendResetPassword at src/lib/auth/index.ts:55) is wired and its firing is proven by __tests__/email-flows.test.ts (stubbed sendEmail), but there is no UI to trigger it or to land the reset link."
+  severity: major
+  test: 3
+  artifacts:
+    - path: "src/components/auth/SignInForm.tsx"
+      issue: "Forgot-password link (line 138) targets /reset-password which has no page (404)"
+    - path: "src/app/(full-width-pages)/(auth)/"
+      issue: "Missing /forgot-password and /reset-password route pages (only /signin, /signup exist)"
+  missing:
+    - "Build /forgot-password page + form: email → authClient.forgetPassword({ email, redirectTo: '/reset-password' }) → triggers sendResetPassword → 'check your email' UX"
+    - "Build /reset-password page + form: read token from URL query → authClient.resetPassword({ newPassword, token }) → redirect to /signin"
+    - "Verify Better Auth authClient.forgetPassword / resetPassword method names + call signatures against better-auth@1.6.23 (server hook sendResetPassword already wired)"
+    - "Add /forgot-password and /reset-password to proxy.ts config.matcher if needed (current matcher: /dashboard/:path*, /signin, /signup — these are public auth pages)"
+    - "Add tests for both pages (form submission → authClient call) mirroring src/components/auth/__tests__/SignInForm.test.tsx"
 
-### Expected outcome
+## Issues Resolved During UAT (inline fixes, committed)
 
-Both the verification and reset emails arrive (not in spam, if DNS is configured) and the flows complete end-to-end (click link → verified/reset → sign in succeeds).
+- **Logo crash `Failed to construct 'URL'`** — Phase-1 custom image-loader concatenated `./`-prefixed srcs onto the CDN host, producing a malformed URL; ~50 local /public SVGs would also have 404'd against MinIO. Fixed loader (normalize `./`, serve local assets from app origin, pass absolute URLs through) + 2 logo srcs. Commit `18acdad`.
+- **`createFirstAdmin` always threw `Cannot read properties of undefined`** — Better Auth admin endpoints are FLAT on `auth.api` (`auth.api.createUser`…), NOT nested under `auth.api.admin.*`. The 02-02 executor's typed cast read `undefined`; every user-mgmt action was broken at runtime. Mock-based tests asserted on the phantom nested path → false confidence. Fixed flat calls + 3 test mocks. Commit `c384ead`.
+- **Signup success showed "Redirecting…" but never redirected** — no `useEffect`/`router.push` on the success state. Fixed. Commit `69077bf`.
 
-### Sign-off
+## Notes
 
-When complete, record: "approved — both emails arrived, flows completed" (or describe the failure). Update REQUIREMENTS.md AUTH-06/07 verification-debt note + this file's status to `done`.
+- The createFirstAdmin flat-endpoint bug (c384ead) is worth a phase retrospective: mock-based tests gave false confidence by asserting on a path that doesn't exist at runtime. A runtime smoke test (`typeof auth.api.createUser === 'function'`, `auth.api.admin === undefined`) would have caught it.
+- AUTH-06 + AUTH-07 share the same `sendEmail` → Resend path. Once the forgot/reset UI is built and a reset email lands, BOTH delivery paths are proven.
+- Real email delivery depends on the Resend sandbox sender restriction: `onboarding@resend.dev` (EMAIL_FROM default) delivers ONLY to the Resend account owner's inbox. For other recipients, a verified from-domain is needed (Phase 7 / D-04 DNS task).
+
+## Next
+
+`/gsd-plan-phase 2 --gaps` → plans the forgot/reset-password UI from the gap above →
+`/gsd-execute-phase 2 --gaps-only` → builds it →
+`/gsd-verify-work 2` → re-run to clear the email round-trip (then Phase 2 → passed → transition).
