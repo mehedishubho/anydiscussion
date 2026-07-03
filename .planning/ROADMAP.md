@@ -16,7 +16,7 @@ The journey follows the dependency spine the research consistently surfaced: Fou
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Foundation** - Next.js 16 config, Drizzle schema + first migration, R2/sharp pipeline, route-group isolation
-- [ ] **Phase 2: Auth + RBAC** - Better Auth + admin plugin, proxy cookie gate, permission helpers, review-workflow status enum shipped together (code complete 2026-07-02; pending UAT — email round-trip deferred, see 02-VERIFICATION.md / 02-UAT.md)
+- [x] **Phase 2: Auth + RBAC** - Better Auth + admin plugin, proxy cookie gate, permission helpers, review-workflow status enum shipped together (code complete 2026-07-02; pending UAT — email round-trip deferred, see 02-VERIFICATION.md / 02-UAT.md) (completed 2026-07-03)
 - [ ] **Phase 3: Content Engine** - Posts CRUD + Tiptap JSON round-trip, double-sanitization, categories/tags, provider-based media (local default + R2), revalidation wired in
 - [ ] **Phase 4: Dashboard Chrome** - TailAdmin wired to real data (posts, taxonomy, media, users, pages) + Storage Settings (Cloudinary/push-CDN providers), RHF+Zod, TanStack Query, demo cleanup
 - [ ] **Phase 5: SEO Basics** - generateMetadata per route, dynamic sitemap + robots, JSON-LD, canonical, OG/Twitter cards, RSS
@@ -69,7 +69,7 @@ Plans:
   4. A user can reset a forgotten password via an email link and verify their email on account creation (Better Auth defaults + SMTP working).
   5. A user record carries the profile fields (bio, avatar) needed for byline/author pages, and the post status enum (`draft` / `pending_review` / `published`) and review workflow primitives exist so Phase 3 can enforce author → submit-for-review → editor/admin-approve → publish.
 
-**Plans**: 4 plans (3 complete, 1 gap-closure)
+**Plans**: 4/4 plans complete
 
 Plans:
 
@@ -87,7 +87,7 @@ Plans:
 
 **Wave 4** *(gap-closure — closes AUTH-06 UI gap from 02-UAT.md)*
 
-- [ ] 02-04-PLAN.md — Forgot-password + reset-password UI pages (forms calling verified authClient.requestPasswordReset / resetPassword) + SignInForm link fix + proxy.ts gate update
+- [x] 02-04-PLAN.md — Forgot-password + reset-password UI pages (forms calling verified authClient.requestPasswordReset / resetPassword) + SignInForm link fix + proxy.ts gate update
 
 **Pitfalls owned:** #1 (missing server-side auth on mutating actions) and #4 (proxy-does-cookie-check / action-does-real-check split). Shipped with the status enum so the review workflow is real, not decoration.
 **Research flag:** MEDIUM — re-verify the Better Auth `admin` plugin API (`createAccessControl`, `userHasPermission`), whether the `access` plugin is needed beyond the three roles, `nextCookies()`-last placement, and the exact `proxy.ts` matcher against current docs.
