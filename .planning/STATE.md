@@ -6,9 +6,9 @@ current_phase: 02
 current_phase_name: auth-rbac
 status: pending_verification
 stopped_at: Phase 02 code complete + verified (human_needed) — email round-trip UAT deferred (02-UAT.md UAT-02-01)
-last_updated: "2026-07-02T17:30:00.000Z"
+last_updated: "2026-07-03T10:47:44.750Z"
 last_activity: 2026-07-02
-last_activity_desc: 02-03 finalized — Tasks 1+2 done (lib/email + hooks + ban/revoke tests, 53 green); Task 3 manual email round-trip deferred to UAT (02-UAT.md UAT-02-01). Verifier: human_needed (17/18 truths, all 8 AUTH reqs, no impl gaps) — phase NOT auto-advanced.
+last_activity_desc: 02-03 finalized (Task 3 deferred to UAT)
 progress:
   total_phases: 8
   completed_phases: 1
