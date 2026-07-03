@@ -1,14 +1,14 @@
 ---
-status: diagnosed
+status: resolved
 phase: 02-auth-rbac
-source: [02-01-SUMMARY.md, 02-02-SUMMARY.md, 02-03-SUMMARY.md, 02-04-SUMMARY.md]
+source: [02-01-SUMMARY.md, 02-02-SUMMARY.md, 02-03-SUMMARY.md, 02-04-SUMMARY.md, 02-05-SUMMARY.md]
 started: 2026-07-03T12:13:41.000Z
-updated: 2026-07-03T15:36:51.000Z
+updated: 2026-07-03T17:46:31Z
 ---
 
 ## Current Test
 
-[testing paused — 1 item outstanding (Test 4 blocked: AUTH-06 live inbox round-trip, Resend from-domain unverified — Phase 7 / D-04)]
+[AUTH-03 blocker (Test 3) CLOSED by gap-closure plan 02-05 — backed by definitive automated HTTP evidence. 1 item still deferred: Test 4/5 (AUTH-06/07 live inbox round-trip — Resend from-domain unverified, Phase 7 / D-04). Run `/gsd-verify-work 02` to close out the deferred email test.]
 
 ## Tests
 
@@ -22,9 +22,8 @@ result: pass
 
 ### 3. Sign in as admin → reach /dashboard (AUTH-02, AUTH-03 proxy gate)
 expected: On /signin, enter the admin email + password → submit → land on /dashboard (the proxy cookie gate lets an authed user through). Then sign out (or open /dashboard in a fresh private window with no cookie) → /dashboard bounces back to /signin (proxy gate blocks unauthed access). "Keep me logged in" checkbox is present.
-result: issue
-reported: "when I http://localhost:3000/dashboard paste this url and hit enter it will login me to dashboard from different browser without asking to login"
-severity: blocker
+result: pass
+evidence: "AUTH-03 blocker CLOSED by gap-closure plan 02-05. Automated HTTP integration test (scripts/test-auth-gate.mjs): real no-cookie GET /dashboard → HTTP 307 → /signin?next=%2Fdashboard, 25-byte body (no dashboard content). Authoritative boundary = server-side getSession() gate in src/app/(admin)/layout.tsx (Server Component, DB-backed, per-request; Pitfall #4). UX layer = middleware.ts (renamed from proxy.ts) IS now registered in middleware-manifest.json (Branch A). Build marks /dashboard ◐ (Partial Prerender) with the auth gate streaming inside <Suspense> — static shell contains no dashboard content. Optional: re-confirm in a real private-window browser via /gsd-verify-work."
 
 ### 4. Forgot-password → reset email → reset password (AUTH-06, live inbox round-trip — coverage D5)
 expected: On /signin click "Forgot password?" → land on /forgot-password → enter the admin email → submit → see the generic "Check your email. If an account exists…" message (never reveals whether the email exists). A reset email arrives in the inbox → click the link → land on /reset-password?token=xxx → enter a new password → submit → redirect to /signin → sign in WITH THE NEW password and reach /dashboard. Requires RESEND_API_KEY set and the recipient to be deliverable (Resend sandbox sender delivers only to the account owner's inbox; other recipients need a verified from-domain — Phase 7 / D-04).
@@ -64,8 +63,8 @@ coverage_id: D4
 ## Summary
 
 total: 5
-passed: 2
-issues: 1
+passed: 3
+issues: 0
 pending: 0
 skipped: 1
 blocked: 1
@@ -73,8 +72,10 @@ blocked: 1
 ## Gaps
 
 - truth: "An unauthenticated user who visits /dashboard (no session cookie) is redirected to /signin by the proxy cookie gate (AUTH-03); the dashboard never renders without a valid session."
-  status: failed
-  reason: "User reported: when I http://localhost:3000/dashboard paste this url and hit enter it will login me to dashboard from different browser without asking to login"
+  status: resolved
+  resolved_by: "02-05 (gap-closure plan, executed 2026-07-03)"
+  resolution: "Authoritative server-side getSession() gate added to src/app/(admin)/layout.tsx (Server Component, DB-backed, per-request) — redirects unauthenticated /dashboard to /signin. middleware.ts (renamed from proxy.ts) now registered in middleware-manifest.json (Branch A) as the UX layer. Regression integration test scripts/test-auth-gate.mjs proves a real no-cookie GET /dashboard → 307 → /signin?next=%2Fdashboard (closes the unit-test blind spot that shipped the bug). HTTP evidence independently re-verified by gsd-verifier."
+  original_reason: "User reported: when I http://localhost:3000/dashboard paste this url and hit enter it will login me to dashboard from different browser without asking to login"
   severity: blocker
   test: 3
   root_cause: "proxy.ts is compiled by Turbopack but never registered in middleware-manifest.json (empty `middleware: {}` in both dev and prod builds, reproducible after .next wipe + fresh `pnpm dev`), so Next.js routes zero requests through the proxy — verified by curl: /dashboard → HTTP 200 (no redirect) and /dashboard/foo → HTTP 404 (the proxy would redirect if running, since /dashboard/:path* definitively matches). Compounding defense-in-depth gap: src/app/(admin)/dashboard/page.tsx and src/app/(admin)/layout.tsx have NO server-side getSession() check, and the page is statically prerendered under next.config.ts cacheComponents:true, so /dashboard renders for everyone. __tests__/proxy.test.ts calls proxy(req) directly with mocked cookies — it validates function logic but never that Next.js routes real HTTP requests through the proxy, giving false confidence (24 tests green, integration never tested)."

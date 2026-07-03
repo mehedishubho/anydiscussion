@@ -1,9 +1,11 @@
 ---
-status: diagnosed
+status: resolved
 trigger: "Phase 2 UAT Test 3 — unauthenticated user reaches /dashboard without being redirected to /signin"
 created: 2026-07-03T16:00:00.000Z
-updated: 2026-07-03T22:00:00.000Z
+updated: 2026-07-03T17:46:31Z
 goal: find_root_cause_only
+resolved_by: "02-05 (gap-closure plan, executed 2026-07-03)"
+resolution: "Root cause confirmed and fixed. Authoritative server-side getSession() gate added to src/app/(admin)/layout.tsx (Server Component) redirects unauthenticated /dashboard → /signin. middleware.ts (renamed from proxy.ts) now registered in middleware-manifest.json (Branch A). Regression integration test scripts/test-auth-gate.mjs proves real no-cookie GET /dashboard → 307 → /signin?next=%2Fdashboard. HTTP evidence re-verified by gsd-verifier."
 ---
 
 ## Current Focus
