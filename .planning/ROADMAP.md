@@ -69,7 +69,7 @@ Plans:
   4. A user can reset a forgotten password via an email link and verify their email on account creation (Better Auth defaults + SMTP working).
   5. A user record carries the profile fields (bio, avatar) needed for byline/author pages, and the post status enum (`draft` / `pending_review` / `published`) and review workflow primitives exist so Phase 3 can enforce author → submit-for-review → editor/admin-approve → publish.
 
-**Plans**: 3/3 plans complete
+**Plans**: 4 plans (3 complete, 1 gap-closure)
 
 Plans:
 
@@ -84,6 +84,10 @@ Plans:
 **Wave 3** *(blocked on Wave 2 completion)*
 
 - [x] 02-03-PLAN.md — Email flows (lib/email Resend helper + verification/reset hooks + customSyntheticUser enumeration protection) + ban/revoke session primitives (D-16/D-17) + manual email round-trip checkpoint
+
+**Wave 4** *(gap-closure — closes AUTH-06 UI gap from 02-UAT.md)*
+
+- [ ] 02-04-PLAN.md — Forgot-password + reset-password UI pages (forms calling verified authClient.requestPasswordReset / resetPassword) + SignInForm link fix + proxy.ts gate update
 
 **Pitfalls owned:** #1 (missing server-side auth on mutating actions) and #4 (proxy-does-cookie-check / action-does-real-check split). Shipped with the status enum so the review workflow is real, not decoration.
 **Research flag:** MEDIUM — re-verify the Better Auth `admin` plugin API (`createAccessControl`, `userHasPermission`), whether the `access` plugin is needed beyond the three roles, `nextCookies()`-last placement, and the exact `proxy.ts` matcher against current docs.
