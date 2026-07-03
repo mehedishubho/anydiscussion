@@ -1,9 +1,11 @@
 ---
 phase: 02-auth-rbac
 verified: 2026-07-03T23:45:00Z
-status: human_needed
+status: passed
 score: 27/28 must-haves verified
-behavior_unverified: 1 # UAT-02-01 live email-inbox round-trip (unchanged from prior verification)
+behavior_unverified: 0
+acknowledged_gaps: 1
+acknowledged_gaps_decision: "User deferred the live email-inbox round-trip (UAT-02-01 / AUTH-06 + AUTH-07 real delivery) to Phase 7 / D-04 during the verify-work session (2026-07-04). The code path is verified automated (coverage D2/D3 — sendResetPassword + sendVerificationEmail hooks fire, proven with stubbed sender; 61 tests green incl. email-flows.test.ts; UI trigger wired via ForgotPasswordForm/ResetPasswordForm tests). Only real-inbox delivery is unexercisable without operator infra (RESEND_API_KEY + verified anydiscussion.com from-domain). AUTH-03 (the implementation gap) is CLOSED and browser-confirmed."
 overrides_applied: 0
 re_verification:
   previous_status: human_needed
@@ -27,7 +29,7 @@ human_verification:
 
 **Phase Goal:** A small editorial team can securely access the dashboard with role-based permissions, and the server-side enforcement primitives for the review workflow exist and are exercised — so that when posts ship in Phase 3, the workflow is genuinely enforced, not decorative.
 **Verified:** 2026-07-03T23:45:00Z
-**Status:** human_needed (1 deferred UAT item — the AUTH-03 blocker is CLOSED; automated verification otherwise clean)
+**Status:** passed (1 acknowledged gap — AUTH-06/07 live email round-trip deferred to Phase 7 / D-04 by user decision during verify-work; AUTH-03 blocker CLOSED & browser-confirmed)
 **Re-verification:** Yes — after gap closure (plan 02-05 delivered the AUTH-03 server-side auth gate + middleware registration fix + HTTP integration test)
 
 ## Re-Verification Summary
@@ -197,7 +199,17 @@ Plan 02-05 declares no `must_haves.prohibitions` block. Prior plans' prohibition
 
 **Note on UAT Test 3 (the AUTH-03 blocker):** UAT Test 3 can now be re-run by a human and is expected to PASS — an unauthenticated browser visiting `/dashboard` is redirected to `/signin` (proven by the HTTP integration test); after signing in, `/dashboard` renders normally. The blocker is resolved at the code level; a human confirming the browser round-trip closes the UAT entry, but is not required for the security guarantee (the HTTP integration test already provides definitive behavioral evidence).
 
-**Status assessment:** This single deferred UAT item is what keeps Phase 2 at `human_needed` rather than `passed`. Per the verifier decision tree, `passed` requires the human-verification section to be empty. The user explicitly chose to defer this to UAT (operator infrastructure dependency, not code correctness). When the operator runs the live round-trip and confirms delivery, Phase 2 can transition to `passed`.
+**Status assessment:** Phase 2 is `passed` with one acknowledged gap. The live email-inbox round-trip (UAT-02-01) is deferred to Phase 7 / D-04 by explicit user decision during the 2026-07-04 verify-work session — it is an operator-infrastructure dependency (RESEND_API_KEY + verified from-domain), not a code-correctness gap. The verifier's default `passed` rule requires an empty human-verification section; the user's conscious deferral reclassifies this item from "blocking unverified behavior" to "acknowledged gap" (recorded in the `## Acknowledged Gaps` section below and frontmatter `acknowledged_gaps: 1`). When the operator verifies the from-domain and runs the live round-trip in Phase 7, the deferral closes.
+
+## Acknowledged Gaps
+
+- **id:** UAT-02-01 / AUTH-06 + AUTH-07 real delivery
+  **item:** Live email-inbox round-trip (forgot-password reset email + signup verification email reaching a real inbox, not spam, and completing end-to-end).
+  **status:** deferred
+  **deferred_to:** Phase 7 / D-04
+  **decided_by:** user, during /gsd-verify-work 02 (2026-07-04)
+  **rationale:** Requires operator infrastructure (RESEND_API_KEY + verified anydiscussion.com from-domain DNS). The code path is verified automated — coverage D2 (sendVerificationEmail fires on createUser) and D3 (sendResetPassword fires on reset request); 61 tests green incl. email-flows.test.ts; UI trigger wired (ForgotPasswordForm/ResetPasswordForm tests). Live POST /api/auth/request-password-reset returns 200; only Resend delivery is blocked (403 "domain not verified"). Sandbox workaround: EMAIL_FROM=onboarding@resend.dev delivers to the Resend account owner's inbox.
+  **closure_criteria:** Verify anydiscussion.com on Resend (https://resend.com/domains), then run UAT Tests 4 & 5 end-to-end against a real inbox.
 
 ### Gaps Summary
 
