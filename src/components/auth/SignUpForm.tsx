@@ -10,7 +10,8 @@ import Input from "@/components/form/input/InputField";
 import Label from "@/components/form/Label";
 import { ChevronLeftIcon, EyeCloseIcon, EyeIcon } from "@/icons";
 import Link from "next/link";
-import React, { useState } from "react";
+import { useRouter } from "next/navigation";
+import React, { useEffect, useState } from "react";
 import { createFirstAdmin } from "@/actions/users";
 
 type State =
@@ -46,11 +47,21 @@ async function setupAction(
 }
 
 export default function SignUpForm() {
+  const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
   const [state, formAction, pending] = React.useActionState<State, FormData>(
     setupAction,
     { status: "idle" },
   );
+
+  // createFirstAdmin creates the user but does NOT establish a session — redirect
+  // to /signin so the new admin can authenticate. (The bootstrap admin is
+  // auto-verified, so no verification email is sent — sign-in is unblocked.)
+  useEffect(() => {
+    if (state.status === "success") {
+      router.push("/signin");
+    }
+  }, [state.status, router]);
 
   return (
     <div className="flex flex-col flex-1 lg:w-1/2 w-full overflow-y-auto no-scrollbar">
