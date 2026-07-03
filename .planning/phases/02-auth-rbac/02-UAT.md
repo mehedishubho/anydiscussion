@@ -1,5 +1,5 @@
 ---
-status: partial
+status: diagnosed
 phase: 02-auth-rbac
 source: [02-01-SUMMARY.md, 02-02-SUMMARY.md, 02-03-SUMMARY.md, 02-04-SUMMARY.md]
 started: 2026-07-03T12:13:41.000Z
@@ -77,5 +77,20 @@ blocked: 1
   reason: "User reported: when I http://localhost:3000/dashboard paste this url and hit enter it will login me to dashboard from different browser without asking to login"
   severity: blocker
   test: 3
-  artifacts: []  # Filled by diagnosis
-  missing: []    # Filled by diagnosis
+  root_cause: "proxy.ts is compiled by Turbopack but never registered in middleware-manifest.json (empty `middleware: {}` in both dev and prod builds, reproducible after .next wipe + fresh `pnpm dev`), so Next.js routes zero requests through the proxy — verified by curl: /dashboard → HTTP 200 (no redirect) and /dashboard/foo → HTTP 404 (the proxy would redirect if running, since /dashboard/:path* definitively matches). Compounding defense-in-depth gap: src/app/(admin)/dashboard/page.tsx and src/app/(admin)/layout.tsx have NO server-side getSession() check, and the page is statically prerendered under next.config.ts cacheComponents:true, so /dashboard renders for everyone. __tests__/proxy.test.ts calls proxy(req) directly with mocked cookies — it validates function logic but never that Next.js routes real HTTP requests through the proxy, giving false confidence (24 tests green, integration never tested)."
+  artifacts:
+    - path: "proxy.ts"
+      issue: "Compiled by Turbopack but config.matcher is not registered in middleware-manifest.json → proxy is dead code at runtime despite valid source."
+    - path: "src/app/(admin)/dashboard/page.tsx"
+      issue: "No server-side getSession() check; pure static component prerendered for all users."
+    - path: "src/app/(admin)/layout.tsx"
+      issue: "\"use client\" component with no auth boundary — zero server-side protection for the entire (admin) route group."
+    - path: "__tests__/proxy.test.ts"
+      issue: "Unit test calls proxy(req) directly with mocked cookies; never validates that Next.js routes real HTTP requests through the proxy."
+    - path: "next.config.ts"
+      issue: "cacheComponents:true causes /dashboard to be statically prerendered, amplifying severity (served from static cache to all users)."
+  missing:
+    - "Resolve the proxy.ts manifest-registration gap: test whether the deprecated middleware.ts name populates the manifest where proxy.ts does not. If so, either ship middleware.ts (Next still supports it with a deprecation warning) or file a Next.js 16.2.9 + Turbopack bug for proxy.ts and use middleware.ts in the interim."
+    - "Add a server-side getSession() auth boundary to the (admin) route group — convert the layout to a Server Component (or add a server-component auth wrapper) that calls getSession() and redirects to /signin when there is no session. This is the authoritative RBAC boundary the UX-only proxy was never meant to be (Pitfall #4)."
+    - "Add an integration test that sends a real no-cookie HTTP request to /dashboard and asserts a redirect to /signin — the current direct-call unit test cannot catch this class of failure."
+  debug_session: .planning/debug/dashboard-auth-gate-bypass.md
