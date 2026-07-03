@@ -12,7 +12,10 @@ import { getSessionCookie } from "better-auth/cookies";
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const sessionCookie = getSessionCookie(request);
-  const isAuthPage = pathname === "/signin" || pathname === "/signup";
+  const isAuthPage =
+    pathname === "/signin" ||
+    pathname === "/signup" ||
+    pathname === "/forgot-password";
 
   // 1. Already-authed user hitting an auth page → redirect to dashboard (D-20 reverse).
   if (isAuthPage && sessionCookie) {
@@ -35,5 +38,15 @@ export const config = {
   // Match dashboard paths + auth pages. Exclude _next/static, _next/image, favicon
   // (Next handles those before the proxy runs). NOTE: (admin)/(site)/(auth) are
   // ROUTE GROUPS (parentheses) — they do NOT appear in the URL (R6).
-  matcher: ["/dashboard/:path*", "/signin", "/signup"],
+  // NOTE: /reset-password is intentionally NOT in this list. It is reached via an
+  // email reset link by a logged-out user carrying a token in the URL query param.
+  // The token is the authorization — validated server-side by Better Auth's
+  // resetPassword endpoint (POST /reset-password). Adding it here would break the
+  // flow for a user with a stale session cookie from another device/tab.
+  matcher: [
+    "/dashboard/:path*",
+    "/signin",
+    "/signup",
+    "/forgot-password",
+  ],
 };
