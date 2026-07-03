@@ -1,14 +1,18 @@
 ---
-status: partial
+status: testing
 phase: 02-auth-rbac
-source: [02-03-SUMMARY.md, 02-VERIFICATION.md]
+source: [02-03-SUMMARY.md, 02-04-SUMMARY.md, 02-VERIFICATION.md]
 started: 2026-07-02T17:30:00.000Z
-updated: 2026-07-03T15:10:00.000Z
+updated: 2026-07-03T11:37:24.000Z
 ---
 
 ## Current Test
 
-[testing paused — forgot/reset-password UI gap blocks the email round-trip; route to /gsd-plan-phase 2 --gaps]
+number: 3
+name: Forgot-password → reset email → reset password (AUTH-06) — UI wired in 02-04, live round-trip now runnable
+expected: |
+  /signin "Forgot password?" → /forgot-password → enter email → "check your email" → reset email arrives in inbox → click link → /reset-password?token=xxx → set new password → redirect to /signin → sign in with the new password.
+awaiting: operator runs the live email round-trip (requires RESEND_API_KEY + DNS deliverability — Phase 7 / D-04)
 
 ## Tests
 
@@ -23,10 +27,9 @@ result: pending
 note: Admin is auto-verified so requireEmailVerification (D-09) passes. Should work — user to confirm when continuing.
 
 ### 3. Forgot-password → reset email → reset password (AUTH-06)
-expected: /signin "Forgot password?" → enter email → reset email arrives → click link → /reset-password → set new password → sign in.
-result: blocked
-blocked_by: prior-phase
-reason: "Forgot-password + reset-password UI pages were never built. SignInForm.tsx:138 links to /reset-password which 404s."
+expected: /signin "Forgot password?" → /forgot-password → enter email → reset email arrives → click link → /reset-password?token=xxx → set new password → redirect to /signin → sign in with the new password.
+result: pending
+note: UI gap CLOSED by 02-04 (commits 352d9f9, a61326f). /forgot-password + /reset-password pages + forms wired to verified authClient.requestPasswordReset / authClient.resetPassword; SignInForm link fixed (line 138 → /forgot-password); proxy.ts gates /forgot-password. Automated form-wiring tests green (8 new — 61/61 total). Now awaiting ONLY the live inbox round-trip — requires operator RESEND_API_KEY + DNS deliverability (Phase 7 / D-04). Resend sandbox sender (onboarding@resend.dev) delivers only to the account owner's inbox; for other recipients a verified from-domain is needed.
 
 ### 4. Verification email on signup (AUTH-07)
 expected: New (non-admin) user signup → verification email arrives → click link → verified.
@@ -38,28 +41,18 @@ reason: "AUTH-07's verification email is suppressed for the bootstrap admin (cre
 total: 4
 passed: 1
 issues: 0
-pending: 1
+pending: 2
 skipped: 1
-blocked: 1
+blocked: 0
 
 ## Gaps
 
 - truth: "A user can request a password reset via a forgot-password page and complete the reset via the emailed link (AUTH-06)"
-  status: failed
-  reason: "Forgot-password + reset-password UI pages were never built in Phase 2. SignInForm.tsx:138 links to /reset-password which 404s. The email hook (sendResetPassword at src/lib/auth/index.ts:55) is wired and its firing is proven by __tests__/email-flows.test.ts (stubbed sendEmail), but there is no UI to trigger it or to land the reset link."
+  status: resolved
+  resolved_by: 02-04 (commits 352d9f9, a61326f, 6cd3957; merged in 3085262)
+  reason: "RESOLVED 2026-07-03 — forgot-password + reset-password UI pages built and wired. /forgot-password calls authClient.requestPasswordReset({ email, redirectTo: '/reset-password' }); /reset-password reads the token from useSearchParams and calls authClient.resetPassword({ newPassword, token }). SignInForm link fixed. proxy.ts gates /forgot-password. 8 new automated tests green (61/61 total). NOTE: the gap originally guessed the method name `forgetPassword`; the verified name against better-auth@1.6.23 is `requestPasswordReset` (the UAT's original guess was wrong — corrected during 02-04 API verification)."
   severity: major
   test: 3
-  artifacts:
-    - path: "src/components/auth/SignInForm.tsx"
-      issue: "Forgot-password link (line 138) targets /reset-password which has no page (404)"
-    - path: "src/app/(full-width-pages)/(auth)/"
-      issue: "Missing /forgot-password and /reset-password route pages (only /signin, /signup exist)"
-  missing:
-    - "Build /forgot-password page + form: email → authClient.forgetPassword({ email, redirectTo: '/reset-password' }) → triggers sendResetPassword → 'check your email' UX"
-    - "Build /reset-password page + form: read token from URL query → authClient.resetPassword({ newPassword, token }) → redirect to /signin"
-    - "Verify Better Auth authClient.forgetPassword / resetPassword method names + call signatures against better-auth@1.6.23 (server hook sendResetPassword already wired)"
-    - "Add /forgot-password and /reset-password to proxy.ts config.matcher if needed (current matcher: /dashboard/:path*, /signin, /signup — these are public auth pages)"
-    - "Add tests for both pages (form submission → authClient call) mirroring src/components/auth/__tests__/SignInForm.test.tsx"
 
 ## Issues Resolved During UAT (inline fixes, committed)
 
@@ -75,6 +68,8 @@ blocked: 1
 
 ## Next
 
-`/gsd-plan-phase 2 --gaps` → plans the forgot/reset-password UI from the gap above →
-`/gsd-execute-phase 2 --gaps-only` → builds it →
-`/gsd-verify-work 2` → re-run to clear the email round-trip (then Phase 2 → passed → transition).
+Gap closure COMPLETE (02-04 executed 2026-07-03). The forgot/reset-password UI is wired, the SignInForm link is fixed, proxy.ts gates /forgot-password, and the AUTH-06 gap is resolved (8 new tests, 61/61 green, build green).
+
+`/gsd-verify-work 2` → run the live email round-trip (Test 3) to clear UAT-02-01 → then Phase 2 → passed → transition to Phase 3.
+
+Prerequisites for the live round-trip: operator `RESEND_API_KEY` set, and either the Resend sandbox sender (`onboarding@resend.dev`) sending to the account owner's inbox, or a verified from-domain for other recipients (Phase 7 / D-04 DNS task).
