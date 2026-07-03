@@ -1,14 +1,14 @@
 ---
-status: resolved
+status: complete
 phase: 02-auth-rbac
 source: [02-01-SUMMARY.md, 02-02-SUMMARY.md, 02-03-SUMMARY.md, 02-04-SUMMARY.md, 02-05-SUMMARY.md]
 started: 2026-07-03T12:13:41.000Z
-updated: 2026-07-03T17:46:31Z
+updated: 2026-07-03T18:38:32Z
 ---
 
 ## Current Test
 
-[AUTH-03 blocker (Test 3) CLOSED by gap-closure plan 02-05 — backed by definitive automated HTTP evidence. 1 item still deferred: Test 4/5 (AUTH-06/07 live inbox round-trip — Resend from-domain unverified, Phase 7 / D-04). Run `/gsd-verify-work 02` to close out the deferred email test.]
+[testing complete — AUTH-03 closed & browser-confirmed (Test 3); AUTH-06/07 live inbox round-trip deferred to Phase 7 / D-04 by user decision (Resend from-domain unverified)]
 
 ## Tests
 
@@ -27,9 +27,8 @@ evidence: "AUTH-03 blocker CLOSED by gap-closure plan 02-05. Automated HTTP inte
 
 ### 4. Forgot-password → reset email → reset password (AUTH-06, live inbox round-trip — coverage D5)
 expected: On /signin click "Forgot password?" → land on /forgot-password → enter the admin email → submit → see the generic "Check your email. If an account exists…" message (never reveals whether the email exists). A reset email arrives in the inbox → click the link → land on /reset-password?token=xxx → enter a new password → submit → redirect to /signin → sign in WITH THE NEW password and reach /dashboard. Requires RESEND_API_KEY set and the recipient to be deliverable (Resend sandbox sender delivers only to the account owner's inbox; other recipients need a verified from-domain — Phase 7 / D-04).
-result: blocked
-blocked_by: third-party
-reason: "POST /api/auth/request-password-reset 200; lib/email fire-and-forget swallowed a Resend 403: 'The anydiscussion.com domain is not verified. Please, add and verify your domain on https://resend.com/domains'. Code path is correct (hook fires, silent failure, generic UX); delivery blocked by unverified Resend from-domain — Phase 7 / D-04. Workaround: EMAIL_FROM=onboarding@resend.dev delivers to the Resend account owner's inbox."
+result: skipped
+reason: "Deferred to Phase 7 / D-04 by user decision (2026-07-04 verify-work session): anydiscussion.com not yet verified on Resend. Live POST /api/auth/request-password-reset returned 200, but lib/email fire-and-forget swallowed a Resend 403 ('The anydiscussion.com domain is not verified'). Code path verified automated via coverage D3 (sendResetPassword hook fires, proven with stubbed sender — 61 tests green incl. email-flows.test.ts) and the UI trigger is wired (ForgotPasswordForm.test.tsx). Real-inbox delivery to be UAT'd in Phase 7 once the from-domain is verified, or via sandbox sender onboarding@resend.dev for the account owner."
 
 ### 5. Verification email on signup (AUTH-07, live inbox round-trip)
 expected: A NEW (non-admin) user is created via the dashboard (admin.createUser) — a verification email arrives → click the link → the user is verified → they can now sign in (previously blocked by requireEmailVerification). NOTE: the bootstrap admin is auto-verified (emailVerified:true by design), so this requires a non-admin user, whose creation UI lands in Phase 4. AUTH-06's reset email exercises the same sendEmail/Resend path, so AUTH-07 delivery is implied once Test 4's reset email lands.
@@ -66,8 +65,8 @@ total: 5
 passed: 3
 issues: 0
 pending: 0
-skipped: 1
-blocked: 1
+skipped: 2
+blocked: 0
 
 ## Gaps
 
