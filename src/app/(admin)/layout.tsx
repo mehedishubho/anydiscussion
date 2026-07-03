@@ -1,39 +1,51 @@
-"use client";
+import { Suspense } from "react";
+import { redirect } from "next/navigation";
+import { getSession } from "@/lib/auth/server";
+import AdminShell from "./AdminShell";
 
-import { useSidebar } from "@/context/SidebarContext";
-import AppHeader from "@/layout/AppHeader";
-import AppSidebar from "@/layout/AppSidebar";
-import Backdrop from "@/layout/Backdrop";
-import React from "react";
+/**
+ * Server-Component layout for the (admin) route group.
+ *
+ * AUTHORITATIVE auth boundary (Plan 02-05, AUTH-03 gap closure). This is the
+ * real RBAC gate, independent of the proxy/middleware UX layer.
+ *
+ * PPR/cacheComponents compatibility (Rule 3 deviation): Under cacheComponents:
+ * true, `export const dynamic = "force-dynamic"` is NOT allowed (incompatible),
+ * and a bare `headers()`/`connection()` call in the layout triggers
+ * "Uncached data was accessed outside of <Suspense>" because the dynamic
+ * content flows through the root layout's client context providers
+ * (SidebarProvider/ThemeProvider with useState). The PPR-compatible fix is to
+ * wrap the dynamic auth-gate in a <Suspense> boundary. PPR then prerenders the
+ * root layout shell (html/body/providers — NO dashboard content) as the static
+ * fallback, while the per-request auth check streams inside Suspense: either
+ * redirect("/signin") for logged-out users or <AdminShell> for authenticated
+ * users. An unauthenticated visitor NEVER sees dashboard content — only the
+ * bare root layout skeleton before the redirect fires.
+ *
+ * The proxy/middleware layer (Pitfall #4) is intentionally UX-only and was
+ * never authoritative. This server-side gate is the boundary the project
+ * CLAUDE.md mandates ("Permission checks are never optional").
+ */
+
+async function AuthGate({ children }: { children: React.ReactNode }) {
+  // getSession() calls headers() — a Next.js dynamic API. Inside <Suspense>,
+  // this opts the auth check into per-request (dynamic) rendering without
+  // triggering the PPR "uncached data outside Suspense" build error.
+  const session = await getSession();
+  if (!session) {
+    redirect("/signin");
+  }
+  return <AdminShell>{children}</AdminShell>;
+}
 
 export default function AdminLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const { isExpanded, isHovered, isMobileOpen } = useSidebar();
-
-  // Dynamic class for main content margin based on sidebar state
-  const mainContentMargin = isMobileOpen
-    ? "ml-0"
-    : isExpanded || isHovered
-    ? "lg:ml-[290px]"
-    : "lg:ml-[90px]";
-
   return (
-    <div className="min-h-screen xl:flex">
-      {/* Sidebar and Backdrop */}
-      <AppSidebar />
-      <Backdrop />
-      {/* Main Content Area */}
-      <div
-        className={`flex-1 transition-all  duration-300 ease-in-out ${mainContentMargin}`}
-      >
-        {/* Header */}
-        <AppHeader />
-        {/* Page Content */}
-        <div className="p-4 mx-auto max-w-(--breakpoint-2xl) md:p-6">{children}</div>
-      </div>
-    </div>
+    <Suspense fallback={null}>
+      <AuthGate>{children}</AuthGate>
+    </Suspense>
   );
 }
