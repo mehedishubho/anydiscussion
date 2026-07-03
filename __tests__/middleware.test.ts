@@ -1,25 +1,27 @@
-// __tests__/proxy.test.ts
-// [CITED: VALIDATION.md AUTH-03 rows — proxy.ts redirect logic; RESEARCH.md Pattern 4]
-// Unit tests for the Next 16 proxy.ts UX-only cookie gate.
+// __tests__/middleware.test.ts
+// [CITED: VALIDATION.md AUTH-03 rows — middleware.ts redirect logic; RESEARCH.md Pattern 4]
+// Unit tests for the Next 16 middleware.ts UX-only cookie gate.
+// NOTE: proxy.ts was renamed to middleware.ts because Turbopack 16.2.9 does not
+// register proxy.ts in the middleware manifest (Plan 02-05 Task 2, Branch A).
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest, NextResponse } from "next/server";
 
 // Mock better-auth/cookies getSessionCookie — optimistic cookie-existence check.
-// Tests control the return value per-case (Pitfall #4: proxy trusts cookie presence).
+// Tests control the return value per-case (Pitfall #4: middleware trusts cookie presence).
 vi.mock("better-auth/cookies", () => ({
   getSessionCookie: vi.fn(),
 }));
 
 import { getSessionCookie } from "better-auth/cookies";
 
-// Import the proxy AFTER the mock is registered so it picks up the mock.
-const { proxy, config } = await import("../proxy");
+// Import the middleware AFTER the mock is registered so it picks up the mock.
+const { middleware, config } = await import("../middleware");
 
 function makeReq(pathname: string) {
   return new NextRequest(new URL(pathname, "http://localhost:3000"));
 }
 
-describe("AUTH-03: proxy.ts UX-only cookie gate", () => {
+describe("AUTH-03: middleware.ts UX-only cookie gate", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -29,7 +31,7 @@ describe("AUTH-03: proxy.ts UX-only cookie gate", () => {
       undefined,
     );
     const req = makeReq("/dashboard");
-    const res = await proxy(req);
+    const res = await middleware(req);
     expect(res).toBeInstanceOf(NextResponse);
     expect(res.status).toBe(307); // NextResponse.redirect default uses 307
     const location = res.headers.get("location") ?? "";
@@ -44,7 +46,7 @@ describe("AUTH-03: proxy.ts UX-only cookie gate", () => {
       { value: "fake-session-cookie" },
     );
     const req = makeReq("/dashboard");
-    const res = await proxy(req);
+    const res = await middleware(req);
     // NextResponse.next() is not a redirect — status 200, no Location header.
     expect(res.status).toBe(200);
     expect(res.headers.get("location")).toBeNull();
@@ -55,7 +57,7 @@ describe("AUTH-03: proxy.ts UX-only cookie gate", () => {
       { value: "fake-session-cookie" },
     );
     const req = makeReq("/signin");
-    const res = await proxy(req);
+    const res = await middleware(req);
     expect(res).toBeInstanceOf(NextResponse);
     expect(res.status).toBe(307);
     const location = res.headers.get("location") ?? "";
