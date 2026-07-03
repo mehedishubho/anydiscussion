@@ -10,6 +10,7 @@
     "db:generate": "drizzle-kit generate",
     "test": "vitest run",
     "test:migrations": "node scripts/test-migrations.mjs",
+    "test:auth-gate": "node scripts/test-auth-gate.mjs",
     "setup": "node scripts/setup.mjs",
     "verify": "node scripts/verify.mjs"
   },
