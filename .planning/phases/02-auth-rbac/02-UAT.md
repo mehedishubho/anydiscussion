@@ -1,18 +1,14 @@
 ---
-status: testing
+status: partial
 phase: 02-auth-rbac
 source: [02-01-SUMMARY.md, 02-02-SUMMARY.md, 02-03-SUMMARY.md, 02-04-SUMMARY.md]
 started: 2026-07-03T12:13:41.000Z
-updated: 2026-07-03T12:41:31.000Z
+updated: 2026-07-03T15:36:51.000Z
 ---
 
 ## Current Test
 
-number: 3
-name: Sign in as admin → reach /dashboard (AUTH-02, AUTH-03 proxy gate)
-expected: |
-  On /signin, enter the admin email + password → submit → land on /dashboard (the proxy cookie gate lets an authed user through). Then sign out (or open /dashboard in a fresh private window with no cookie) → /dashboard bounces back to /signin (proxy gate blocks unauthed access). "Keep me logged in" checkbox is present.
-awaiting: user response
+[testing paused — 1 item outstanding (Test 4 blocked: AUTH-06 live inbox round-trip, Resend from-domain unverified — Phase 7 / D-04)]
 
 ## Tests
 
@@ -26,15 +22,20 @@ result: pass
 
 ### 3. Sign in as admin → reach /dashboard (AUTH-02, AUTH-03 proxy gate)
 expected: On /signin, enter the admin email + password → submit → land on /dashboard (the proxy cookie gate lets an authed user through). Then sign out (or open /dashboard in a fresh private window with no cookie) → /dashboard bounces back to /signin (proxy gate blocks unauthed access). "Keep me logged in" checkbox is present.
-result: [pending]
+result: issue
+reported: "when I http://localhost:3000/dashboard paste this url and hit enter it will login me to dashboard from different browser without asking to login"
+severity: blocker
 
 ### 4. Forgot-password → reset email → reset password (AUTH-06, live inbox round-trip — coverage D5)
 expected: On /signin click "Forgot password?" → land on /forgot-password → enter the admin email → submit → see the generic "Check your email. If an account exists…" message (never reveals whether the email exists). A reset email arrives in the inbox → click the link → land on /reset-password?token=xxx → enter a new password → submit → redirect to /signin → sign in WITH THE NEW password and reach /dashboard. Requires RESEND_API_KEY set and the recipient to be deliverable (Resend sandbox sender delivers only to the account owner's inbox; other recipients need a verified from-domain — Phase 7 / D-04).
-result: [pending]
+result: blocked
+blocked_by: third-party
+reason: "POST /api/auth/request-password-reset 200; lib/email fire-and-forget swallowed a Resend 403: 'The anydiscussion.com domain is not verified. Please, add and verify your domain on https://resend.com/domains'. Code path is correct (hook fires, silent failure, generic UX); delivery blocked by unverified Resend from-domain — Phase 7 / D-04. Workaround: EMAIL_FROM=onboarding@resend.dev delivers to the Resend account owner's inbox."
 
 ### 5. Verification email on signup (AUTH-07, live inbox round-trip)
 expected: A NEW (non-admin) user is created via the dashboard (admin.createUser) — a verification email arrives → click the link → the user is verified → they can now sign in (previously blocked by requireEmailVerification). NOTE: the bootstrap admin is auto-verified (emailVerified:true by design), so this requires a non-admin user, whose creation UI lands in Phase 4. AUTH-06's reset email exercises the same sendEmail/Resend path, so AUTH-07 delivery is implied once Test 4's reset email lands.
-result: [pending]
+result: skipped
+reason: "Same Resend from-domain blocker as Test 4 (anydiscussion.com unverified) AND requires a non-admin user whose creation UI lands in Phase 4. AUTH-07's sendVerificationEmail hook is auto-covered by coverage D2 (fires on createUser, sendOnSignUp:true); real-inbox delivery is implied once Test 4's reset round-trip is unblocked."
 
 ### A1. lib/email Resend helper (AUTH-06) — coverage D1
 expected: lib/email exports sendEmail({to, subject, text, html?}) — thin Resend wrapper, fire-and-forget safe, never throws.
@@ -64,11 +65,17 @@ coverage_id: D4
 
 total: 5
 passed: 2
-issues: 0
-pending: 3
-skipped: 0
-blocked: 0
+issues: 1
+pending: 0
+skipped: 1
+blocked: 1
 
 ## Gaps
 
-[none yet]
+- truth: "An unauthenticated user who visits /dashboard (no session cookie) is redirected to /signin by the proxy cookie gate (AUTH-03); the dashboard never renders without a valid session."
+  status: failed
+  reason: "User reported: when I http://localhost:3000/dashboard paste this url and hit enter it will login me to dashboard from different browser without asking to login"
+  severity: blocker
+  test: 3
+  artifacts: []  # Filled by diagnosis
+  missing: []    # Filled by diagnosis
