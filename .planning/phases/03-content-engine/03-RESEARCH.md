@@ -879,26 +879,30 @@ const TiptapEditor = dynamic(() => import("@/components/editor/TiptapEditor").th
 
 **Note:** The DOMPurify API specifics (A1, A2, A7) could not be live-verified this session (web tools rate-limited, package not yet installed). They are based on the well-documented, stable DOMPurify API. The Wave-0 round-trip + sanitize tests MUST cover: iframe allowlist enforcement, target/rel preservation, video/audio/source survival, and malicious-payload stripping (`<img src=x onerror=...>`).
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Scheduled-post status representation (A6)**
    - What we know: D-11 says the worker queries "scheduled" posts. The current `postStatusEnum` is `draft | pending_review | published`.
    - What's unclear: Is "scheduled" a 4th enum value, or is it `status='draft' AND publishedAt IS NOT NULL AND publishedAt <= now()`?
    - Recommendation: Use the signal approach (`status='draft' + publishedAt<=now()`) to avoid an enum migration and keep the TRANSITIONS table unchanged. The planner decides — both are additive-safe. If a distinct `'scheduled'` status is wanted, it's an additive `pgEnum` migration + TRANSITIONS update.
+   - **RESOLVED: adopted in plan 03-04 Task 1 — system-publish.ts queries status='draft' AND publishedAt <= now().**
 
 2. **Tiptap raw-HTML embed node shape (A5)**
    - What we know: D-02 chose raw-HTML-paste for embeds (iframes).
    - What's unclear: Does StarterKit's raw-HTML handling serialize correctly through `generateHTML`, or does the project need a custom `@tiptap/extension-*` node with an explicit `renderHTML`?
    - Recommendation: Validate in Wave-0 with a round-trip test that includes `<iframe src="https://www.youtube.com/embed/...">` in the JSON. If `generateHTML` drops it, add a minimal custom extension. The MEDIUM research flag is precisely this — validate before wiring.
+   - **RESOLVED: adopted in plan 03-01 Task 1 — round-trip.test.ts includes an iframe sample (the MEDIUM research-flag test).**
 
 3. **DOMPurify live-config verification (A1/A2/A7)**
    - What we know: The DOMPurify API is stable and well-documented.
    - What's unclear: Exact behavior of the `target="_blank"` auto-rel in 3.4.11, and whether the hook signature matches.
    - Recommendation: The Wave-0 sanitize tests (iframe allowlist, target/rel, malicious payload) validate this at implementation time. No external research needed — the test IS the verification.
+   - **RESOLVED: adopted in plan 03-02 Task 1 — sanitize.test.ts covers the uponSanitizeAttribute hook API, target/rel, video/audio/source.**
 
 4. **`settings` keys exact names**
    - What we know: CONTEXT.md suggests `storage.active_provider` and `site.timezone`.
    - Recommendation: Use those exact keys. Seed them in the Phase-3 migration (`storage.active_provider='local'`, `site.timezone='Asia/Dhaka'`). Add `site.feature_image_default` for the D-10 fallback. Planner confirms naming.
+   - **RESOLVED: adopted in plan 03-03 seed.ts — uses exactly storage.active_provider, site.timezone, site.feature_image_default.**
 
 ## Environment Availability
 
