@@ -110,13 +110,13 @@ Plans:
   4. An editor can upload an image through the storage-provider abstraction (`lib/storage/`), with `sharp` producing optimized variants server-side at upload time; the active provider is read from `settings` (local by default, R2 available), the media record stores provider + key + alt text + dimensions, and every content image is served through `next/image` (loader resolves to the active provider's public URL — never a raw `<img>`).
   5. Publishing or updating a post triggers the correct `revalidatePath` / 2-arg `revalidateTag` calls inside the publish Server Action with concrete paths (not template strings), so cached pages refresh without a full rebuild (Pitfall 3 wired here, audited in Phase 7).
 
-**Plans**: 4/4 plans planned
+**Plans**: 1/4 plans executed
 
 Plans:
 
 **Wave 1**
 
-- [ ] 03-01-PLAN.md — Slice A: Post writing core — Tiptap v3 lazy-loaded editor + extensions single-source-of-truth + schema migration (media provider rename + posts.previewToken) + slug validator + excerpt utility + Zod schema + posts/categories/tags Server Actions + TailAdmin-quality post routes + Wave-0 round-trip test (PRIMARY research flag). Covers CONT-01, CONT-02, CONT-03, CONT-07, CONT-11.
+- [x] 03-01-PLAN.md — Slice A: Post writing core — Tiptap v3 lazy-loaded editor + extensions single-source-of-truth + schema migration (media provider rename + posts.previewToken) + slug validator + excerpt utility + Zod schema + posts/categories/tags Server Actions + TailAdmin-quality post routes + Wave-0 round-trip test (PRIMARY research flag). Covers CONT-01, CONT-02, CONT-03, CONT-07, CONT-11.
 
 **Wave 2** *(parallel — blocked on Wave 1 schema migration)*
 
