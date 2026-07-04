@@ -97,8 +97,12 @@ vi.mock("./posts-schema", () => ({
 // Chainable Drizzle select builder.
 vi.mock("@/lib/db", () => {
   // Chainable Drizzle builder mock: supports select().from().where().limit(),
+  // select().from().leftJoin().where().limit() (publishPost category join),
   // select().from().limit(), insert().values().returning(), update().set().where().
   const chainableSelect = () => ({
+    leftJoin: vi.fn(() => ({
+      where: () => ({ limit: (...a: unknown[]) => selectPostMock(...a) }),
+    })),
     where: () => ({ limit: (...a: unknown[]) => selectPostMock(...a) }),
     limit: (...a: unknown[]) => selectPostMock(...a),
   });
@@ -115,7 +119,17 @@ vi.mock("@/lib/db", () => {
       })),
     },
     schema: {
-      posts: { id: "id", slug: "slug", status: "status", authorId: "author_id", body: "body" },
+      posts: {
+        id: "id",
+        slug: "slug",
+        status: "status",
+        authorId: "author_id",
+        body: "body",
+        categoryId: "category_id",
+        publishedAt: "published_at",
+        previewToken: "preview_token",
+        updatedAt: "updated_at",
+      },
       categories: { id: "id", slug: "slug" },
       tags: { id: "id", slug: "slug" },
       postTags: { postId: "post_id", tagId: "tag_id" },
@@ -132,6 +146,9 @@ import {
   submitForReview,
   autosavePost,
   rotatePreviewToken,
+  publishPost,
+  setSchedule,
+  revokePreviewToken,
 } from "../posts";
 
 const adminSession = () => ({ user: { id: "u-admin", role: "admin" }, session: { id: "s1" } });
@@ -340,5 +357,147 @@ describe("getPost / listPosts", () => {
   it("listPosts calls requireCan({post:['read']})", async () => {
     await listPosts();
     expect(requireCanMock).toHaveBeenCalledWith({ post: ["read"] });
+  });
+});
+
+// ===========================================================================
+// Slice D (Plan 03-04) — publishPost + setSchedule + revokePreviewToken
+// ===========================================================================
+
+describe("CONT-08 / D-25 / Pitfall #3: publishPost revalidation wiring", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    assertOwnsPostMock.mockResolvedValue(adminSession());
+    requireCanMock.mockResolvedValue(adminSession());
+    transitionPostMock.mockResolvedValue(undefined);
+    updateMock.mockResolvedValue(undefined);
+    revalidatePathMock.mockReturnValue(undefined);
+    revalidateTagMock.mockReturnValue(undefined);
+    // The post fetch returns a row with slug + authorId + categoryId + categorySlug.
+    selectPostMock.mockResolvedValue([
+      {
+        id: 7,
+        slug: "hello-world",
+        authorId: "u-author-1",
+        categoryId: 3,
+        categorySlug: "news",
+        status: "draft",
+      },
+    ]);
+  });
+
+  it("calls transitionPost(postId, 'published') FIRST (R7 funnel)", async () => {
+    await publishPost(7);
+    expect(transitionPostMock).toHaveBeenCalledWith(7, "published");
+  });
+
+  it("does NOT revalidate when transitionPost throws (funnel-first ordering)", async () => {
+    transitionPostMock.mockImplementation(() => {
+      throw new Error("FORBIDDEN");
+    });
+    revalidatePathMock.mockImplementation(() => {
+      throw new Error("MUST_NOT_BE_REACHED");
+    });
+    revalidateTagMock.mockImplementation(() => {
+      throw new Error("MUST_NOT_BE_REACHED");
+    });
+    await expect(publishPost(7)).rejects.toThrow("FORBIDDEN");
+    expect(revalidatePathMock).not.toHaveBeenCalled();
+    expect(revalidateTagMock).not.toHaveBeenCalled();
+  });
+
+  it("revalidates concrete literal paths (D-25 — Pitfall #3)", async () => {
+    await publishPost(7);
+    const paths = revalidatePathMock.mock.calls.map((c) => c[0]);
+    expect(paths).toContain("/blog/hello-world");
+    expect(paths).toContain("/");
+    expect(paths).toContain("/blog");
+    expect(paths).toContain("/category/news");
+    expect(paths).toContain("/sitemap.xml");
+    expect(paths).toContain("/rss.xml");
+  });
+
+  it("calls revalidateTag with 2-arg form only — every call is (tag, 'max') (D-25)", async () => {
+    await publishPost(7);
+    expect(revalidateTagMock.mock.calls.length).toBeGreaterThan(0);
+    for (const call of revalidateTagMock.mock.calls) {
+      expect(call.length).toBe(2);
+      expect(call[1]).toBe("max");
+    }
+  });
+
+  it("revalidates post, author, category, and posts-list tags (D-25)", async () => {
+    await publishPost(7);
+    const tags = revalidateTagMock.mock.calls.map((c) => c[0]);
+    expect(tags).toContain("post-7");
+    expect(tags).toContain("author-u-author-1");
+    expect(tags).toContain("category-3");
+    expect(tags).toContain("posts-list");
+  });
+
+  it("does NOT use template-string path patterns like '/blog/[slug]' (D-25)", async () => {
+    await publishPost(7);
+    for (const call of revalidatePathMock.mock.calls) {
+      const path = call[0] as string;
+      expect(path).not.toContain("[slug]");
+      expect(path).not.toContain("[");
+    }
+  });
+
+  it("rotates the preview token AFTER transition (D-19 — old preview link invalidated)", async () => {
+    await publishPost(7);
+    // rotatePreviewToken runs db.update internally; since transitionPost is mocked
+    // (no db.update from it), the only db.update fired is from rotatePreviewToken.
+    expect(updateMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("D-15: setSchedule requires post:publish capability (authors blocked)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    assertOwnsPostMock.mockResolvedValue(adminSession());
+    requireCanMock.mockResolvedValue(adminSession());
+    updateMock.mockResolvedValue(undefined);
+  });
+
+  it("calls requireCan({post:['publish']}) (D-15)", async () => {
+    const when = new Date("2026-08-01T12:00:00Z");
+    await setSchedule(7, when);
+    expect(requireCanMock).toHaveBeenCalledWith({ post: ["publish"] });
+  });
+
+  it("throws FORBIDDEN when requireCan denies (authors lack publish — D-15)", async () => {
+    requireCanMock.mockImplementation(() => {
+      throw new Error("FORBIDDEN");
+    });
+    updateMock.mockImplementation(() => {
+      throw new Error("MUST_NOT_BE_REACHED");
+    });
+    await expect(setSchedule(7, new Date())).rejects.toThrow("FORBIDDEN");
+    expect(updateMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("D-19: revokePreviewToken clears the preview token", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    assertOwnsPostMock.mockResolvedValue(adminSession());
+    updateMock.mockResolvedValue(undefined);
+  });
+
+  it("sets previewToken to null via db.update", async () => {
+    await revokePreviewToken(7);
+    expect(updateMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("requires assertOwnsPost FIRST (T-03-01)", async () => {
+    assertOwnsPostMock.mockImplementation(() => {
+      throw new Error("FORBIDDEN");
+    });
+    updateMock.mockImplementation(() => {
+      throw new Error("MUST_NOT_BE_REACHED");
+    });
+    await expect(revokePreviewToken(7)).rejects.toThrow("FORBIDDEN");
+    expect(updateMock).not.toHaveBeenCalled();
   });
 });
