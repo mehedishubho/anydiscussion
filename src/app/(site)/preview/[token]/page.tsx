@@ -13,7 +13,13 @@
 // generateHTML → sanitizeBeforeRender). NEVER raw dangerouslySetInnerHTML without
 // sanitize (Pitfall #2 site #2 — the renderPostBody gate is the security boundary).
 //
-// Server Component (NO "use client") — uses Next.js 16 async params.
+// Server Components (NO "use client"). Next.js 16 cacheComponents: the token-gated DB
+// lookup is uncached dynamic data, so it runs inside a <Suspense> boundary (the PPR
+// pattern) rather than via the legacy `export const dynamic` segment config, which
+// cacheComponents disallows. The static shell serves immediately while the dynamic
+// post content streams — also correct semantically, since a draft preview is
+// per-request and revocable (publishPost rotates the token).
+import { Suspense } from "react";
 import { db, schema } from "@/lib/db";
 import { eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
@@ -31,7 +37,24 @@ interface PreviewPageProps {
   params: Promise<{ token: string }>;
 }
 
-export default async function PreviewPage({ params }: PreviewPageProps) {
+export default function PreviewPage({ params }: PreviewPageProps) {
+  // PPR shell — the dynamic token lookup + render streams inside Suspense.
+  return (
+    <Suspense
+      fallback={
+        <div className="mx-auto max-w-3xl px-4 py-8">
+          <div className="mb-6 rounded-lg border border-yellow-300 bg-yellow-50 px-4 py-3 text-sm text-yellow-800 dark:border-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-200">
+            Loading draft preview…
+          </div>
+        </div>
+      }
+    >
+      <PreviewContent params={params} />
+    </Suspense>
+  );
+}
+
+async function PreviewContent({ params }: PreviewPageProps) {
   const { token } = await params;
 
   // Token gate — look up the post by previewToken. If missing/revoked/rotated → 404.
