@@ -7,6 +7,17 @@ const nextConfig: NextConfig = {
   // Standalone output for Coolify Docker builds
   output: "standalone",
 
+  // D-08 / Pitfall #3 (Phase 3): the default serverActions.bodySizeLimit is 1MB
+  // per installed Next.js 16.2.9 docs (01-app/03-api-reference/05-config/
+  // 01-next-config-js/serverActions.md). The 10MB media-upload cap (Slice C)
+  // silently fails without this raise. RESEARCH correction: CONTEXT.md's
+  // "~4.5MB" speculation was wrong; the verified default is 1MB.
+  experimental: {
+    serverActions: {
+      bodySizeLimit: "10mb",
+    },
+  },
+
   images: {
     qualities: [75, 90],
     remotePatterns: [

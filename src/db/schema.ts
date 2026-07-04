@@ -14,6 +14,12 @@
 //          hard-delete on join/utility tables (settings, postTags, postSeo — no deletedAt)
 //  - D-11: forward-only migrations; no down/rollback scripts
 //  - D-24/D-25: user.bio + user.avatar (AUTH-08 — Phase 6 byline/avatar via R2 key)
+//
+// === Phase-3 deltas (Plan 03-01 Task 1) ===
+//  - posts.previewToken added (D-19 draft preview links — /preview/[token] route)
+//  - media.uploadedBy: integer → text FK on user.id (was broken — user.id is text UUID)
+//  - media.r2Key renamed to providerKey + new media.provider column
+//    (MEDIA-02/MEDIA-04 — provider abstraction: "local" default | "r2"; Cloudinary/push-CDN Phase 4)
 import {
   pgTable,
   serial,
@@ -50,6 +56,9 @@ export const posts = pgTable("posts", {
   authorId: text("author_id").references(() => user.id),
   categoryId: integer("category_id").references(() => categories.id),
   featureImage: text("feature_image"),
+  // D-19 (Phase 3): draft preview links — /preview/[token] route. Nullable (set on
+  // first generation); rotates on publish (old link 404s). crypto.randomUUID() value.
+  previewToken: varchar("preview_token", { length: 255 }).unique(),
   publishedAt: timestamp("published_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -99,11 +108,15 @@ export const postTags = pgTable(
 );
 
 // media
+// Phase-3 deltas (MEDIA-02/MEDIA-04): provider abstraction. r2Key → providerKey +
+// new provider column ("local" | "r2"; Cloudinary/push-CDN arrive Phase 4 DASH-09).
+// uploadedBy fixed from integer → text FK on user.id (was broken — user.id is text UUID).
 export const media = pgTable("media", {
   id: serial("id").primaryKey(),
-  r2Key: text("r2_key").notNull(),
+  providerKey: text("provider_key").notNull(),
+  provider: text("provider"), // "local" | "r2" — NULL means the legacy default (R2)
   altText: text("alt_text"),
-  uploadedBy: integer("uploaded_by"),
+  uploadedBy: text("uploaded_by").references(() => user.id),
   mimeType: text("mime_type"),
   width: integer("width"),
   height: integer("height"),
