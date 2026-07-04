@@ -14,7 +14,7 @@
 // Server-only — top directive mandatory for Server Actions.
 "use server";
 import { db, schema } from "@/lib/db";
-import { eq, isNull } from "drizzle-orm";
+import { asc, eq, isNull } from "drizzle-orm";
 import { log } from "@/lib/log";
 import { requireCan } from "@/lib/permissions";
 import { assertUniqueSlug, validateSlug } from "@/lib/slug";
@@ -46,11 +46,13 @@ export async function createCategory(input: CategoryInput) {
 export async function listCategories() {
   // Read is open to the dashboard — no permission check (mirrors users.ts pattern
   // for listX where the proxy gate + (admin) route group gate are sufficient).
-  // Hard-deleted rows (deletedAt IS NULL) are excluded.
+  // Hard-deleted rows (deletedAt IS NULL) are excluded. Sorted by name (D-22 UX
+  // for the category picker).
   return await db
     .select()
     .from(schema.categories)
-    .where(isNull(schema.categories.deletedAt));
+    .where(isNull(schema.categories.deletedAt))
+    .orderBy(asc(schema.categories.name));
 }
 
 export async function updateCategory(id: number, input: Partial<CategoryInput>) {

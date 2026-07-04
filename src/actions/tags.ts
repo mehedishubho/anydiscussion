@@ -14,7 +14,7 @@
 // Server-only — top directive mandatory for Server Actions.
 "use server";
 import { db, schema } from "@/lib/db";
-import { eq, isNull } from "drizzle-orm";
+import { asc, eq, isNull } from "drizzle-orm";
 import { log } from "@/lib/log";
 import { requireCan } from "@/lib/permissions";
 import { assertUniqueSlug, validateSlug } from "@/lib/slug";
@@ -39,8 +39,25 @@ export async function createTag(input: TagInput) {
 }
 
 export async function listTags() {
-  // Read is open to the dashboard.
-  return await db.select().from(schema.tags).where(isNull(schema.tags.deletedAt));
+  // Read is open to the dashboard. Sorted by name (D-22 UX for the tag picker).
+  return await db
+    .select()
+    .from(schema.tags)
+    .where(isNull(schema.tags.deletedAt))
+    .orderBy(asc(schema.tags.name));
+}
+
+/**
+ * getPostTagIds — returns the tag IDs associated with a post (post_tags join).
+ * Used by the post edit page to pre-select existing tags in TagPicker.
+ * Read-only — no permission check (the caller, getPost, already gates with assertOwnsPost).
+ */
+export async function getPostTagIds(postId: number): Promise<number[]> {
+  const rows = await db
+    .select({ tagId: schema.postTags.tagId })
+    .from(schema.postTags)
+    .where(eq(schema.postTags.postId, postId));
+  return rows.map((r) => r.tagId);
 }
 
 export async function updateTag(id: number, input: Partial<TagInput>) {

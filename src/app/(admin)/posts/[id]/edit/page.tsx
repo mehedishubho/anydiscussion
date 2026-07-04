@@ -7,6 +7,7 @@
 // the existing post values. The same lazy-load boundary applies (PostForm uses
 // EditorProvider → next/dynamic({ssr:false}) → TiptapEditor).
 import { getPost } from "@/actions/posts";
+import { getPostTagIds } from "@/actions/tags";
 import PostForm from "../../PostForm";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 import { Metadata } from "next";
@@ -28,8 +29,10 @@ export default async function EditPostPage({ params }: EditPostPageProps) {
   }
 
   let post: Awaited<ReturnType<typeof getPost>> | null = null;
+  let tagIds: number[] = [];
   try {
     post = await getPost(postId);
+    tagIds = await getPostTagIds(postId);
   } catch {
     // getPost throws NOT_FOUND or FORBIDDEN/UNAUTHORIZED — either way, 404 the route.
     notFound();
@@ -49,6 +52,7 @@ export default async function EditPostPage({ params }: EditPostPageProps) {
           initialExcerpt={post.excerpt ?? undefined}
           initialBody={post.body ?? undefined}
           initialCategoryId={post.categoryId ?? undefined}
+          initialTagIds={tagIds}
           initialFeatureImage={post.featureImage ?? undefined}
         />
       </div>

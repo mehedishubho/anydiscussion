@@ -17,15 +17,11 @@ import { useForm } from "react-hook-form";
 import { EditorProvider } from "@/components/editor/EditorProvider";
 import { postSchema, zodResolver, type PostSchemaInput } from "./schema-client";
 import { savePost } from "@/actions/posts";
+import TaxonomyPicker from "./components/TaxonomyPicker";
 import { useState } from "react";
 
 const INPUT_CLASS =
   "h-11 w-full rounded-lg border appearance-none px-4 py-2.5 text-sm shadow-theme-xs placeholder:text-gray-400 focus:outline-hidden focus:ring-3 bg-transparent text-gray-800 border-gray-300 focus:border-brand-300 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:focus:border-brand-800";
-
-const CATEGORY_OPTIONS = [
-  // Placeholder — Plan 03-02 will wire live listCategories() data; D-23 makes one required.
-  { value: "1", label: "Uncategorized" },
-];
 
 interface PostFormProps {
   /** When editing — the existing post id + values. */
@@ -35,6 +31,7 @@ interface PostFormProps {
   initialExcerpt?: string;
   initialBody?: unknown;
   initialCategoryId?: number;
+  initialTagIds?: number[];
   initialFeatureImage?: string;
 }
 
@@ -55,8 +52,8 @@ export default function PostForm(props: PostFormProps) {
       excerpt: props.initialExcerpt ?? "",
       body: props.initialBody ?? null,
       categoryId: props.initialCategoryId,
+      tagIds: props.initialTagIds ?? [],
       featureImage: props.initialFeatureImage ?? "",
-      tagIds: [],
     },
   });
 
@@ -124,41 +121,18 @@ export default function PostForm(props: PostFormProps) {
         <EditorProvider name="body" control={control} />
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <div>
-          <label htmlFor="categoryId" className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-            Category <span className="text-error-500">*</span>
-          </label>
-          <select
-            id="categoryId"
-            {...register("categoryId", { setValueAs: (v) => (v === "" ? undefined : Number(v)) })}
-            className={INPUT_CLASS}
-            defaultValue={props.initialCategoryId ? String(props.initialCategoryId) : ""}
-          >
-            <option value="" disabled>
-              Select a category
-            </option>
-            {CATEGORY_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-          {errors.categoryId && (
-            <p className="mt-1 text-xs text-error-500">{errors.categoryId.message as string}</p>
-          )}
-        </div>
-        <div>
-          <label htmlFor="featureImage" className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-            Feature image URL
-          </label>
-          <input
-            id="featureImage"
-            {...register("featureImage")}
-            placeholder="https://cdn.example.com/... (optional)"
-            className={INPUT_CLASS}
-          />
-        </div>
+      <TaxonomyPicker control={control} errors={errors} />
+
+      <div>
+        <label htmlFor="featureImage" className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
+          Feature image URL
+        </label>
+        <input
+          id="featureImage"
+          {...register("featureImage")}
+          placeholder="https://cdn.example.com/... (optional)"
+          className={INPUT_CLASS}
+        />
       </div>
 
       {submitError && (

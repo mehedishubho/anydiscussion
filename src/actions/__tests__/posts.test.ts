@@ -39,9 +39,9 @@ const {
   validateSlugMock: vi.fn(),
   assertUniqueSlugMock: vi.fn(),
   deriveExcerptMock: vi.fn(),
-  // Slice B (03-02): passthrough by default — tests override to assert the call.
-  sanitizeBeforeStoreMock: vi.fn((s: string) => s),
-  sanitizeBeforeRenderMock: vi.fn((s: string) => s),
+  // Slice B (03-02): passthrough set in beforeEach (untyped vi.fn avoids spread-arg tsc error).
+  sanitizeBeforeStoreMock: vi.fn(),
+  sanitizeBeforeRenderMock: vi.fn(),
   postSchemaParseMock: vi.fn(),
   selectPostMock: vi.fn(),
   insertMock: vi.fn(),
