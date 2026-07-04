@@ -110,7 +110,7 @@ Plans:
   4. An editor can upload an image through the storage-provider abstraction (`lib/storage/`), with `sharp` producing optimized variants server-side at upload time; the active provider is read from `settings` (local by default, R2 available), the media record stores provider + key + alt text + dimensions, and every content image is served through `next/image` (loader resolves to the active provider's public URL — never a raw `<img>`).
   5. Publishing or updating a post triggers the correct `revalidatePath` / 2-arg `revalidateTag` calls inside the publish Server Action with concrete paths (not template strings), so cached pages refresh without a full rebuild (Pitfall 3 wired here, audited in Phase 7).
 
-**Plans**: 1/4 plans executed
+**Plans**: 3/4 plans executed
 
 Plans:
 
@@ -120,8 +120,8 @@ Plans:
 
 **Wave 2** *(parallel — blocked on Wave 1 schema migration)*
 
-- [ ] 03-02-PLAN.md — Slice B: Sanitization + taxonomy — shared `lib/sanitize` DOMPurify config (Pitfall #2 — double-sanitize at storage AND render via ONE config) + iframe domain allowlist hook + SSR render pipeline (generateHTML → sanitizeBeforeRender) + CategoryPicker/TagPicker wired into the post editor. Covers CONT-04, CONT-05, CONT-06.
-- [ ] 03-03-PLAN.md — Slice C: Media + storage abstraction — `lib/storage/` (interface + registry reading `settings.storage.active_provider` + local + r2 providers) + `actions/media.ts` server-mediated upload + sharp variants at upload (Pitfall #7) + `/api/media/[...path]` Route Handler for local serve (Pitfall #4). Covers MEDIA-01, MEDIA-02, MEDIA-03, MEDIA-04.
+- [x] 03-02-PLAN.md — Slice B: Sanitization + taxonomy — shared `lib/sanitize` DOMPurify config (Pitfall #2 — double-sanitize at storage AND render via ONE config) + iframe domain allowlist hook + SSR render pipeline (generateHTML → sanitizeBeforeRender) + CategoryPicker/TagPicker wired into the post editor. Covers CONT-04, CONT-05, CONT-06.
+- [x] 03-03-PLAN.md — Slice C: Media + storage abstraction — `lib/storage/` (interface + registry reading `settings.storage.active_provider` + local + r2 providers) + `actions/media.ts` server-mediated upload + sharp variants at upload (Pitfall #7) + `/api/media/[...path]` Route Handler for local serve (Pitfall #4). Covers MEDIA-01, MEDIA-02, MEDIA-03, MEDIA-04.
 
 **Wave 3** *(blocked on Slice A + Slice B)*
 
