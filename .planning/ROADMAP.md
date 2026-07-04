@@ -17,7 +17,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Foundation** - Next.js 16 config, Drizzle schema + first migration, R2/sharp pipeline, route-group isolation
 - [x] **Phase 2: Auth + RBAC** - Better Auth + admin plugin, proxy cookie gate, permission helpers, review-workflow status enum shipped together (code complete 2026-07-02; pending UAT — email round-trip deferred, see 02-VERIFICATION.md / 02-UAT.md) (completed 2026-07-03)
-- [ ] **Phase 3: Content Engine** - Posts CRUD + Tiptap JSON round-trip, double-sanitization, categories/tags, provider-based media (local default + R2), revalidation wired in
+- [x] **Phase 3: Content Engine** - Posts CRUD + Tiptap JSON round-trip, double-sanitization, categories/tags, provider-based media (local default + R2), revalidation wired in (completed 2026-07-04)
 - [ ] **Phase 4: Dashboard Chrome** - TailAdmin wired to real data (posts, taxonomy, media, users, pages) + Storage Settings (Cloudinary/push-CDN providers), RHF+Zod, TanStack Query, demo cleanup
 - [ ] **Phase 5: SEO Basics** - generateMetadata per route, dynamic sitemap + robots, JSON-LD, canonical, OG/Twitter cards, RSS
 - [ ] **Phase 6: Public Frontend** - Home/blog/archive, category/tag/author archives, single post (Cache Components + Suspense), search, About/Contact/legal, dark mode
@@ -110,7 +110,7 @@ Plans:
   4. An editor can upload an image through the storage-provider abstraction (`lib/storage/`), with `sharp` producing optimized variants server-side at upload time; the active provider is read from `settings` (local by default, R2 available), the media record stores provider + key + alt text + dimensions, and every content image is served through `next/image` (loader resolves to the active provider's public URL — never a raw `<img>`).
   5. Publishing or updating a post triggers the correct `revalidatePath` / 2-arg `revalidateTag` calls inside the publish Server Action with concrete paths (not template strings), so cached pages refresh without a full rebuild (Pitfall 3 wired here, audited in Phase 7).
 
-**Plans**: 3/4 plans executed
+**Plans**: 4/4 plans complete
 
 Plans:
 
@@ -125,7 +125,7 @@ Plans:
 
 **Wave 3** *(blocked on Slice A + Slice B)*
 
-- [ ] 03-04-PLAN.md — Slice D: Publishing, revalidation, scheduling, preview — publishPost with targeted `revalidatePath` + 2-arg `revalidateTag(tag, 'max')` (Pitfall #3, MEDIUM research flag closed) + node-cron worker via `instrumentation.ts` (D-11 in-process, D-12 system-publish documented exception) + `/preview/[token]` token-gated draft route (D-19) rendering via Slice B's renderPostBody. Covers CONT-08, CONT-09, CONT-10.
+- [x] 03-04-PLAN.md — Slice D: Publishing, revalidation, scheduling, preview — publishPost with targeted `revalidatePath` + 2-arg `revalidateTag(tag, 'max')` (Pitfall #3, MEDIUM research flag closed) + node-cron worker via `instrumentation.ts` (D-11 in-process, D-12 system-publish documented exception) + `/preview/[token]` token-gated draft route (D-19) rendering via Slice B's renderPostBody. Covers CONT-08, CONT-09, CONT-10.
 
 **Pitfalls owned:** #2 (double-sanitization + Tiptap JSON storage — Slice B), #3 (`revalidatePath`/`revalidateTag` wired into the publish action — Slice D), #7 (upload-time sharp resize, not per-request — Slice C).
 **Research flag:** MEDIUM — validate the Tiptap v3 SSR round-trip (`@tiptap/html` `generateHTML` with the chosen extensions array) and confirm the `revalidateTag(tag, 'max')` 2-arg form on a real publish action before wiring all rendering.
