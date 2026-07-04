@@ -236,8 +236,102 @@ export async function rotatePreviewToken(postId: number) {
   return { token };
 }
 
-// revalidatePath / revalidateTag are imported so the publish action (Slice D)
-// and future revalidation paths resolve at type-check. Their concrete calls
-// land in Plan 03-04 publishPost; this file ships the create/update/autosave/
-// preview-token subset of the Slice A vertical slice.
-export { revalidatePath, revalidateTag };
+/**
+ * publishPost — the user-facing publish action. Editor/admin path (authors fail
+ * inside transitionPost via requireCan post:publish — D-15 double enforcement).
+ *
+ * D-25 / Pitfall #3: after the transition succeeds, revalidates the SAME concrete
+ * paths + 2-arg tags as the scheduler (system-publish.ts). The 2-arg form
+ * `revalidateTag(tag, "max")` is mandatory in Next.js 16.2.9 — single-arg is
+ * DEPRECATED. Paths are resolved literals (e.g. `/blog/hello-world`) — NEVER
+ * template-string patterns like `/blog/[slug]`.
+ *
+ * D-19: rotates the preview token on publish so any prior /preview/[token] link 404s.
+ */
+export async function publishPost(postId: number) {
+  // 1. Ownership check FIRST (Pitfall #1). Admin/editor bypass.
+  await assertOwnsPost(postId);
+
+  // 2. R7 funnel — transitionPost enforces role + TRANSITIONS + requireCan(post:publish).
+  //    Authors fail here (double enforcement: TRANSITIONS.author excludes published
+  //    AND requireCan({post:["publish"]}) fails for the author role).
+  await transitionPost(postId, "published");
+
+  // 3. Fetch the post + category slug for revalidation. transitionPost already
+  //    confirmed the post exists; this select gets the fields needed for the
+  //    concrete revalidatePath / revalidateTag calls below.
+  const [post] = await db
+    .select({
+      id: schema.posts.id,
+      slug: schema.posts.slug,
+      authorId: schema.posts.authorId,
+      categoryId: schema.posts.categoryId,
+      categorySlug: schema.categories.slug,
+    })
+    .from(schema.posts)
+    .leftJoin(schema.categories, eq(schema.posts.categoryId, schema.categories.id))
+    .where(eq(schema.posts.id, postId))
+    .limit(1);
+  if (!post) throw new Error("NOT_FOUND");
+
+  // 4. D-25 — concrete literal paths (Pitfall #3). NEVER template-string patterns.
+  revalidatePath(`/blog/${post.slug}`);
+  revalidatePath("/");
+  revalidatePath("/blog");
+  if (post.categorySlug) {
+    revalidatePath(`/category/${post.categorySlug}`);
+  }
+  revalidatePath("/sitemap.xml");
+  revalidatePath("/rss.xml");
+
+  // 5. D-25 — 2-arg revalidateTag(tag, "max"). Single-arg form is DEPRECATED in
+  //    Next.js 16.2.9. "max" = stale-while-revalidate (recommended).
+  revalidateTag(`post-${post.id}`, "max");
+  revalidateTag(`author-${post.authorId}`, "max");
+  if (post.categoryId) {
+    revalidateTag(`category-${post.categoryId}`, "max");
+  }
+  revalidateTag("posts-list", "max");
+
+  // 6. D-19 — rotate the preview token so the old /preview/[token] link 404s.
+  //    This invalidates any shared draft-preview link on publish.
+  await rotatePreviewToken(postId);
+
+  return { ok: true };
+}
+
+/**
+ * setSchedule — set the publishedAt timestamp on a post. D-15: only editor/admin
+ * can schedule (scheduling = deferred publish, which authors lack). The action
+ * calls requireCan({post:["publish"]}) — authors fail here.
+ *
+ * D-14: publishedAt is stored as UTC. The SchedulePicker client component displays
+ * in the site-configured timezone (read via getSetting("site.timezone")); the
+ * datetime is converted to UTC before storage.
+ */
+export async function setSchedule(postId: number, publishedAt: Date) {
+  // D-15 — scheduling requires the publish capability. Authors lack post:publish.
+  await requireCan({ post: ["publish"] });
+
+  await db
+    .update(schema.posts)
+    .set({ publishedAt, updatedAt: new Date() })
+    .where(eq(schema.posts.id, postId));
+
+  log.info("schedule-set", { postId, publishedAt: publishedAt.toISOString() });
+  return { ok: true };
+}
+
+/**
+ * revokePreviewToken — D-19 manual revoke. Clears posts.previewToken so the
+ * /preview/[token] route returns 404 for the prior token. Author-own or editor/admin.
+ */
+export async function revokePreviewToken(postId: number) {
+  await assertOwnsPost(postId); // FIRST (Pitfall #1)
+  await db
+    .update(schema.posts)
+    .set({ previewToken: null, updatedAt: new Date() })
+    .where(eq(schema.posts.id, postId));
+  log.info("preview-token-revoked", { postId });
+  return { ok: true };
+}
