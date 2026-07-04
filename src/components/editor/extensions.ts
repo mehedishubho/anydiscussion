@@ -49,7 +49,9 @@ export const editorExtensions = [
   // D-04 plain CodeBlock — no lowlight/highlighting, just <pre><code>.
   CodeBlock,
   // D-01 Rich tier — TableKit bundles Table + TableRow + TableCell + TableHeader.
-  TableKit.configure({ resizable: true }),
+  // Per @tiptap/extension-table 3.27.1 TableKitOptions shape: `table:` carries the
+  // Table extension's options (resizable, HTMLAttributes, etc.).
+  TableKit.configure({ table: { resizable: true } }),
   // D-01 Rich tier — image node (block-level, no base64 — body images are CDN/external).
   Image.configure({ inline: false, allowBase64: false }),
   // D-05 manual links — autolink disabled; target=_blank + anti-tabnabbing rel
