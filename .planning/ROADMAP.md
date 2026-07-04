@@ -110,14 +110,24 @@ Plans:
   4. An editor can upload an image through the storage-provider abstraction (`lib/storage/`), with `sharp` producing optimized variants server-side at upload time; the active provider is read from `settings` (local by default, R2 available), the media record stores provider + key + alt text + dimensions, and every content image is served through `next/image` (loader resolves to the active provider's public URL — never a raw `<img>`).
   5. Publishing or updating a post triggers the correct `revalidatePath` / 2-arg `revalidateTag` calls inside the publish Server Action with concrete paths (not template strings), so cached pages refresh without a full rebuild (Pitfall 3 wired here, audited in Phase 7).
 
-**Plans**: TBD
+**Plans**: 4/4 plans planned
 
 Plans:
 
-- [ ] 03-01: TBD (planning pending)
-- [ ] 03-02: TBD (planning pending)
+**Wave 1**
 
-**Pitfalls owned:** #2 (double-sanitization + Tiptap JSON storage), #3 (`revalidatePath`/`revalidateTag` wired into the publish action), #7 (upload-time sharp resize, not per-request).
+- [ ] 03-01-PLAN.md — Slice A: Post writing core — Tiptap v3 lazy-loaded editor + extensions single-source-of-truth + schema migration (media provider rename + posts.previewToken) + slug validator + excerpt utility + Zod schema + posts/categories/tags Server Actions + TailAdmin-quality post routes + Wave-0 round-trip test (PRIMARY research flag). Covers CONT-01, CONT-02, CONT-03, CONT-07, CONT-11.
+
+**Wave 2** *(parallel — blocked on Wave 1 schema migration)*
+
+- [ ] 03-02-PLAN.md — Slice B: Sanitization + taxonomy — shared `lib/sanitize` DOMPurify config (Pitfall #2 — double-sanitize at storage AND render via ONE config) + iframe domain allowlist hook + SSR render pipeline (generateHTML → sanitizeBeforeRender) + CategoryPicker/TagPicker wired into the post editor. Covers CONT-04, CONT-05, CONT-06.
+- [ ] 03-03-PLAN.md — Slice C: Media + storage abstraction — `lib/storage/` (interface + registry reading `settings.storage.active_provider` + local + r2 providers) + `actions/media.ts` server-mediated upload + sharp variants at upload (Pitfall #7) + `/api/media/[...path]` Route Handler for local serve (Pitfall #4). Covers MEDIA-01, MEDIA-02, MEDIA-03, MEDIA-04.
+
+**Wave 3** *(blocked on Slice A + Slice B)*
+
+- [ ] 03-04-PLAN.md — Slice D: Publishing, revalidation, scheduling, preview — publishPost with targeted `revalidatePath` + 2-arg `revalidateTag(tag, 'max')` (Pitfall #3, MEDIUM research flag closed) + node-cron worker via `instrumentation.ts` (D-11 in-process, D-12 system-publish documented exception) + `/preview/[token]` token-gated draft route (D-19) rendering via Slice B's renderPostBody. Covers CONT-08, CONT-09, CONT-10.
+
+**Pitfalls owned:** #2 (double-sanitization + Tiptap JSON storage — Slice B), #3 (`revalidatePath`/`revalidateTag` wired into the publish action — Slice D), #7 (upload-time sharp resize, not per-request — Slice C).
 **Research flag:** MEDIUM — validate the Tiptap v3 SSR round-trip (`@tiptap/html` `generateHTML` with the chosen extensions array) and confirm the `revalidateTag(tag, 'max')` 2-arg form on a real publish action before wiring all rendering.
 
 ### Phase 4: Dashboard Chrome
