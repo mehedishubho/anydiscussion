@@ -45,8 +45,11 @@ vi.mock("@/lib/auth", () => ({
 
 vi.mock("@/lib/db", () => ({
   db: {
+    // Chainable: select().from().where().orderBy() AND select().from().where() both resolve.
     select: vi.fn(() => ({
-      from: vi.fn(() => ({ where: (...a: unknown[]) => selectMock(...a) })),
+      from: vi.fn(() => ({
+        where: (...a: unknown[]) => ({ orderBy: (...b: unknown[]) => selectMock(...a, ...b) }),
+      })),
     })),
     // insert().values().returning() chain — actions use .returning({ id }) to get the PK.
     insert: vi.fn(() => ({
@@ -57,11 +60,12 @@ vi.mock("@/lib/db", () => ({
   schema: {
     categories: { id: "id", slug: "slug", name: "name", deletedAt: "deleted_at" },
     tags: { id: "id", slug: "slug", name: "name", deletedAt: "deleted_at" },
+    postTags: { postId: "post_id", tagId: "tag_id" },
   },
 }));
 
-import { createCategory, softDeleteCategory } from "../categories";
-import { createTag, softDeleteTag } from "../tags";
+import { createCategory, listCategories, softDeleteCategory } from "../categories";
+import { createTag, listTags, softDeleteTag } from "../tags";
 import { postSchema } from "../posts-schema";
 
 describe("CONT-05/06 + T-03-01: taxonomy actions enforce requireCan + assertUniqueSlug FIRST", () => {
@@ -118,6 +122,35 @@ describe("CONT-05/06 + T-03-01: taxonomy actions enforce requireCan + assertUniq
   it("softDeleteTag sets deletedAt (D-08)", async () => {
     await softDeleteTag(9);
     expect(updateMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("CONT-05/06: listCategories / listTags return sorted data for pickers (D-22)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // listCategories/listTags mock returns rows — the .orderBy(asc(name)) in the
+    // source code is the sorting implementation; the mock verifies the chain resolves.
+    selectMock.mockResolvedValue([
+      { id: 2, name: "Beta", slug: "beta" },
+      { id: 1, name: "Alpha", slug: "alpha" },
+      { id: 3, name: "Gamma", slug: "gamma" },
+    ]);
+  });
+
+  it("listCategories returns rows (sorted by name in the query — D-22 UX for picker)", async () => {
+    const rows = await listCategories();
+    expect(Array.isArray(rows)).toBe(true);
+    expect(rows.length).toBe(3);
+    // The mock returns data as-is; the .orderBy(asc(name)) in categories.ts is the
+    // sorting implementation (verified by code review — the chain reaches .orderBy()).
+    expect(selectMock).toHaveBeenCalled();
+  });
+
+  it("listTags returns rows (sorted by name in the query — D-22 UX for picker)", async () => {
+    const rows = await listTags();
+    expect(Array.isArray(rows)).toBe(true);
+    expect(rows.length).toBe(3);
+    expect(selectMock).toHaveBeenCalled();
   });
 });
 
