@@ -93,8 +93,12 @@ DOMPurify.addHook(
  * ADD_TAGS: permits iframe (D-02 embeds) + video/audio/source (D-07 non-image media).
  * ADD_ATTR: permits target/rel (D-05 links) + iframe/media attributes.
  * KEEP_CONTENT: true — preserves the text content of stripped elements.
+ *
+ * NOTE: no `as const` — DOMPurify's Config type expects mutable string[] arrays.
+ * The same-config test (sanitize.test.ts) proves both call sites reference this
+ * ONE object — the lack of `as const` does not weaken the anti-drift guarantee.
  */
-const CONFIG = {
+const CONFIG: Record<string, unknown> = {
   ADD_TAGS: ["iframe", "video", "audio", "source"],
   ADD_ATTR: [
     "target",
@@ -109,7 +113,7 @@ const CONFIG = {
     "type", // video/audio/source attributes (D-07)
   ],
   KEEP_CONTENT: true,
-} as const;
+};
 
 /**
  * Site #1 — sanitize HTML BEFORE storage.

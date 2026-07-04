@@ -24,6 +24,7 @@ import { assertOwnsPost, requireCan } from "@/lib/permissions";
 import { transitionPost } from "@/lib/permissions/post-transitions";
 import { assertUniqueSlug } from "@/lib/slug";
 import { deriveExcerpt } from "@/lib/excerpt";
+import { sanitizeBeforeStore } from "@/lib/sanitize";
 import { postSchema } from "./posts-schema";
 
 type PostStatus = "draft" | "pending_review" | "published";
@@ -39,6 +40,46 @@ interface SavePostInput {
   featureImage?: string;
   publishedAt?: Date;
   status?: PostStatus;
+}
+
+/**
+ * sanitizeBodyHtml — Pitfall #2 site #1 (storage-time sanitize on the body).
+ *
+ * The body is ProseMirror JSON — structured nodes, NOT raw HTML. However, the D-02
+ * raw-HTML-paste embed path can store HTML strings inside node attrs (e.g. a raw-HTML
+ * embed node carrying `<iframe src="...">` in an attr). This walker recursively
+ * traverses the JSON tree and runs any string that looks like HTML (contains `<` and `>`)
+ * through sanitizeBeforeStore — the shared DOMPurify config (Pitfall #2).
+ *
+ * If the body has no raw-HTML strings (pure structured JSON), this is a no-op —
+ * the function still runs to be safe (defense-in-depth per CLAUDE.md).
+ */
+function sanitizeBodyHtml(body: unknown): unknown {
+  if (!body || typeof body !== "object") return body;
+
+  const walk = (node: unknown): unknown => {
+    if (typeof node === "string") {
+      // Only sanitize strings that look like HTML — avoids running DOMPurify on
+      // every plain-text string in the JSON (perf) while catching all embed HTML.
+      if (node.includes("<") && node.includes(">")) {
+        return sanitizeBeforeStore(node);
+      }
+      return node;
+    }
+    if (Array.isArray(node)) {
+      return node.map(walk);
+    }
+    if (node && typeof node === "object") {
+      const result: Record<string, unknown> = {};
+      for (const key of Object.keys(node as Record<string, unknown>)) {
+        result[key] = walk((node as Record<string, unknown>)[key]);
+      }
+      return result;
+    }
+    return node;
+  };
+
+  return walk(body);
 }
 
 /**
@@ -66,14 +107,19 @@ export async function savePost(input: SavePostInput) {
     ? data.excerpt
     : deriveExcerpt(data.body, 160);
 
-  // 5. db.write.
+  // 5. Pitfall #2 site #1 — sanitize raw HTML embed nodes in the body BEFORE storage.
+  //    Walks the ProseMirror JSON to find raw-HTML strings (D-02 embed path) and
+  //    runs them through the shared DOMPurify config. No-op for pure-JSON bodies.
+  const sanitizedBody = sanitizeBodyHtml(data.body);
+
+  // 6. db.write.
   if (input.id) {
     await db
       .update(schema.posts)
       .set({
         title: data.title,
         slug: data.slug,
-        body: data.body,
+        body: sanitizedBody,
         excerpt,
         categoryId: data.categoryId,
         featureImage: data.featureImage ?? null,
@@ -89,7 +135,7 @@ export async function savePost(input: SavePostInput) {
     .values({
       title: data.title,
       slug: data.slug,
-      body: data.body,
+      body: sanitizedBody,
       excerpt,
       status: "draft",
       authorId: session.user.id,

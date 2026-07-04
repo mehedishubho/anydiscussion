@@ -24,6 +24,8 @@ const {
   validateSlugMock,
   assertUniqueSlugMock,
   deriveExcerptMock,
+  sanitizeBeforeStoreMock,
+  sanitizeBeforeRenderMock,
   postSchemaParseMock,
   selectPostMock,
   insertMock,
@@ -37,6 +39,9 @@ const {
   validateSlugMock: vi.fn(),
   assertUniqueSlugMock: vi.fn(),
   deriveExcerptMock: vi.fn(),
+  // Slice B (03-02): passthrough by default — tests override to assert the call.
+  sanitizeBeforeStoreMock: vi.fn((s: string) => s),
+  sanitizeBeforeRenderMock: vi.fn((s: string) => s),
   postSchemaParseMock: vi.fn(),
   selectPostMock: vi.fn(),
   insertMock: vi.fn(),
@@ -61,6 +66,14 @@ vi.mock("@/lib/slug", () => ({
 
 vi.mock("@/lib/excerpt", () => ({
   deriveExcerpt: (...a: unknown[]) => deriveExcerptMock(...a),
+}));
+
+// Slice B (03-02): mock the shared sanitize module. Passthrough by default so the
+// body walker doesn't mutate test data; the sanitize-wiring test overrides the spy
+// to assert the call was made.
+vi.mock("@/lib/sanitize", () => ({
+  sanitizeBeforeStore: (...a: unknown[]) => sanitizeBeforeStoreMock(...a),
+  sanitizeBeforeRender: (...a: unknown[]) => sanitizeBeforeRenderMock(...a),
 }));
 
 vi.mock("@/lib/log", () => ({
@@ -132,6 +145,9 @@ describe("T-03-01 / Pitfall #1: every posts.ts mutating action calls requireCan/
     validateSlugMock.mockReturnValue({ valid: true });
     assertUniqueSlugMock.mockResolvedValue(undefined);
     deriveExcerptMock.mockReturnValue("auto-excerpt");
+    // Slice B: passthrough sanitize by default (tests override to assert the call).
+    sanitizeBeforeStoreMock.mockImplementation((s: string) => s);
+    sanitizeBeforeRenderMock.mockImplementation((s: string) => s);
     postSchemaParseMock.mockImplementation((input) => input);
     selectPostMock.mockResolvedValue([]);
     insertMock.mockResolvedValue(undefined);
@@ -185,6 +201,43 @@ describe("T-03-01 / Pitfall #1: every posts.ts mutating action calls requireCan/
       tagIds: [],
     });
     expect(deriveExcerptMock).not.toHaveBeenCalled();
+  });
+
+  it("savePost calls sanitizeBeforeStore on raw-HTML embed nodes in the body (Pitfall #2 site #1)", async () => {
+    // Body contains a raw-HTML embed node with an iframe string (D-02 paste path).
+    // The body walker in savePost should detect the HTML-like string and call
+    // sanitizeBeforeStore on it before db.insert.
+    insertMock.mockReturnValue([{ id: 42 }]);
+    const maliciousHtml = '<iframe src="https://evil.com"></iframe><img src=x onerror=alert(1)>';
+    await savePost({
+      title: "T",
+      slug: "t",
+      body: {
+        type: "doc",
+        content: [
+          { type: "paragraph", content: [{ type: "text", text: "safe" }] },
+          { type: "html", attrs: { html: maliciousHtml } },
+        ],
+      },
+      categoryId: 1,
+      tagIds: [],
+    });
+    // sanitizeBeforeStore must have been called with the malicious HTML string.
+    expect(sanitizeBeforeStoreMock).toHaveBeenCalledWith(maliciousHtml);
+    expect(insertMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("savePost does NOT call sanitizeBeforeStore when body has no HTML strings (pure JSON no-op)", async () => {
+    insertMock.mockReturnValue([{ id: 42 }]);
+    await savePost({
+      title: "T",
+      slug: "t",
+      body: { type: "doc", content: [{ type: "paragraph" }] },
+      categoryId: 1,
+      tagIds: [],
+    });
+    // No string in this body contains '<' + '>' → walker is a no-op, sanitize is not called.
+    expect(sanitizeBeforeStoreMock).not.toHaveBeenCalled();
   });
 
   it("submitForReview calls transitionPost(postId, 'pending_review') (R7 funnel)", async () => {
