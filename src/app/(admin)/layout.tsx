@@ -35,7 +35,13 @@ async function AuthGate({ children }: { children: React.ReactNode }) {
   if (!session) {
     redirect("/signin");
   }
-  return <AdminShell>{children}</AdminShell>;
+  // Phase 4 D-05: pass the viewer's role to AdminShell → AppSidebar for the
+  // UX-only nav filter. session.user.role is the Better Auth admin-plugin
+  // field (Phase 2); the value is one of "admin" | "editor" | "author" (or
+  // null for legacy rows). Coerce to undefined when absent so the sidebar's
+  // hasRole() helper hides role-restricted items rather than showing everything.
+  const role = (session.user.role as "admin" | "editor" | "author" | null) ?? undefined;
+  return <AdminShell role={role}>{children}</AdminShell>;
 }
 
 export default function AdminLayout({

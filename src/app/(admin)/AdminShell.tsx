@@ -15,12 +15,16 @@ import React from "react";
  * this route group, so useSidebar() inside AdminShell still resolves correctly
  * when AdminShell is rendered as a child of the new server layout.
  *
- * This is a PURE RELOCATION — no className, structure, or import changed.
+ * Phase 4 D-05: forwards the viewer's `role` (passed from the server-side
+ * AuthGate) into AppSidebar for the UX-only nav filter. The authoritative RBAC
+ * still fires server-side in every mutating Server Action (Phase 2 Pitfall #1).
  */
 export default function AdminShell({
   children,
+  role,
 }: {
   children: React.ReactNode;
+  role?: "admin" | "editor" | "author";
 }) {
   const { isExpanded, isHovered, isMobileOpen } = useSidebar();
 
@@ -34,7 +38,7 @@ export default function AdminShell({
   return (
     <div className="min-h-screen xl:flex">
       {/* Sidebar and Backdrop */}
-      <AppSidebar />
+      <AppSidebar role={role} />
       <Backdrop />
       {/* Main Content Area */}
       <div
