@@ -703,19 +703,19 @@ export async function createPage(input: PageInput) {
 
 **Note:** All `[VERIFIED: ...]` claims in this research were confirmed by reading the codebase directly or checking the npm registry in this session. The `[ASSUMED]` items above are implementation details the planner should verify during implementation, not architectural risks that block planning.
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Should the Cloudinary provider support the `resource_type: "video"` path?**
+1. **Should the Cloudinary provider support the `resource_type: "video"` path?** — **RESOLVED: Plan 04-05 ships image-only (`resource_type: "auto"`); video deferred to v2 per recommendation.**
    - What we know: Phase 3 D-08 caps uploads at 10MB (images + small PDFs). Video hosting was explicitly deferred.
    - What's unclear: Whether Cloudinary video delivery is a useful fast-follow.
    - Recommendation: Ship `resource_type: "auto"` (handles images only for now). Video is a v2 concern. `[CITED: 03-CONTEXT.md D-08]`
 
-2. **Does the push-CDN provider wire purge-on-upload (D-21 discretion)?**
+2. **Does the push-CDN provider wire purge-on-upload (D-21 discretion)?** — **RESOLVED: Plan 04-05 ships v1 with no purge-on-upload per recommendation.**
    - What we know: D-21 says "optional purge/invalidate credentials". A push-CDN serves cached content — after a re-upload at the same key, the CDN may serve stale content until TTL expires.
    - What's unclear: Whether the founder's CDN-of-choice has a purge API worth wiring.
    - Recommendation: Ship v1 with no purge-on-upload (document the TTL-staleness tradeoff). Add a manual "Purge CDN" button in Storage Settings as a fast-follow if needed. `[CITED: 04-CONTEXT.md D-21]`
 
-3. **Should the users drawer surface the ban-reason + ban-expiry fields (Phase 2 D-16 primitive supports both)?**
+3. **Should the users drawer surface the ban-reason + ban-expiry fields (Phase 2 D-16 primitive supports both)?** — **RESOLVED: Plan 04-03 ships a simple ban toggle (no reason/expiry in the form) per recommendation.**
    - What we know: `banUser(userId, { banReason, banExpiresIn })` is the primitive. D-08 says "disable (ban)".
    - What's unclear: Whether the UI should expose reason/expiry or just a simple toggle.
    - Recommendation: Ship a simple ban toggle first (no reason/expiry in the form). The primitive supports adding them later. Discretionary per D-07.
