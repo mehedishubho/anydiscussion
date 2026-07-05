@@ -139,11 +139,18 @@ vi.mock("@/lib/db", () => {
         deletedAt: "deleted_at",
         createdAt: "created_at",
       },
+      // posts schema mock — findMediaReferences selects from posts.
+      posts: {
+        id: "id",
+        title: "title",
+        body: "body",
+        featureImage: "feature_image",
+      },
     },
   };
 });
 
-import { uploadMedia, listMedia, deleteMedia } from "../media";
+import { uploadMedia, listMedia, deleteMedia, findMediaReferences } from "../media";
 
 const adminSession = () => ({
   user: { id: "u-admin", role: "admin" },
@@ -382,5 +389,78 @@ describe("deleteMedia: requires media:delete + provider.delete + soft-delete (D-
     const updateSetSpy = (db.update as ReturnType<typeof vi.fn>).mock.results[0].value.set;
     const setArg = updateSetSpy.mock.calls[0][0];
     expect(setArg.deletedAt).toBeInstanceOf(Date);
+  });
+});
+
+describe("T-04-08 / D-15: findMediaReferences enforces requireCan FIRST + returns matched posts", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    getActiveProviderMock.mockResolvedValue(providerStub);
+    providerGetPublicUrlMock.mockReturnValue("/api/media/media/x-md.webp");
+  });
+
+  it("throws FORBIDDEN before any db.select when requireCan denies (MUST_NOT_BE_REACHED)", async () => {
+    requireCanMock.mockImplementation(() => {
+      throw new Error("FORBIDDEN");
+    });
+    selectMediaMock.mockImplementation(() => {
+      throw new Error("MUST_NOT_BE_REACHED");
+    });
+    getActiveProviderMock.mockImplementation(() => {
+      throw new Error("MUST_NOT_BE_REACHED");
+    });
+
+    await expect(findMediaReferences(42)).rejects.toThrow("FORBIDDEN");
+    expect(requireCanMock).toHaveBeenCalledWith({ media: ["read"] });
+    expect(getActiveProviderMock).not.toHaveBeenCalled();
+    expect(selectMediaMock).not.toHaveBeenCalled();
+  });
+
+  it("returns matched posts + featureImageMatches when posts reference the URL", async () => {
+    requireCanMock.mockResolvedValue(adminSession());
+    const publicUrl = "/api/media/media/x-md.webp";
+    // 1st call: media row fetch → [{ providerKey, provider }]
+    // 2nd call: posts query → two posts, one matching via featureImage
+    selectMediaMock
+      .mockResolvedValueOnce([
+        { id: 42, providerKey: "media/x-md.webp", provider: "local" },
+      ])
+      .mockResolvedValueOnce([
+        { id: 1, title: "Post A", featureImage: publicUrl },
+        { id: 2, title: "Post B", featureImage: null },
+      ]);
+
+    const result = await findMediaReferences(42);
+
+    expect(providerGetPublicUrlMock).toHaveBeenCalledWith("media/x-md.webp");
+    expect(result.posts).toEqual([
+      { id: 1, title: "Post A" },
+      { id: 2, title: "Post B" },
+    ]);
+    expect(result.featureImageMatches).toBe(1);
+  });
+
+  it("returns empty posts array + 0 featureImageMatches for an unreferenced media row", async () => {
+    requireCanMock.mockResolvedValue(adminSession());
+    selectMediaMock
+      .mockResolvedValueOnce([
+        { id: 99, providerKey: "media/lonely.webp", provider: "local" },
+      ])
+      .mockResolvedValueOnce([]);
+
+    const result = await findMediaReferences(99);
+    expect(result.posts).toEqual([]);
+    expect(result.featureImageMatches).toBe(0);
+  });
+
+  it("returns empty for a media row that does not exist (not found)", async () => {
+    requireCanMock.mockResolvedValue(adminSession());
+    selectMediaMock.mockResolvedValueOnce([]);
+
+    const result = await findMediaReferences(404);
+    expect(result.posts).toEqual([]);
+    expect(result.featureImageMatches).toBe(0);
+    // Must NOT call getActiveProvider for a missing row (defensive short-circuit).
+    expect(getActiveProviderMock).not.toHaveBeenCalled();
   });
 });
