@@ -4,6 +4,7 @@ import { useSidebar } from "@/context/SidebarContext";
 import AppHeader from "@/layout/AppHeader";
 import AppSidebar from "@/layout/AppSidebar";
 import Backdrop from "@/layout/Backdrop";
+import QueryProvider from "./QueryProvider";
 import React from "react";
 
 /**
@@ -18,6 +19,12 @@ import React from "react";
  * Phase 4 D-05: forwards the viewer's `role` (passed from the server-side
  * AuthGate) into AppSidebar for the UX-only nav filter. The authoritative RBAC
  * still fires server-side in every mutating Server Action (Phase 2 Pitfall #1).
+ *
+ * Phase 4 D-28: wraps {children} with QueryProvider so TanStack Query is
+ * available across all dashboard pages. The provider is INSIDE AdminShell
+ * (and thus inside `(admin)`) — never added to the root app/layout.tsx and
+ * never imported from `(site)`. This keeps TanStack JS out of the public
+ * bundle (PERF-02 isolation, audited in Phase 7).
  */
 export default function AdminShell({
   children,
@@ -46,8 +53,10 @@ export default function AdminShell({
       >
         {/* Header */}
         <AppHeader />
-        {/* Page Content */}
-        <div className="p-4 mx-auto max-w-(--breakpoint-2xl) md:p-6">{children}</div>
+        {/* Page Content — QueryProvider scoped to (admin) only (D-28) */}
+        <div className="p-4 mx-auto max-w-(--breakpoint-2xl) md:p-6">
+          <QueryProvider>{children}</QueryProvider>
+        </div>
       </div>
     </div>
   );

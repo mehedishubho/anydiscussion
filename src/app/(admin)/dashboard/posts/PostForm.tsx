@@ -1,7 +1,10 @@
 "use client";
-// src/app/(admin)/posts/PostForm.tsx
+// src/app/(admin)/dashboard/posts/PostForm.tsx
 // [CITED: PATTERNS.md row — RHF + Zod wiring (schema-client.ts)]
 // [CITED: 03-CONTEXT.md D-24 — TailAdmin-quality post form; D-23 required category, tags ~8]
+// [CITED: 04-CONTEXT.md D-26 — TanStack useMutation retrofit (dashboard-wide form/mutation baseline)]
+// [CITED: 04-CONTEXT.md D-27 — NOT optimistic on post save (high-stakes + revalidation needs server confirmation)]
+// [CITED: 04-RESEARCH.md Pattern 4 — useMutation + invalidate shape]
 //
 // The client-component post create/edit form. Wires react-hook-form to the
 // shared postSchema via zodResolver (the SAME schema the Server Action parses —
@@ -9,16 +12,26 @@
 // @/actions/posts-schema). The Tiptap editor is lazy-loaded via EditorProvider
 // (which uses next/dynamic({ssr:false})) — PERF-02 prep.
 //
+// D-26 retrofit (Plan 04-01 Task 3c): savePost is wrapped in TanStack
+// useMutation. The form fields, Zod schema, and validation are unchanged —
+// only the submission wrapper is replaced. Submit state is read from the
+// mutation (isPending / error?.message) instead of local useState.
+//
+// D-27 explicit: post save is NOT optimistic. High-stakes mutation with
+// revalidatePath/revalidateTag — must wait for server confirmation before
+// flipping UI state. Optimistic patterns are reserved for low-stakes
+// high-frequency mutations (media delete, taxonomy CRUD — Plan 04-02/04-03).
+//
 // Native <input> elements + register() spread — the TailAdmin InputField component
 // has its own controlled API and doesn't accept RHF's register props; the native
 // input + Tailwind classes is the standard RHF wiring pattern. Phase 4 DASH-01
 // can swap back to a TailAdmin form kit component if desired.
 import { useForm } from "react-hook-form";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { EditorProvider } from "@/components/editor/EditorProvider";
 import { postSchema, zodResolver, type PostSchemaInput } from "./schema-client";
 import { savePost } from "@/actions/posts";
 import TaxonomyPicker from "./components/TaxonomyPicker";
-import { useState } from "react";
 
 const INPUT_CLASS =
   "h-11 w-full rounded-lg border appearance-none px-4 py-2.5 text-sm shadow-theme-xs placeholder:text-gray-400 focus:outline-hidden focus:ring-3 bg-transparent text-gray-800 border-gray-300 focus:border-brand-300 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:focus:border-brand-800";
@@ -36,13 +49,13 @@ interface PostFormProps {
 }
 
 export default function PostForm(props: PostFormProps) {
-  const [submitError, setSubmitError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
   const {
     register,
     handleSubmit,
     control,
     watch,
-    formState: { errors, isSubmitting },
+    formState: { errors },
   } = useForm<PostSchemaInput>({
     resolver: zodResolver(postSchema),
     defaultValues: {
@@ -57,17 +70,29 @@ export default function PostForm(props: PostFormProps) {
     },
   });
 
-  const onValid = async (values: PostSchemaInput) => {
-    setSubmitError(null);
-    try {
-      await savePost(values as Parameters<typeof savePost>[0]);
-    } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : "Save failed");
-    }
+  // D-26 + D-27 — savePost wrapped in useMutation; NOT optimistic on post save.
+  // Invalidate the ["posts"] query key on success so any dashboard list refreshes.
+  // The mutation inherits the Server Action's behavior 1:1 (no client-side
+  // transformation) — the form is the source of truth until the server confirms.
+  const mutation = useMutation({
+    mutationFn: (values: PostSchemaInput) =>
+      savePost(values as Parameters<typeof savePost>[0]),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["posts"] });
+    },
+  });
+
+  const onValid = (values: PostSchemaInput) => {
+    // mutate (not mutateAsync) — RHF's handleSubmit doesn't need to await;
+    // mutation.isPending drives the button-disabled state instead.
+    mutation.mutate(values);
   };
 
   // Silence unused-variable warning on watch() — Phase 4 may wire live preview.
   void watch;
+
+  const submitError = mutation.error?.message ?? null;
+  const isSubmitting = mutation.isPending;
 
   return (
     <form onSubmit={handleSubmit(onValid)} className="space-y-5">

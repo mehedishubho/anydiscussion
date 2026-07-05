@@ -84,7 +84,7 @@ function structuralCheck() {
         if (fs.existsSync(htmlPath)) {
           const html = fs.readFileSync(htmlPath, "utf8");
           const dashboardMarkers = [
-            "Dashboard content will be wired",
+            "Dashboard overview",
             "AdminShell",
             "AppSidebar",
             "AppHeader",
@@ -212,7 +212,7 @@ async function httpCheck() {
     }
 
     // Assert body does NOT contain dashboard content
-    if (bodyText.includes("Dashboard content will be wired") || bodyText.includes("AdminShell")) {
+    if (bodyText.includes("Dashboard overview") || bodyText.includes("AdminShell")) {
       return {
         status: "failed",
         reason: "Redirect response body contains dashboard content",
