@@ -2,16 +2,27 @@
 // [CITED: 03-CONTEXT.md D-14 (site.timezone = Asia/Dhaka), D-09 (storage.active_provider
 //  = local default), D-10 (site.feature_image_default fallback)]
 // [CITED: 03-RESEARCH.md Open Question 4 — settings keys confirmed]
+// [CITED: 04-CONTEXT.md D-17 (seed T&C + Privacy + Contact pages at migration),
+//  D-29 (seed-only — pages table already exists from Phase 1)]
 //
-// Idempotent settings seed for the storage + site defaults. Inserted once at
-// install time (or re-run safely — onConflictDoNothing on the settings PK).
-// The values here are the SAFE DEFAULTS; the Phase-4 DASH-09 Storage Settings
-// admin page is the runtime editor.
+// Idempotent settings + pages seed. Inserted once at install time (or re-run
+// safely — onConflictDoNothing on each PK). The values here are the SAFE DEFAULTS;
+// the Phase-4 DASH-09 Storage Settings admin page is the runtime editor for
+// settings; the dashboard Pages editor is the runtime editor for page content.
 //
-// These three keys are the load-bearing settings Phase-3 components read:
+// Settings keys (Phase-3 load-bearing):
 //   - storage.active_provider — registry.ts getActiveProvider (default = "local")
 //   - site.timezone           — scheduled-publish datetime-picker display (D-14)
 //   - site.feature_image_default — post-card/OG fallback when no feature image (D-10)
+//
+// Pages rows (Phase-4 D-17 — three legal/contact pages seeded as drafts so the
+// admin just edits content):
+//   - /terms-and-conditions
+//   - /privacy-policy
+//   - /contact          (content-only — the Contact FORM is Phase 6 SITE-10 per D-19)
+//
+// About is NOT seeded here (PROJECT.md — About stays hard-coded TSX/MDX, not a
+// pages row).
 //
 // Server-only — NO "use client" directive.
 import { db, schema } from "@/lib/db";
@@ -21,7 +32,7 @@ import { db, schema } from "@/lib/db";
  * onConflictDoNothing on the `settings.key` PK means re-runs are no-ops for rows
  * that already exist (a user-set value is NEVER overwritten by this seed).
  *
- * Call from: the Phase-3 install/setup script, or instrumentation.ts at first boot.
+ * Call from: src/instrumentation.ts at first boot (NEXT_RUNTIME === "nodejs").
  */
 export async function seedStorageSettings(): Promise<void> {
   await db
@@ -32,4 +43,42 @@ export async function seedStorageSettings(): Promise<void> {
       { key: "site.feature_image_default", value: "" },
     ])
     .onConflictDoNothing();
+}
+
+/**
+ * Idempotently seed the three legal/contact pages (D-17). Safe to call multiple
+ * times — onConflictDoNothing on `pages.slug` (unique) means re-runs are no-ops.
+ * A user-edited body is NEVER overwritten by this seed.
+ *
+ * Rows are seeded with status="draft" + empty body so the admin is the source of
+ * truth for content. About is intentionally NOT seeded (PROJECT.md — About is
+ * hard-coded TSX/MDX). The Contact row is content-only per D-19 — the contact
+ * FORM behavior (SMTP/honeypot/rate-limit) lands in Phase 6 SITE-10.
+ *
+ * Call from: src/instrumentation.ts at first boot (NEXT_RUNTIME === "nodejs").
+ */
+export async function seedPages(): Promise<void> {
+  await db
+    .insert(schema.pages)
+    .values([
+      {
+        title: "Terms & Conditions",
+        slug: "terms-and-conditions",
+        body: null,
+        status: "draft",
+      },
+      {
+        title: "Privacy Policy",
+        slug: "privacy-policy",
+        body: null,
+        status: "draft",
+      },
+      {
+        title: "Contact",
+        slug: "contact",
+        body: null,
+        status: "draft",
+      },
+    ])
+    .onConflictDoNothing({ target: schema.pages.slug });
 }
