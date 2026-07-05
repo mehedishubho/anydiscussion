@@ -57,7 +57,17 @@ created: 2026-07-05
 
 ## Wave 0 Requirements
 
-*Existing infrastructure covers the phase requirements.* vitest + @testing-library/react are installed and configured from prior phases. No new test framework install needed in Wave 0. If the Cloudinary provider introduces SDK-mock needs, the relevant task adds the mock inline (no global Wave 0 stub required).
+vitest + @testing-library/react are installed and configured from prior phases — **no new test framework install**. However, this phase introduces novel code paths that need new test files stubbed in Wave 0 so sampling continuity holds from the first task:
+
+- [ ] `src/lib/storage/__tests__/cloudinary.test.ts` — covers DASH-09/D-22 (mock SDK; verify upload returns `variants: []` + correct `primary.key`; `getPublicUrl` produces transform URLs)
+- [ ] `src/lib/storage/__tests__/push-cdn.test.ts` — covers DASH-09/D-21 (mock S3Client; `cdnBaseUrl` overlay on `getPublicUrl`; sharp variants for image mime)
+- [ ] `src/lib/crypto/__tests__/crypto.test.ts` — covers D-25 (round-trip; tamper detection on flipped authTag; `redactCredentials` zeroes secret fields; missing-key graceful failure)
+- [ ] `src/actions/__tests__/storage-settings.test.ts` — covers D-23 (admin save persists encrypted blob; non-admin → FORBIDDEN; redact-on-read returns empty secrets)
+- [ ] `src/actions/__tests__/pages.test.ts` — covers DASH-05/D-17/D-20 (createPage/updatePage/listPages/softDeletePage; draft/published only — no pending_review)
+- [ ] `src/actions/__tests__/users.test.ts` — **EXTEND** for `listUsers`/`updateUser` (D-07/D-11) + non-admin FORBIDDEN
+- [ ] `src/actions/__tests__/media.test.ts` — **EXTEND** for Pitfall 0 multi-provider delete (row routed by `provider`, not active provider)
+- [ ] `.env.example` — add `SETTINGS_ENCRYPTION_KEY` placeholder + generation instructions
+- [ ] Package install: `pnpm add cloudinary@2.10.0` (optionally `pnpm add -D @tanstack/react-query-devtools`)
 
 ---
 
