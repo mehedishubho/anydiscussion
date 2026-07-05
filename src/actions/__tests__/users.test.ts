@@ -15,12 +15,18 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 
 // --- Mocks (vi.hoisted so the spies exist when vi.mock factories run, which are
 // hoisted above all top-level declarations by Vitest) ---
+// Plan 04-03 Task 1 extension: adds updateUserMock (Better Auth), selectAllResult
+// (listUsers's select-all-from-user path — no .where()), and updateSetWhere (the
+// db.update(...).set(...).where(...) chain used by updateUser for bio/avatar/role).
 const {
   createUserMock,
   banUserMock,
   unbanUserMock,
   revokeUserSessionsMock,
+  updateUserMock,
   countResult,
+  selectAllResult,
+  updateSetWhere,
   requireCanMock,
   getSessionOrThrowMock,
 } = vi.hoisted(() => ({
@@ -28,7 +34,10 @@ const {
   banUserMock: vi.fn(),
   unbanUserMock: vi.fn(),
   revokeUserSessionsMock: vi.fn(),
+  updateUserMock: vi.fn(),
   countResult: vi.fn(),
+  selectAllResult: vi.fn(),
+  updateSetWhere: vi.fn(),
   requireCanMock: vi.fn(),
   getSessionOrThrowMock: vi.fn(),
 }));
@@ -42,6 +51,9 @@ vi.mock("@/lib/auth", () => ({
       banUser: banUserMock,
       unbanUser: unbanUserMock,
       revokeUserSessions: revokeUserSessionsMock,
+      // updateUser — Better Auth admin plugin's user-update endpoint. Plan 04-03
+      // Task 1's updateUser action persists `name` (and role when admin path) via it.
+      updateUser: updateUserMock,
       // getSession + userHasPermission are used inside requireCan/getSessionOrThrow;
       // stubbed per-test as needed via the permissions mock below.
       getSession: vi.fn(),
@@ -51,21 +63,48 @@ vi.mock("@/lib/auth", () => ({
   },
 }));
 
-// db — the Drizzle query builder. createFirstAdmin calls db.select(...).from(...).where(...)
-// which returns an array; index [0] is the first row. We control the count result here.
-// Also used by the signup page (Server Component) for the same count query.
-vi.mock("@/lib/db", () => ({
-  db: {
-    select: vi.fn(() => ({
-      from: vi.fn(() => ({
-        where: vi.fn(() => countResult()),
+// db — the Drizzle query builder. Two distinct read shapes exist in users.ts:
+//   (1) createFirstAdmin: db.select({n:count()}).from(user).where(...) → countResult()
+//   (2) listUsers (Plan 04-03): db.select({...}).from(user) → selectAllResult() (no .where)
+// The mock makes `.from()` return a Promise (awaitable → resolves to selectAllResult())
+// with `.where` attached so createFirstAdmin's chain still resolves to countResult().
+// The update(...).set(...).where(...) chain (updateUser bio/avatar/role persist) is also wired.
+vi.mock("@/lib/db", () => {
+  return {
+    db: {
+      select: vi.fn(() => ({
+        // from() returns a thenable so `await db.select(...).from(...)` (listUsers)
+        // resolves to selectAllResult(), AND `.where(...)` (createFirstAdmin) still
+        // works as a chained method returning countResult().
+        from: vi.fn(() => {
+          const p = Promise.resolve().then(() => selectAllResult());
+          // Attach .where for the count-check path (createFirstAdmin).
+          (p as unknown as { where: ReturnType<typeof vi.fn> }).where = vi.fn(
+            () => countResult(),
+          );
+          return p;
+        }),
       })),
-    })),
-  },
-  // schema.user.role is referenced by eq(schema.user.role, "admin") — a plain object ref is fine
-  // because eq() just reads the column symbol; we only need the property path to exist.
-  schema: { user: { role: "role" } },
-}));
+      update: vi.fn(() => ({
+        set: vi.fn(() => ({
+          where: updateSetWhere,
+        })),
+      })),
+    },
+    // schema.user.{id,role,name,bio,avatar,email} are referenced by eq/set paths —
+    // plain string keys suffice because eq() just reads the column symbol.
+    schema: {
+      user: {
+        id: "id",
+        role: "role",
+        name: "name",
+        bio: "bio",
+        avatar: "avatar",
+        email: "email",
+      },
+    },
+  };
+});
 
 // requireCan / getSessionOrThrow — the permission helpers. Default to DENY so the
 // permission-check-first convention is tested: actions must throw BEFORE reaching auth.api.
@@ -80,7 +119,16 @@ vi.mock("@/lib/log", () => ({
 }));
 
 // Import the SUT AFTER mocks are in place.
-import { createFirstAdmin, createUser, banUser, unbanUser, revokeSessions } from "../users";
+// Plan 04-03 Task 1: + listUsers, updateUser (the two new actions under test).
+import {
+  createFirstAdmin,
+  createUser,
+  banUser,
+  unbanUser,
+  revokeSessions,
+  listUsers,
+  updateUser,
+} from "../users";
 
 describe("AUTH-02 / D-08: createFirstAdmin — the security-critical bootstrap", () => {
   const validInput = { name: "Root Admin", email: "admin@example.com", password: "correct-horse" };
@@ -210,5 +258,166 @@ describe("AUTH-02: user-management actions enforce requireCan FIRST (Pitfall #1 
     await expect(revokeSessions({ userId: "target-id" })).rejects.toThrow("FORBIDDEN");
     expect(revokeUserSessionsMock).not.toHaveBeenCalled();
     expect(requireCanMock).toHaveBeenCalledWith({ user: ["revoke-session"] });
+  });
+});
+
+// ============================================================
+// Plan 04-03 Task 1 — listUsers + updateUser (RED phase)
+// [CITED: 04-03-PLAN.md Task 1 <behavior> + <acceptance_criteria>]
+// [CITED: 04-CONTEXT.md D-07 (drawer UX), D-09 (self-service profile),
+//  D-11 (role assignment via dropdown + requireCan re-check)]
+// [CITED: 04-RESEARCH.md Open Question #4 (RESOLVED — add listUsers + updateUser)]
+//
+// Covers T-04-10/T-04-11/T-04-12 from the threat register:
+//  - T-04-10: non-admin hitting listUsers → FORBIDDEN before any db.select
+//  - T-04-11: self-edit attempting role promotion → role stripped server-side
+//  - T-04-12: non-admin calling updateUser on another user → FORBIDDEN before db.update
+// ============================================================
+describe("DASH-04 / D-07: listUsers — admin-gated user listing (Plan 04-03)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Default: requireCan DENIES — permission-check-first tests rely on this.
+    requireCanMock.mockImplementation(() => {
+      throw new Error("FORBIDDEN");
+    });
+  });
+
+  it("admin: returns the rows from db.select(...).from(user) unchanged", async () => {
+    // Admin passes the permission check.
+    requireCanMock.mockResolvedValue({ user: { id: "admin-1", role: "admin" } });
+    const rows = [
+      {
+        id: "u1",
+        name: "Alice",
+        email: "alice@example.com",
+        role: "admin",
+        bio: null,
+        avatar: null,
+        banned: false,
+        banReason: null,
+        banExpires: null,
+      },
+      {
+        id: "u2",
+        name: "Bob",
+        email: "bob@example.com",
+        role: "author",
+        bio: "writes",
+        avatar: "cdn.example.com/a.png",
+        banned: true,
+        banReason: "spam",
+        banExpires: null,
+      },
+    ];
+    selectAllResult.mockResolvedValue(rows);
+
+    const result = await listUsers();
+
+    expect(result).toEqual(rows);
+    // The capability statement fired with the EXACT user:read permission.
+    expect(requireCanMock).toHaveBeenCalledWith({ user: ["read"] });
+  });
+
+  it("non-admin: throws FORBIDDEN BEFORE any db.select runs (T-04-10 — MUST_NOT_BE_REACHED)", async () => {
+    // requireCan throws by default (set in beforeEach).
+    // SECURITY-CRITICAL: if the permission check ordering is wrong, the select-from
+    // chain runs and this throw surfaces — proving the gate fires BEFORE the query.
+    selectAllResult.mockImplementation(() => {
+      throw new Error("MUST_NOT_BE_REACHED — requireCan did not fire before db.select");
+    });
+
+    await expect(listUsers()).rejects.toThrow("FORBIDDEN");
+    // selectAllResult is the mock that backs db.select(...).from(...) — it must not
+    // have been invoked. (We assert on the underlying mock, not the chain wrapper.)
+    expect(selectAllResult).not.toHaveBeenCalled();
+  });
+});
+
+describe("DASH-04 / D-09 / D-11: updateUser — self-edit + admin cross-user edit (Plan 04-03)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Default: requireCan DENIES; tests that exercise the admin path override it.
+    requireCanMock.mockImplementation(() => {
+      throw new Error("FORBIDDEN");
+    });
+    // Default: getSessionOrThrow returns an admin session; self-edit tests override
+    // to return a session whose id matches the target userId.
+    getSessionOrThrowMock.mockResolvedValue({
+      user: { id: "admin-1", role: "admin" },
+      session: { id: "sess-1" },
+    });
+    updateSetWhere.mockResolvedValue(undefined);
+    updateUserMock.mockResolvedValue({ user: { id: "target-1" } });
+  });
+
+  it("admin updates ANOTHER user's role: requireCan({user:['update']}) passes, role persists (D-11)", async () => {
+    // Admin passes the cross-user permission gate.
+    requireCanMock.mockResolvedValue({ user: { id: "admin-1", role: "admin" } });
+
+    await updateUser("target-1", { role: "editor" });
+
+    // Cross-user path MUST call requireCan with user:update BEFORE any db write.
+    expect(requireCanMock).toHaveBeenCalledWith({ user: ["update"] });
+    // The role-change persistence fired against the user table.
+    expect(updateSetWhere).toHaveBeenCalled();
+  });
+
+  it("non-admin updating ANOTHER user: throws FORBIDDEN BEFORE db.update runs (T-04-12 — MUST_NOT_BE_REACHED)", async () => {
+    // requireCan throws by default (set in beforeEach) — proving the gate fires
+    // before any persistence. If ordering is wrong, updateSetWhere fires and the
+    // throw below surfaces.
+    updateSetWhere.mockImplementation(() => {
+      throw new Error("MUST_NOT_BE_REACHED — requireCan did not fire before db.update");
+    });
+    updateUserMock.mockImplementation(() => {
+      throw new Error("MUST_NOT_BE_REACHED — requireCan did not fire before auth.api.updateUser");
+    });
+
+    await expect(
+      updateUser("target-1", { name: "New Name" }),
+    ).rejects.toThrow("FORBIDDEN");
+
+    expect(updateSetWhere).not.toHaveBeenCalled();
+    expect(updateUserMock).not.toHaveBeenCalled();
+    // The cross-user path MUST call requireCan (the !isSelf branch).
+    expect(requireCanMock).toHaveBeenCalledWith({ user: ["update"] });
+  });
+
+  it("self-edit (any role): ALLOWED without requireCan({user:['update']}); name/bio/avatar persist (D-09)", async () => {
+    // Self-edit: the session user is the target. The action must NOT call requireCan
+    // for the self-edit path (any role may self-edit per D-09).
+    getSessionOrThrowMock.mockResolvedValue({
+      user: { id: "self-1", role: "author" },
+      session: { id: "sess-self" },
+    });
+
+    await updateUser("self-1", { name: "Me", bio: "my bio", avatar: "cdn.example.com/me.png" });
+
+    // requireCan was NOT called for the self-edit path (the action short-circuits).
+    expect(requireCanMock).not.toHaveBeenCalled();
+    // Persistence fired.
+    expect(updateSetWhere).toHaveBeenCalled();
+  });
+
+  it("self-edit attempting role change: role is STRIPPED, no error thrown (D-09 defense in depth — T-04-11)", async () => {
+    // Self-edit with role in the input. The action must strip role before persisting
+    // so a user cannot self-promote. No throw — graceful degradation.
+    getSessionOrThrowMock.mockResolvedValue({
+      user: { id: "self-1", role: "author" },
+      session: { id: "sess-self" },
+    });
+
+    // Should NOT throw — the role field is silently dropped.
+    await expect(
+      updateUser("self-1", { role: "admin", name: "Selfish" }),
+    ).resolves.not.toThrow();
+
+    // All persistence flows through db.update (the auth.api.updateUser body type
+    // does not accept userId — see PLAN <action> step 3 fallback). `name` reaches
+    // the DB; `role` does NOT. The Better Auth updateUser endpoint is never called.
+    expect(updateSetWhere).toHaveBeenCalled();
+    expect(updateUserMock).not.toHaveBeenCalled();
+    // And requireCan was NOT called for the self-edit path.
+    expect(requireCanMock).not.toHaveBeenCalled();
   });
 });
