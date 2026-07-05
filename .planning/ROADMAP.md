@@ -18,7 +18,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Foundation** - Next.js 16 config, Drizzle schema + first migration, R2/sharp pipeline, route-group isolation
 - [x] **Phase 2: Auth + RBAC** - Better Auth + admin plugin, proxy cookie gate, permission helpers, review-workflow status enum shipped together (code complete 2026-07-02; pending UAT — email round-trip deferred, see 02-VERIFICATION.md / 02-UAT.md) (completed 2026-07-03)
 - [x] **Phase 3: Content Engine** - Posts CRUD + Tiptap JSON round-trip, double-sanitization, categories/tags, provider-based media (local default + R2), revalidation wired in (completed 2026-07-04)
-- [ ] **Phase 4: Dashboard Chrome** - TailAdmin wired to real data (posts, taxonomy, media, users, pages) + Storage Settings (Cloudinary/push-CDN providers), RHF+Zod, TanStack Query, demo cleanup
+- [x] **Phase 4: Dashboard Chrome** - TailAdmin wired to real data (posts, taxonomy, media, users, pages) + Storage Settings (Cloudinary/push-CDN providers), RHF+Zod, TanStack Query, demo cleanup (completed 2026-07-05)
 - [ ] **Phase 5: SEO Basics** - generateMetadata per route, dynamic sitemap + robots, JSON-LD, canonical, OG/Twitter cards, RSS
 - [ ] **Phase 6: Public Frontend** - Home/blog/archive, category/tag/author archives, single post (Cache Components + Suspense), search, About/Contact/legal, dark mode
 - [ ] **Phase 7: Performance & Deploy** - Lighthouse/CWV pass, bundle-budget audit, revalidation audit end-to-end, auth rate limiting, Coolify staging, Dokploy, self host
@@ -145,7 +145,7 @@ Plans:
   5. The `ecommerce/` demo folder and unused chart/table demos are removed, the heavy editor/charts are lazy-loaded, and dark mode works across the dashboard — initial dashboard load stays lean.
   6. An admin can open a Storage Settings page, pick the active image destination (local/Cloudinary/R2/push-CDN), enter per-provider credentials, and persist the choice to `settings` — the Cloudinary + push-CDN providers are implemented here (extending the `lib/storage/` abstraction from MEDIA-04), and the save action re-checks admin permission server-side.
 
-**Plans**: 4/5 plans executed
+**Plans**: 5/5 plans complete
 
 **Wave 1** (foundational — unblocks all of Wave 2)
 
@@ -159,7 +159,7 @@ Plans:
 
 **Wave 3** (most technically nuanced — blocked on 04-02 for media.ts sequencing)
 
-- [ ] 04-05-PLAN.md — DASH-09 Storage Settings + new providers + crypto: `lib/crypto` AES-256-GCM (D-25) + Cloudinary provider (D-22) + generic S3-compatible push-CDN provider (D-21) + `lib/storage/registry` `getProviderByName` + `deleteMedia` multi-provider bug fix (Pitfall 0) + admin-only Storage Settings page (D-23) + "Test connection" probes (D-24) + `next.config.ts` remotePatterns (Pitfall 4) + instrumentation register + cloudinary@2.10.0 install + `SETTINGS_ENCRYPTION_KEY` env + new settings-keys seed (D-29b) + Wave 0 tests (cloudinary/push-cdn/crypto/storage-settings)
+- [x] 04-05-PLAN.md — DASH-09 Storage Settings + new providers + crypto: `lib/crypto` AES-256-GCM (D-25) + Cloudinary provider (D-22) + generic S3-compatible push-CDN provider (D-21) + `lib/storage/registry` `getProviderByName` + `deleteMedia` multi-provider bug fix (Pitfall 0) + admin-only Storage Settings page (D-23) + "Test connection" probes (D-24) + `next.config.ts` remotePatterns (Pitfall 4) + instrumentation register + cloudinary@2.10.0 install + `SETTINGS_ENCRYPTION_KEY` env + new settings-keys seed (D-29b) + Wave 0 tests (cloudinary/push-cdn/crypto/storage-settings)
 
 **Pitfalls owned:** cross-group import leakage prevention continues (bundle-budget check enforced in Phase 7); dashboard bloat avoided via lazy-loading; `deleteMedia` multi-provider correctness bug fixed in Wave 3 (Pitfall 0 from RESEARCH.md).
 **Research flag:** none — TailAdmin wiring + RHF/Zod + TanStack Query are well-documented standard patterns.
