@@ -30,7 +30,7 @@ import { db, schema } from "@/lib/db";
 import { eq, isNull, and, desc, or, sql } from "drizzle-orm";
 import { log } from "@/lib/log";
 import { requireCan } from "@/lib/permissions";
-import { getActiveProvider } from "@/lib/storage/registry";
+import { getActiveProvider, getProviderByName } from "@/lib/storage/registry";
 import {
   mediaUploadSchema,
   mediaListSchema,
@@ -146,10 +146,17 @@ export async function listMedia(
  * provider.delete(providerKey) to remove the stored object, then sets
  * deletedAt (soft-delete per D-08 — never hard-delete content rows).
  *
- * Uses the ROW's provider column to route to the correct provider for deletion
- * (a media row stored with provider="r2" is deleted via r2Provider even if the
- * active setting has since switched to "local"). Falls back to the active
- * provider if the row's provider is null (legacy/default).
+ * Pitfall 0 FIX (Plan 04-05): Routes via `getProviderByName(row.provider ?? "local")`
+ * — the ROW's stored provider — NOT `getActiveProvider()`. A media row stored under
+ * provider="r2" is deleted via r2Provider even if the active setting has since
+ * switched to "cloudinary" or "local". Without this fix, switching active provider
+ * would call the wrong provider's delete (Cloudinary destroy returns 200 for missing
+ * resources by design) and silently leak the R2 object forever. Proven by the
+ * extended media.test.ts Pitfall 0 case (row with provider="r2" deleted via
+ * r2Provider when active is cloudinary).
+ *
+ * `getProviderByName` is synchronous — the providers map is module-scoped (populated
+ * at boot by instrumentation.ts); no DB lookup needed for delete routing.
  */
 export async function deleteMedia(id: number): Promise<void> {
   await requireCan({ media: ["delete"] });
@@ -169,7 +176,8 @@ export async function deleteMedia(id: number): Promise<void> {
     throw new Error("NOT_FOUND");
   }
 
-  const provider = await getActiveProvider();
+  // Pitfall 0 fix: route by the ROW's stored provider, NOT the active provider.
+  const provider = getProviderByName(row.provider ?? "local");
   await provider.delete(row.providerKey);
 
   await db

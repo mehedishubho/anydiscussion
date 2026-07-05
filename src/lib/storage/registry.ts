@@ -76,3 +76,29 @@ export async function getActiveProvider(): Promise<StorageProvider> {
   const name = (row?.value as string | null | undefined) ?? "local";
   return providers[name] ?? providers.local;
 }
+
+/**
+ * Synchronous lookup by provider name (Plan 04-05 — Pitfall 0 fix enabler).
+ *
+ * Used by `deleteMedia` to route via the ROW's stored provider, NOT the active
+ * provider. The providers map is module-scoped (populated at boot + by
+ * registerStorageProvider calls); the lookup is sync + O(1).
+ *
+ * Resolution order:
+ *   1. name matches a registered provider → that provider.
+ *   2. name is null/undefined/unknown → localProvider (default-safe).
+ *
+ * Default-safe fallback to local is CRITICAL: a row with a missing/legacy
+ * provider value must still delete cleanly. Without this helper, `deleteMedia`
+ * routed via getActiveProvider() — a row stored under provider="r2" would be
+ * deleted via whatever the active provider is now (e.g. cloudinary), silently
+ * no-oping and leaking the R2 object. Proven by media.test.ts Pitfall 0 case.
+ *
+ * @param name The media row's stored provider column value.
+ * @returns The StorageProvider registered under that name, or localProvider.
+ */
+export function getProviderByName(
+  name: string | null | undefined,
+): StorageProvider {
+  return providers[name ?? "local"] ?? providers.local;
+}

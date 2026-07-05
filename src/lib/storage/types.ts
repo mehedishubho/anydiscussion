@@ -27,8 +27,13 @@ import type { UploadedVariant } from "@/lib/r2";
  * even if the active setting has since switched to "local").
  */
 export interface StorageProvider {
-  /** Discriminator — also the value written to media.provider (MEDIA-02). */
-  readonly name: "local" | "r2"; // Phase-4 DASH-09 adds "cloudinary" | "push-cdn"
+  /**
+   * Discriminator — also the value written to media.provider (MEDIA-02).
+   *
+   * Plan 04-05 widened the union to add "cloudinary" (D-22) + "push-cdn" (D-21).
+   * The media.provider column is plain text — no schema migration is needed.
+   */
+  readonly name: "local" | "r2" | "cloudinary" | "push-cdn";
 
   /**
    * Upload a buffer → provider. Images (mime starts with "image/") run through

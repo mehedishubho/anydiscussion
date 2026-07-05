@@ -32,6 +32,12 @@ import { db, schema } from "@/lib/db";
  * onConflictDoNothing on the `settings.key` PK means re-runs are no-ops for rows
  * that already exist (a user-set value is NEVER overwritten by this seed).
  *
+ * Plan 04-05 extends with DASH-09 keys: encrypted-credential slots for cloudinary +
+ * push-cdn (empty blobs until the admin enters creds via Storage Settings) plus
+ * `storage.encryption_key_version` (D-25 key-rotation reference — value is "1" by
+ * convention; bumping it on a key rotation would prompt the admin to re-enter all
+ * provider credentials, per Pitfall 2's "v1 simpler approach").
+ *
  * Call from: src/instrumentation.ts at first boot (NEXT_RUNTIME === "nodejs").
  */
 export async function seedStorageSettings(): Promise<void> {
@@ -41,6 +47,13 @@ export async function seedStorageSettings(): Promise<void> {
       { key: "storage.active_provider", value: "local" },
       { key: "site.timezone", value: "Asia/Dhaka" },
       { key: "site.feature_image_default", value: "" },
+      // Plan 04-05 DASH-09 — empty encrypted-cred slots. The Storage Settings page
+      // writes to these via saveStorageSettings; an empty value means "no creds yet"
+      // and getActiveProvider falls back to local (default-safe).
+      { key: "storage.r2_creds", value: "" },
+      { key: "storage.cloudinary_creds", value: "" },
+      { key: "storage.push_cdn_creds", value: "" },
+      { key: "storage.encryption_key_version", value: "1" },
     ])
     .onConflictDoNothing();
 }
