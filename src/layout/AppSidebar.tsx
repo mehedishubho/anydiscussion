@@ -1,109 +1,177 @@
 "use client";
-import React, { useEffect, useRef, useState,useCallback } from "react";
+// src/layout/AppSidebar.tsx
+// [CITED: 04-CONTEXT.md D-02 — CMS nav + collapsed Components reference group]
+// [CITED: 04-CONTEXT.md D-03 — chart/form/table demos deleted; (ui-elements) preserved]
+// [CITED: 04-CONTEXT.md D-05 — role filter is UX ONLY; authoritative RBAC stays server-side]
+// [CITED: CLAUDE.md "Roles & permissions" — never rely on UI hiding alone]
+//
+// The Phase-4 dashboard sidebar. Replaces the unmodified TailAdmin default (which
+// pointed at the deleted chart/form/table demo routes) with a focused CMS nav.
+//
+// navItems  = the CMS top nav: Posts, Categories, Tags, Media, Pages, Users
+//             (admin-only), Settings (admin-only, parent of Storage), Profile,
+//             Calendar. All hrefs are prefixed `/dashboard/*` (D-01).
+// othersItems = a collapsed "Components" reference group that links to the
+//               preserved (ui-elements) showcase (D-02 — the founder is not yet
+//               confident enough in the TailAdmin kit to drop the living reference).
+//               Decision: (ui-elements) stays at its current route-group path
+//               `(admin)/(ui-elements)/` so URLs remain `/alerts`, `/avatars`, etc.
+//               No `/dashboard/` prefix on these reference hrefs.
+//
+// Role filter (D-05):
+//   UX ONLY — every mutating Server Action still re-checks permissions server-side
+//   (Phase 2 Pitfall #1, CLAUDE.md "never rely on UI hiding alone"). The `role`
+//   prop is passed from `(admin)/layout.tsx` (AuthGate calls getSession) through
+//   AdminShell. `hasRole(role, required)` returns true when either no role is
+//   required OR the viewer's role matches the requirement (admin always passes).
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useSidebar } from "../context/SidebarContext";
 import {
   BoxCubeIcon,
+  BoxIcon,
   CalenderIcon,
   ChevronDownIcon,
   GridIcon,
   HorizontaLDots,
   ListIcon,
   PageIcon,
-  PieChartIcon,
   PlugInIcon,
   TableIcon,
   UserCircleIcon,
+  UserIcon,
 } from "../icons/index";
 import SidebarWidget from "./SidebarWidget";
+
+type Role = "admin" | "editor" | "author";
 
 type NavItem = {
   name: string;
   icon: React.ReactNode;
   path?: string;
   subItems?: { name: string; path: string; pro?: boolean; new?: boolean }[];
+  /**
+   * UX-only role gate (D-05). When set, the item is hidden from roles that do
+   * not match. `admin` always passes. Authoritative RBAC remains server-side.
+   */
+  requiredRole?: Role;
 };
 
+// ─── CMS top nav (D-02) ─────────────────────────────────────────────────────
 const navItems: NavItem[] = [
-  {
-    icon: <GridIcon />,
-    name: "Dashboard",
-    subItems: [{ name: "Ecommerce", path: "/", pro: false }],
-  },
-  {
-    icon: <CalenderIcon />,
-    name: "Calendar",
-    path: "/calendar",
-  },
+  { icon: <GridIcon />, name: "Posts", path: "/dashboard/posts" },
+  { icon: <ListIcon />, name: "Categories", path: "/dashboard/categories" },
+  { icon: <BoxIcon />, name: "Tags", path: "/dashboard/tags" },
+  { icon: <BoxCubeIcon />, name: "Media", path: "/dashboard/media" },
+  { icon: <PageIcon />, name: "Pages", path: "/dashboard/pages" },
   {
     icon: <UserCircleIcon />,
-    name: "User Profile",
-    path: "/profile",
-  },
-
-  {
-    name: "Forms",
-    icon: <ListIcon />,
-    subItems: [{ name: "Form Elements", path: "/form-elements", pro: false }],
-  },
-  {
-    name: "Tables",
-    icon: <TableIcon />,
-    subItems: [{ name: "Basic Tables", path: "/basic-tables", pro: false }],
-  },
-  {
-    name: "Pages",
-    icon: <PageIcon />,
-    subItems: [
-      { name: "Blank Page", path: "/blank", pro: false },
-      { name: "404 Error", path: "/error-404", pro: false },
-    ],
-  },
-];
-
-const othersItems: NavItem[] = [
-  {
-    icon: <PieChartIcon />,
-    name: "Charts",
-    subItems: [
-      { name: "Line Chart", path: "/line-chart", pro: false },
-      { name: "Bar Chart", path: "/bar-chart", pro: false },
-    ],
-  },
-  {
-    icon: <BoxCubeIcon />,
-    name: "UI Elements",
-    subItems: [
-      { name: "Alerts", path: "/alerts", pro: false },
-      { name: "Avatar", path: "/avatars", pro: false },
-      { name: "Badge", path: "/badge", pro: false },
-      { name: "Buttons", path: "/buttons", pro: false },
-      { name: "Images", path: "/images", pro: false },
-      { name: "Videos", path: "/videos", pro: false },
-    ],
+    name: "Users",
+    path: "/dashboard/users",
+    requiredRole: "admin",
   },
   {
     icon: <PlugInIcon />,
-    name: "Authentication",
+    name: "Settings",
+    requiredRole: "admin",
     subItems: [
-      { name: "Sign In", path: "/signin", pro: false },
-      { name: "Sign Up", path: "/signup", pro: false },
+      // Plan 04-05 ships the Storage route; the link is admin-gated here.
+      { name: "Storage", path: "/dashboard/settings/storage" },
+    ],
+  },
+  { icon: <UserIcon />, name: "Profile", path: "/dashboard/profile" },
+  { icon: <CalenderIcon />, name: "Calendar", path: "/dashboard/calendar" },
+];
+
+// ─── Components reference group (D-02 — collapsed (ui-elements) showcase) ────
+// Hrefs point at the preserved (ui-elements) routes. URLs stay `/alerts`, etc.
+// because `(admin)` and `(ui-elements)` are both route groups (parens) — they
+// add no URL segment. We intentionally keep this folder at its current path
+// rather than moving under `/dashboard/*` to minimize churn (the showcase is a
+// reference tool, not a CMS surface — D-01's `/dashboard/*` mandate names only
+// the real CMS surfaces).
+const othersItems: NavItem[] = [
+  {
+    icon: <TableIcon />,
+    name: "Components",
+    subItems: [
+      { name: "Alerts", path: "/alerts" },
+      { name: "Avatars", path: "/avatars" },
+      { name: "Badge", path: "/badge" },
+      { name: "Buttons", path: "/buttons" },
+      { name: "Images", path: "/images" },
+      { name: "Modals", path: "/modals" },
+      { name: "Videos", path: "/videos" },
     ],
   },
 ];
 
-const AppSidebar: React.FC = () => {
+// ─── Role helpers (D-05 — UX ONLY) ──────────────────────────────────────────
+/**
+ * UX-only role gate. Admin always passes. The authoritative permission check
+ * fires server-side in every mutating Server Action (Phase 2 Pitfall #1; this
+ * sidebar filter is NOT a security boundary).
+ */
+function hasRole(role: Role | undefined, required: Role | undefined): boolean {
+  if (!required) return true; // no requirement → visible to all
+  if (!role) return false; // unknown viewer → hide role-restricted items
+  if (role === "admin") return true; // admin = full (CLAUDE.md D-11)
+  return role === required;
+}
+
+interface AppSidebarProps {
+  /** Viewer's role, propagated from `(admin)/layout.tsx` AuthGate → AdminShell. */
+  role?: Role;
+}
+
+const AppSidebar: React.FC<AppSidebarProps> = ({ role }) => {
   const { isExpanded, isMobileOpen, isHovered, setIsHovered } = useSidebar();
   const pathname = usePathname();
 
+  // Active-item detection. Prefix match (e.g. `/dashboard/posts/new` lights up
+  // the Posts entry) — required because the CMS nav points at section roots.
+  const isActive = useCallback(
+    (path: string) =>
+      pathname === path || pathname.startsWith(path + "/"),
+    [pathname],
+  );
+
+  const [openSubmenu, setOpenSubmenu] = useState<{
+    type: "main" | "others";
+    index: number;
+  } | null>(null);
+  const [subMenuHeight, setSubMenuHeight] = useState<Record<string, number>>(
+    {},
+  );
+  const subMenuRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  const handleSubmenuToggle = (index: number, menuType: "main" | "others") => {
+    setOpenSubmenu((prevOpenSubmenu) => {
+      if (
+        prevOpenSubmenu &&
+        prevOpenSubmenu.type === menuType &&
+        prevOpenSubmenu.index === index
+      ) {
+        return null;
+      }
+      return { type: menuType, index };
+    });
+  };
+
+  // Apply the UX-only role filter (D-05) once per render.
+  const visibleNavItems = navItems.filter((item) => hasRole(role, item.requiredRole));
+  const visibleOthersItems = othersItems.filter((item) =>
+    hasRole(role, item.requiredRole),
+  );
+
   const renderMenuItems = (
-    navItems: NavItem[],
-    menuType: "main" | "others"
+    items: NavItem[],
+    menuType: "main" | "others",
   ) => (
     <ul className="flex flex-col gap-4">
-      {navItems.map((nav, index) => (
+      {items.map((nav, index) => (
         <li key={nav.name}>
           {nav.subItems ? (
             <button
@@ -224,46 +292,32 @@ const AppSidebar: React.FC = () => {
     </ul>
   );
 
-  const [openSubmenu, setOpenSubmenu] = useState<{
-    type: "main" | "others";
-    index: number;
-  } | null>(null);
-  const [subMenuHeight, setSubMenuHeight] = useState<Record<string, number>>(
-    {}
-  );
-  const subMenuRefs = useRef<Record<string, HTMLDivElement | null>>({});
-
-  // const isActive = (path: string) => path === pathname;
-   const isActive = useCallback((path: string) => path === pathname, [pathname]);
-
   useEffect(() => {
-    // Check if the current path matches any submenu item
+    // Auto-open the submenu containing the current path so the active item is
+    // visible on first paint. Iterates the role-filtered lists.
     let submenuMatched = false;
-    ["main", "others"].forEach((menuType) => {
-      const items = menuType === "main" ? navItems : othersItems;
+    [
+      { type: "main" as const, items: visibleNavItems },
+      { type: "others" as const, items: visibleOthersItems },
+    ].forEach(({ type, items }) => {
       items.forEach((nav, index) => {
         if (nav.subItems) {
           nav.subItems.forEach((subItem) => {
             if (isActive(subItem.path)) {
-              setOpenSubmenu({
-                type: menuType as "main" | "others",
-                index,
-              });
+              setOpenSubmenu({ type, index });
               submenuMatched = true;
             }
           });
         }
       });
     });
-
-    // If no submenu item matches, close the open submenu
     if (!submenuMatched) {
       setOpenSubmenu(null);
     }
-  }, [pathname,isActive]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname, role]);
 
   useEffect(() => {
-    // Set the height of the submenu items when the submenu is opened
     if (openSubmenu !== null) {
       const key = `${openSubmenu.type}-${openSubmenu.index}`;
       if (subMenuRefs.current[key]) {
@@ -275,22 +329,9 @@ const AppSidebar: React.FC = () => {
     }
   }, [openSubmenu]);
 
-  const handleSubmenuToggle = (index: number, menuType: "main" | "others") => {
-    setOpenSubmenu((prevOpenSubmenu) => {
-      if (
-        prevOpenSubmenu &&
-        prevOpenSubmenu.type === menuType &&
-        prevOpenSubmenu.index === index
-      ) {
-        return null;
-      }
-      return { type: menuType, index };
-    });
-  };
-
   return (
     <aside
-      className={`fixed mt-16 flex flex-col lg:mt-0 top-0 px-5 left-0 bg-white dark:bg-gray-900 dark:border-gray-800 text-gray-900 h-screen transition-all duration-300 ease-in-out z-50 border-r border-gray-200 
+      className={`fixed mt-16 flex flex-col lg:mt-0 top-0 px-5 left-0 bg-white dark:bg-gray-900 dark:border-gray-800 text-gray-900 h-screen transition-all duration-300 ease-in-out z-50 border-r border-gray-200
         ${
           isExpanded || isMobileOpen
             ? "w-[290px]"
@@ -308,7 +349,7 @@ const AppSidebar: React.FC = () => {
           !isExpanded && !isHovered ? "lg:justify-center" : "justify-start"
         }`}
       >
-        <Link href="/">
+        <Link href="/dashboard">
           {isExpanded || isHovered || isMobileOpen ? (
             <>
               <Image
@@ -353,7 +394,7 @@ const AppSidebar: React.FC = () => {
                   <HorizontaLDots />
                 )}
               </h2>
-              {renderMenuItems(navItems, "main")}
+              {renderMenuItems(visibleNavItems, "main")}
             </div>
 
             <div className="">
@@ -365,12 +406,12 @@ const AppSidebar: React.FC = () => {
                 }`}
               >
                 {isExpanded || isHovered || isMobileOpen ? (
-                  "Others"
+                  "Reference"
                 ) : (
                   <HorizontaLDots />
                 )}
               </h2>
-              {renderMenuItems(othersItems, "others")}
+              {renderMenuItems(visibleOthersItems, "others")}
             </div>
           </div>
         </nav>
