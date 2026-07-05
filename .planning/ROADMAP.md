@@ -145,11 +145,11 @@ Plans:
   5. The `ecommerce/` demo folder and unused chart/table demos are removed, the heavy editor/charts are lazy-loaded, and dark mode works across the dashboard — initial dashboard load stays lean.
   6. An admin can open a Storage Settings page, pick the active image destination (local/Cloudinary/R2/push-CDN), enter per-provider credentials, and persist the choice to `settings` — the Cloudinary + push-CDN providers are implemented here (extending the `lib/storage/` abstraction from MEDIA-04), and the save action re-checks admin permission server-side.
 
-**Plans**: 5 plans
+**Plans**: 1/5 plans executed
 
 **Wave 1** (foundational — unblocks all of Wave 2)
 
-- [ ] 04-01-PLAN.md — Dashboard shell + pattern foundation: route restructure under `/dashboard/*` (D-01) + sidebar CMS nav with role-filter (D-02/D-05) + demo cleanup (D-03) + lean real-stats overview (D-04) + `(admin)`-scoped TanStack QueryClient (D-28) + PostForm `useMutation` retrofit (D-26 baseline) + auth-gate test marker sync (Pitfall 5)
+- [x] 04-01-PLAN.md — Dashboard shell + pattern foundation: route restructure under `/dashboard/*` (D-01) + sidebar CMS nav with role-filter (D-02/D-05) + demo cleanup (D-03) + lean real-stats overview (D-04) + `(admin)`-scoped TanStack QueryClient (D-28) + PostForm `useMutation` retrofit (D-26 baseline) + auth-gate test marker sync (Pitfall 5)
 
 **Wave 2** (parallel vertical slices — blocked on 04-01)
 
