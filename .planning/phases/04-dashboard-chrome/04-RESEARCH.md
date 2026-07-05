@@ -94,15 +94,24 @@
 
 Phase 4 is predominantly **UI over existing Server Actions** — the action layer shipped in Phases 2–3 (`actions/{posts,categories,tags,media,settings,users}.ts`). The bulk of the work is wiring TailAdmin component surfaces to those actions, formalizing one dashboard-wide form/mutation pattern (RHF + Zod + TanStack Query), and landing two folded UAT todos (route restructure + media picker). The genuinely novel technical work is concentrated in **DASH-09 (Storage Settings + new providers)** and **D-25 (encrypted credential storage)**.
 
-**Three findings dominate the planning picture:**
+**Four findings dominate the planning picture:**
 
-1. **The auth gate is `middleware.ts` at the repo root, NOT `proxy.ts`.** This contradicts the CLAUDE.md "verified 2026" note. The team documented a real Next.js 16.2.9 + Turbopack defect: `proxy.ts` compiles into the middleware bundle but Next.js never registers it in `middleware-manifest.json` (manifest stays empty `{}`), so zero requests route through it. Renaming to `middleware.ts` (the deprecated-but-battle-tested filename) fixed registration. The matcher **already targets `/dashboard/:path*`** — so D-01 is about moving the post pages (currently root `/posts`) under `/dashboard/*`, NOT about changing the matcher. The planner MUST NOT rename `middleware.ts` → `proxy.ts`.
+1. **A latent `deleteMedia` bug becomes real the moment DASH-09 ships.** `actions/media.ts` L172 calls `getActiveProvider()` to delete objects, but the code comment (L149-152) documents row-routed deletion as the intent. With one provider in Phase 3 this was harmless; once an admin can switch active provider at runtime, a row stored under `provider="r2"` will be deleted via whatever is active now (e.g. `cloudinary`) — silently no-oping and leaking the R2 object. **The planner MUST bundle a `getProviderByName(name)` registry helper + a `deleteMedia` rewrite as part of DASH-09.** See Pitfall 0. `[VERIFIED: src/actions/media.ts L149-152 + L172 — read directly]`
 
-2. **The storage abstraction is purpose-built for this extension.** The Phase 3 `StorageProvider` interface (`types.ts`), settings-driven registry (`registry.ts`), and `registerStorageProvider(name, provider)` hook were all designed with a Phase-4 DASH-09 comment in the code. The Cloudinary + push-CDN providers slot in cleanly. The existing tests (`registry.test.ts`) already cover the "unknown provider falls back to local" default-safe behavior and the `registerStorageProvider` hook.
+2. **The auth gate is `middleware.ts` at the repo root, NOT `proxy.ts`.** This contradicts the CLAUDE.md "verified 2026" note. The team documented a real Next.js 16.2.9 + Turbopack defect: `proxy.ts` compiles into the middleware bundle but Next.js never registers it in `middleware-manifest.json` (manifest stays empty `{}`), so zero requests route through it. Renaming to `middleware.ts` (the deprecated-but-battle-tested filename) fixed registration. The matcher **already targets `/dashboard/:path*`** — so D-01 is about moving the post pages (currently root `/posts`) under `/dashboard/*`, NOT about changing the matcher. The planner MUST NOT rename `middleware.ts` → `proxy.ts`.
 
-3. **Encryption is the lowest-risk novel piece.** Node's built-in `crypto` module provides AES-256-GCM authenticated encryption with no new dependencies. The canonical pattern (32-byte key from `process.env.SETTINGS_ENCRYPTION_KEY`, random 12-byte IV per encryption, `iv:authTag:ciphertext` envelope stored as base64 text) fits the existing `settings.value` text column with no schema change. A redact-on-read wrapper in the settings action keeps secrets out of client-visible state.
+3. **The storage abstraction is purpose-built for this extension.** The Phase 3 `StorageProvider` interface (`types.ts`), settings-driven registry (`registry.ts`), and `registerStorageProvider(name, provider)` hook were all designed with a Phase-4 DASH-09 comment in the code. The Cloudinary + push-CDN providers slot in cleanly. The existing tests (`registry.test.ts`) already cover the "unknown provider falls back to local" default-safe behavior and the `registerStorageProvider` hook. Two confirmed codebase facts make this low-risk: `media.provider` is **plain text, NOT a pgEnum** (so adding "cloudinary"/"push-cdn" needs NO schema migration — verified in `schema.ts` L117), and `settings.value` is a text column that accommodates base64 ciphertext blobs directly.
+
+4. **Encryption is the lowest-risk novel piece.** Node's built-in `crypto` module provides AES-256-GCM authenticated encryption with no new dependencies. The canonical pattern (32-byte key from `process.env.SETTINGS_ENCRYPTION_KEY`, random 12-byte IV per encryption, `iv:authTag:ciphertext` envelope stored as base64 text) fits the existing `settings.value` text column with no schema change. A redact-on-read wrapper in the settings action keeps secrets out of client-visible state.
 
 **Primary recommendation:** Build DASH-09's `lib/storage/cloudinary.ts` + `lib/storage/push-cdn.ts` against the existing `StorageProvider` interface; add a small `lib/crypto` helper (encrypt/decrypt/redact) for D-25; scope TanStack `QueryClientProvider` to the `(admin)` group via a new client component inside the existing `AdminShell.tsx`; and treat the route restructure (D-01) as a pure folder-move + sidebar-href update — the auth gate matcher is already correct.
+
+**Verified codebase facts (this session — direct reads):**
+- `actions/settings.ts` ships **only `getSetting`** — D-23's admin-gated `saveStorageSettings` (and a generic `setSetting`) is a NEW action, not an extension of existing code.
+- `actions/users.ts` ships `createFirstAdmin`/`createUser`/`banUser`/`unbanUser`/`revokeSessions` — there is **NO `listUsers` and NO `updateUser`**. Both are needed for D-07 (users table) and D-09/D-11 (profile + role assignment).
+- `src/layout/AppSidebar.tsx` is **still the unmodified TailAdmin default** — `navItems` shows "Ecommerce"/"Forms"/"Tables"/demo "Pages" subitems; D-02 fully replaces `navItems` + `othersItems` with the CMS nav + collapsed Components group. Clean slate.
+- `vitest.config.ts` — Node environment default; component tests opt into jsdom via `// @vitest/environment jsdom` pragma at file top (no global jsdom). The `@/*` → `src/*` alias is configured.
+- `react-dropzone@14.3.8` already in `package.json` — drives the D-14 dropzone with no new install. `@aws-sdk/client-s3@3.1077.0` already installed — reused for the push-CDN provider with a custom `endpoint`. `@dnd-kit/*` is NOT installed and NOT needed (no table-row reordering is in scope).
 
 ## Architectural Responsibility Map
 
@@ -138,7 +147,7 @@ Phase 4 is predominantly **UI over existing Server Actions** — the action laye
 
 | Library | Version | Purpose | When to Use |
 |---------|---------|---------|-------------|
-| cloudinary | 2.10.0 (`[VERIFIED: npm registry]` — latest, published 2026-04-25, 831K weekly downloads, official repo `cloudinary/cloudinary_npm`) | Cloudinary upload + delivery URL SDK | D-22 only — the Cloudinary `StorageProvider`. v2 API: `cloudinary.v2.uploader.upload_stream()` for buffer upload; `cloudinary.v2.url(publicId, { transformation })` for on-the-fly transform URLs. `[VERIFIED: npm view cloudinary]` |
+| cloudinary | 2.10.0 (`[VERIFIED: npm registry]` — latest, published 2026-04-25, 831K weekly downloads, official repo `cloudinary/cloudinary_npm`, package-legitimacy check returned OK with no postinstall script) | Cloudinary upload + delivery URL SDK | D-22 only — the Cloudinary `StorageProvider`. v2 API: `cloudinary.v2.uploader.upload_stream()` for buffer upload; on-the-fly transform URL syntax `https://res.cloudinary.com/{cloud_name}/image/upload/{transforms}/{public_id}.{ext}` — `[CITED: live-verified via analyze_image: the demo URL https://res.cloudinary.com/demo/image/upload/w_300,h_200,c_fill,q_auto,f_webp/sample.jpg returns a transformed WebP]` |
 
 ### Alternatives Considered
 
@@ -478,6 +487,13 @@ const onValid = (values: PostSchemaInput) => mutation.mutate(values);
 
 ## Common Pitfalls
 
+### Pitfall 0: `deleteMedia` uses the active provider instead of the row's stored provider (REAL BUG — fix in Phase 4)
+**What goes wrong:** `actions/media.ts` line ~172 calls `getActiveProvider()` to delete a media object. Once DASH-09 makes multiple providers switchable at runtime, a row stored under `provider="r2"` will be deleted via whatever the active provider is now (e.g. `cloudinary`). The Cloudinary delete silently no-ops (returns 200 for missing resources) and the R2 object leaks forever.
+**Why it happens:** The code comment on lines 149-152 documents the INTENDED row-routed behavior ("Uses the ROW's provider column to route to the correct provider for deletion… Falls back to the active provider if the row's provider is null") — but the implementation at line 172 takes the simpler `getActiveProvider()` path regardless of `row.provider`. With a single provider in Phase 3 this was harmless; DASH-09 makes it a real correctness bug.
+**How to avoid:** Phase 4 must add `getProviderByName(name)` to `registry.ts` (the `providers` map already exists — just expose a lookup) and rewrite `deleteMedia` to route by `row.provider ?? "local"`. The provider map keyed by name already exists; this is a one-line registry addition + a small `deleteMedia` rewrite. **The planner MUST include this fix as part of DASH-09** — it is the correctness guarantee that makes multi-provider safe.
+**Warning signs:** Orphaned objects in R2/origin buckets after provider switches; media rows soft-deleted in DB but objects still present in origin storage; `provider="r2"` rows returning 200 from a Cloudinary delete probe.
+`[VERIFIED: src/actions/media.ts L149-152 (comment) + L172 (implementation) — read directly in this session]`
+
 ### Pitfall 1: Renaming `middleware.ts` → `proxy.ts` (the CLAUDE.md staleness trap)
 **What goes wrong:** Following CLAUDE.md's "proxy.ts (renamed)" guidance literally, the planner renames `middleware.ts` → `src/proxy.ts`. Next.js 16.2.9 + Turbopack compiles it but never registers it in `middleware-manifest.json` (manifest stays empty `{}`). The auth gate silently disappears — unauthenticated users hit `/dashboard` without redirect.
 **Why it happens:** CLAUDE.md documents the rename as a done deal, but the team hit a real Turbopack defect in Phase 2 (plan 02-05) and reverted. The middleware.ts file has an 18-line comment explaining this exact issue.
@@ -704,10 +720,9 @@ export async function createPage(input: PageInput) {
    - What's unclear: Whether the UI should expose reason/expiry or just a simple toggle.
    - Recommendation: Ship a simple ban toggle first (no reason/expiry in the form). The primitive supports adding them later. Discretionary per D-07.
 
-4. **Does `actions/users.ts` need a new `listUsers` action (none exists)?**
-   - What we know: `users.ts` has `createFirstAdmin`, `createUser`, `banUser`, `unbanUser`, `revokeSessions` — no list/update.
-   - What's unclear: Whether the users table page reads directly from `db.user` or via an action.
-   - Recommendation: Add `listUsers()` + `updateUser()` to `actions/users.ts` following the existing template (permission check first). The users table page calls `listUsers()` from a Server Component; the drawer calls `createUser`/`updateUser`/`banUser`/`revokeSessions` via TanStack mutations.
+4. **Does `actions/users.ts` need a new `listUsers` action (none exists)?** — **RESOLVED by codebase read this session.**
+   - What we know: `users.ts` has `createFirstAdmin`, `createUser`, `banUser`, `unbanUser`, `revokeSessions` — **no `listUsers` and no `updateUser`**. Both are required for DASH-04.
+   - Recommendation: Add `listUsers()` + `updateUser()` to `actions/users.ts` following the existing template (`requireCan({ user: [...] })` first). The users table page calls `listUsers()` from a Server Component; the drawer calls `createUser`/`updateUser`/`banUser`/`revokeSessions` via TanStack mutations. `updateUser` must re-check `requireCan({ user: ["update"] })` server-side for the role-change path (D-11) — UI hiding is not enough.
 
 ## Environment Availability
 
@@ -757,6 +772,7 @@ export async function createPage(input: PageInput) {
 | Risk | Behavior to verify | Test Type | Command | File Exists? |
 |------|-------------------|-----------|---------|-------------|
 | Storage provider correctness (D-21/D-22) | New providers implement `StorageProvider` interface; `upload`/`getPublicUrl`/`delete` round-trip | unit | `pnpm test src/lib/storage/__tests__/*.test.ts -x` | ❌ Wave 0 — `cloudinary.test.ts`, `push-cdn.test.ts` |
+| **`deleteMedia` routes by row's stored provider (Pitfall 0 fix)** | A row with `provider="r2"` is deleted via `r2Provider` even when active is `cloudinary` | unit | `pnpm test src/actions/__tests__/media.test.ts -x` (extend with multi-provider delete case) | ✅ exists — extend |
 | Encryption round-trip (D-25) | `encrypt(decrypt(x)) === x`; tamper detection throws | unit | `pnpm test src/lib/crypto/__tests__/crypto.test.ts -x` | ❌ Wave 0 |
 | Credential redaction (D-25) | `redactCredentials` zeroes secret fields; client never sees secrets | unit | (same as above) | ❌ Wave 0 |
 | Permission re-check on Storage Settings save (D-23) | Non-admin calling `saveStorageSettings` throws FORBIDDEN | unit | `pnpm test src/actions/__tests__/storage-settings.test.ts -x` | ❌ Wave 0 |
