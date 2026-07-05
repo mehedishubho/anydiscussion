@@ -23,6 +23,15 @@ const nextConfig: NextConfig = {
     remotePatterns: [
       { protocol: "https", hostname: "cdn.anydiscussion.com" },
       { protocol: "http", hostname: "localhost", port: "9000" },
+      // Plan 04-05 Pitfall 4 — allowlist the Cloudinary delivery hostname.
+      // Cloudinary URLs look like https://res.cloudinary.com/<cloud_name>/image/upload/...
+      // Without this entry, next/image would 400 on every Cloudinary-served media item.
+      { protocol: "https", hostname: "res.cloudinary.com" },
+      // NOTE: the push-CDN hostname is operator-supplied (Bunny / KeyCDN / etc.). When
+      // the admin configures push-CDN in /dashboard/settings/storage, they MUST also
+      // add their CDN hostname here. Documented in the Storage Settings UI help text.
+      // (Intentionally NOT a wildcard — next/image + remotePatterns explicit allowlist
+      // is a security boundary; adding a wildcard would let any hostname render.)
     ],
     loader: "custom",
     loaderFile: "src/lib/image-loader.ts",

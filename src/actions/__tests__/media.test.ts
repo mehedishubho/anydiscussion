@@ -27,18 +27,24 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 const {
   requireCanMock,
   getActiveProviderMock,
+  getProviderByNameMock,
   providerUploadMock,
   providerGetPublicUrlMock,
   providerDeleteMock,
+  r2ProviderDeleteMock,
+  cloudinaryProviderDeleteMock,
   insertReturningMock,
   selectMediaMock,
   updateMediaMock,
 } = vi.hoisted(() => ({
   requireCanMock: vi.fn(),
   getActiveProviderMock: vi.fn(),
+  getProviderByNameMock: vi.fn(),
   providerUploadMock: vi.fn(),
   providerGetPublicUrlMock: vi.fn(),
   providerDeleteMock: vi.fn(),
+  r2ProviderDeleteMock: vi.fn(),
+  cloudinaryProviderDeleteMock: vi.fn(),
   insertReturningMock: vi.fn(),
   selectMediaMock: vi.fn(),
   updateMediaMock: vi.fn(),
@@ -69,9 +75,12 @@ vi.mock("../media-schema", () => ({
   },
 }));
 
-// @/lib/storage/registry — getActiveProvider returns a controllable provider stub.
+// @/lib/storage/registry — getActiveProvider + getProviderByName return controllable
+// provider stubs. Plan 04-05 Pitfall 0 fix: deleteMedia routes via getProviderByName
+// (sync) — the mock selects the right stub based on the row.provider arg.
 vi.mock("@/lib/storage/registry", () => ({
   getActiveProvider: (...a: unknown[]) => getActiveProviderMock(...a),
+  getProviderByName: (...a: unknown[]) => getProviderByNameMock(...a),
 }));
 
 // The provider stub — the upload/getPublicUrl/delete spies.
@@ -80,6 +89,23 @@ const providerStub = {
   upload: (...a: unknown[]) => providerUploadMock(...a),
   getPublicUrl: (...a: unknown[]) => providerGetPublicUrlMock(...a),
   delete: (...a: unknown[]) => providerDeleteMock(...a),
+};
+
+// Pitfall 0 test stubs — distinct r2 + cloudinary providers so the multi-provider
+// delete case can prove that deleteMedia routes via the ROW's stored provider
+// (r2Provider.delete called) and NOT the active provider (cloudinaryProvider.delete
+// NOT called) when row.provider="r2" but active="cloudinary".
+const r2ProviderStub = {
+  name: "r2" as const,
+  upload: vi.fn(),
+  getPublicUrl: vi.fn(),
+  delete: (...a: unknown[]) => r2ProviderDeleteMock(...a),
+};
+const cloudinaryProviderStub = {
+  name: "cloudinary" as const,
+  upload: vi.fn(),
+  getPublicUrl: vi.fn(),
+  delete: (...a: unknown[]) => cloudinaryProviderDeleteMock(...a),
 };
 
 // @/lib/db — chainable select/from/where/orderBy/limit/offset + insert/values/returning
@@ -361,6 +387,9 @@ describe("deleteMedia: requires media:delete + provider.delete + soft-delete (D-
     vi.clearAllMocks();
     requireCanMock.mockResolvedValue(adminSession());
     getActiveProviderMock.mockResolvedValue(providerStub);
+    // Plan 04-05 Pitfall 0: deleteMedia now routes via getProviderByName (sync).
+    // Default mock returns the local providerStub — keeps the existing tests working.
+    getProviderByNameMock.mockReturnValue(providerStub);
     providerDeleteMock.mockResolvedValue(undefined);
     updateMediaMock.mockResolvedValue(undefined);
   });
@@ -389,6 +418,55 @@ describe("deleteMedia: requires media:delete + provider.delete + soft-delete (D-
     const updateSetSpy = (db.update as ReturnType<typeof vi.fn>).mock.results[0].value.set;
     const setArg = updateSetSpy.mock.calls[0][0];
     expect(setArg.deletedAt).toBeInstanceOf(Date);
+  });
+});
+
+describe("Pitfall 0 (Plan 04-05): deleteMedia routes via the ROW's stored provider, NOT the active provider", () => {
+  // The bug: deleteMedia originally called getActiveProvider() — so a row stored under
+  // provider="r2" would be deleted via whatever the active provider is now (e.g.
+  // cloudinary), silently no-oping and leaking the R2 object. The fix: route via
+  // getProviderByName(row.provider) — proven by this case.
+  beforeEach(() => {
+    vi.clearAllMocks();
+    requireCanMock.mockResolvedValue(adminSession());
+    // Active provider = cloudinary (the WRONG provider for a row stored under r2).
+    getActiveProviderMock.mockResolvedValue(cloudinaryProviderStub);
+    // getProviderByName routes by the arg name — return the r2 stub when "r2" is passed.
+    getProviderByNameMock.mockImplementation((name: string | null | undefined) => {
+      if (name === "r2") return r2ProviderStub;
+      if (name === "cloudinary") return cloudinaryProviderStub;
+      return providerStub; // default = local
+    });
+    r2ProviderDeleteMock.mockResolvedValue(undefined);
+    cloudinaryProviderDeleteMock.mockResolvedValue(undefined);
+    updateMediaMock.mockResolvedValue(undefined);
+  });
+
+  it("row.provider='r2' is deleted via r2Provider (NOT cloudinaryProvider) when active='cloudinary'", async () => {
+    selectMediaMock.mockResolvedValue([
+      { id: 7, providerKey: "media/r2-object-md.webp", provider: "r2" },
+    ]);
+    await deleteMedia(7);
+
+    // r2Provider.delete was called with the row's providerKey — correct routing.
+    expect(r2ProviderDeleteMock).toHaveBeenCalledWith("media/r2-object-md.webp");
+    // cloudinaryProvider.delete was NEVER called — proves the active provider is NOT used.
+    expect(cloudinaryProviderDeleteMock).not.toHaveBeenCalled();
+    // getActiveProvider was NEVER called by deleteMedia (the bug path is gone).
+    expect(getActiveProviderMock).not.toHaveBeenCalled();
+  });
+
+  it("row.provider=null falls back to local (legacy/default-safe per Pitfall 0 fix)", async () => {
+    selectMediaMock.mockResolvedValue([
+      { id: 8, providerKey: "media/legacy", provider: null },
+    ]);
+    providerDeleteMock.mockResolvedValue(undefined);
+    await deleteMedia(8);
+
+    // local provider was routed (providerStub.delete); r2 + cloudinary NOT called.
+    expect(providerDeleteMock).toHaveBeenCalledWith("media/legacy");
+    expect(r2ProviderDeleteMock).not.toHaveBeenCalled();
+    expect(cloudinaryProviderDeleteMock).not.toHaveBeenCalled();
   });
 });
 

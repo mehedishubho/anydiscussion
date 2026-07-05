@@ -26,7 +26,15 @@
  * the idempotent seed (settings + pages) — safe to re-run on every boot thanks
  * to onConflictDoNothing; admin-edited values are never overwritten.
  *
- * The dynamic imports keep node-cron + db deps out of the Edge bundle.
+ * Plan 04-05 (DASH-09): registers the new Cloudinary + push-CDN providers at boot
+ * via dynamic-import (keeps cloudinary + the S3Client-with-endpoint deps out of the
+ * Edge bundle — same pattern as the schedule/seed imports). After registration, the
+ * providers enter the providers map but stay UNCONFIGURED until the admin enters
+ * credentials via /dashboard/settings/storage (default-safe: getActiveProvider falls
+ * back to local when no creds are present).
+ *
+ * The dynamic imports keep node-cron + db + cloudinary + @aws-sdk/client-s3 deps
+ * out of the Edge bundle.
  */
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
@@ -40,5 +48,52 @@ export async function register() {
     const { seedStorageSettings, seedPages } = await import("@/lib/storage/seed");
     await seedStorageSettings();
     await seedPages();
+
+    // Plan 04-05 (DASH-09) — register the new providers at boot so the providers map
+    // is populated for the admin's choice. The providers stay UNCONFIGURED (no creds)
+    // until storage-settings.ts saveStorageSettings calls configureCloudinary /
+    // configurePushCdn with the decrypted creds. Safe to fail — wrap in try/catch so
+    // a missing dep or transient import error never blocks server startup.
+    try {
+      const { registerStorageProvider, getActiveProvider } = await import(
+        "@/lib/storage/registry"
+      );
+      const { cloudinaryProvider, configureCloudinary } = await import(
+        "@/lib/storage/cloudinary"
+      );
+      const { pushCdnProvider, configurePushCdn } = await import(
+        "@/lib/storage/push-cdn"
+      );
+      registerStorageProvider("cloudinary", cloudinaryProvider);
+      registerStorageProvider("push-cdn", pushCdnProvider);
+
+      // Best-effort: if creds are already present in settings (a re-boot after a
+      // prior save), configure the providers with the decrypted values so they work
+      // immediately. Wrap in try/catch — a missing SETTINGS_ENCRYPTION_KEY or a
+      // transient DB issue just means the admin re-enters creds on the Storage page.
+      try {
+        const { getSetting } = await import("@/actions/settings");
+        const { decrypt } = await import("@/lib/crypto");
+        const [cloudinaryBlob, pushCdnBlob] = await Promise.all([
+          getSetting("storage.cloudinary_creds"),
+          getSetting("storage.push_cdn_creds"),
+        ]);
+        if (cloudinaryBlob) {
+          configureCloudinary(JSON.parse(decrypt(cloudinaryBlob)));
+        }
+        if (pushCdnBlob) {
+          configurePushCdn(JSON.parse(decrypt(pushCdnBlob)));
+        }
+      } catch {
+        // Best-effort only — provider stays unconfigured, falls back to local.
+      }
+
+      // Silence unused-import lint — the import is intentional (boot-time registration
+      // makes the provider available even if the configure step above failed).
+      void getActiveProvider;
+    } catch {
+      // Best-effort only — provider stays unregistered, getActiveProvider falls back
+      // to local (default-safe). Logged but not blocking.
+    }
   }
 }
