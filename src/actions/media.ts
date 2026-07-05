@@ -27,7 +27,7 @@
 // Server-only — top directive mandatory for Server Actions.
 "use server";
 import { db, schema } from "@/lib/db";
-import { eq, isNull, and, desc } from "drizzle-orm";
+import { eq, isNull, and, desc, or, sql } from "drizzle-orm";
 import { log } from "@/lib/log";
 import { requireCan } from "@/lib/permissions";
 import { getActiveProvider } from "@/lib/storage/registry";
@@ -178,4 +178,77 @@ export async function deleteMedia(id: number): Promise<void> {
     .where(eq(schema.media.id, id));
 
   log.info("media deleted", { id, provider: row.provider });
+}
+
+/**
+ * findMediaReferences — D-15 warn-don't-block helper.
+ *
+ * Used by the MediaGrid delete-confirm UI to surface "This image appears in N
+ * posts — deleting may orphan the CDN URL" before a soft-delete. Per D-15 the
+ * warning NEVER blocks the delete; it is purely informational.
+ *
+ * Implementation (Claude's discretion per D-15 — simple substring + exact match):
+ *   1. requireCan({ media: ["read"] }) — FIRST (Pitfall #1; T-04-08).
+ *   2. Fetch the media row → derive its public URL via the active provider's
+ *      getPublicUrl(providerKey).
+ *   3. Query posts where body::text ILIKE '%<url>%' (Tiptap JSON substring) OR
+ *      feature_image = url (exact match).
+ *   4. Return { posts: [{id,title}], featureImageMatches: count }.
+ *
+ * Permission: media:read — editors/authors with media.read can legitimately see
+ * which posts reference a media item they manage (T-04-08 mitigation).
+ *
+ * NOTE: Plan 04-05 owns the Pitfall 0 deleteMedia rewrite; this action is ADDED
+ * as a sibling here and does NOT modify deleteMedia. Reference-count tracking
+ * beyond {posts, featureImageMatches} is v2 per D-15.
+ */
+export async function findMediaReferences(id: number): Promise<{
+  posts: Array<{ id: number; title: string }>;
+  featureImageMatches: number;
+}> {
+  // 1. Permission check FIRST (Pitfall #1, T-04-08).
+  await requireCan({ media: ["read"] });
+
+  // 2. Fetch the media row to derive its public URL. If the row doesn't exist
+  //    (already soft-deleted, bad id), return empty — nothing references a
+  //    missing asset. Defensive short-circuit before getActiveProvider.
+  const [row] = await db
+    .select({
+      providerKey: schema.media.providerKey,
+      provider: schema.media.provider,
+    })
+    .from(schema.media)
+    .where(eq(schema.media.id, id))
+    .limit(1);
+
+  if (!row) {
+    return { posts: [], featureImageMatches: 0 };
+  }
+
+  // 3. Derive the public URL — same path the post body / feature-image stores.
+  const provider = await getActiveProvider();
+  const publicUrl = provider.getPublicUrl(row.providerKey);
+
+  // 4. Single query: posts where body::text contains the URL OR feature_image
+  //    matches exactly. Partition client-side into posts list + feature-image
+  //    count. ILIKE on body::text catches Tiptap-JSON-stored image srcs.
+  const results = await db
+    .select({
+      id: schema.posts.id,
+      title: schema.posts.title,
+      featureImage: schema.posts.featureImage,
+    })
+    .from(schema.posts)
+    .where(
+      or(
+        sql`${schema.posts.body}::text ILIKE ${`%${publicUrl}%`}`,
+        eq(schema.posts.featureImage, publicUrl),
+      ),
+    );
+
+  return {
+    posts: results.map((r) => ({ id: r.id, title: r.title })),
+    featureImageMatches: results.filter((r) => r.featureImage === publicUrl)
+      .length,
+  };
 }
