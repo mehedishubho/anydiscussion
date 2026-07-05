@@ -412,8 +412,11 @@ describe("DASH-04 / D-09 / D-11: updateUser — self-edit + admin cross-user edi
       updateUser("self-1", { role: "admin", name: "Selfish" }),
     ).resolves.not.toThrow();
 
-    // Persistence fired (name persists; role does not).
+    // All persistence flows through db.update (the auth.api.updateUser body type
+    // does not accept userId — see PLAN <action> step 3 fallback). `name` reaches
+    // the DB; `role` does NOT. The Better Auth updateUser endpoint is never called.
     expect(updateSetWhere).toHaveBeenCalled();
+    expect(updateUserMock).not.toHaveBeenCalled();
     // And requireCan was NOT called for the self-edit path.
     expect(requireCanMock).not.toHaveBeenCalled();
   });
