@@ -145,14 +145,23 @@ Plans:
   5. The `ecommerce/` demo folder and unused chart/table demos are removed, the heavy editor/charts are lazy-loaded, and dark mode works across the dashboard — initial dashboard load stays lean.
   6. An admin can open a Storage Settings page, pick the active image destination (local/Cloudinary/R2/push-CDN), enter per-provider credentials, and persist the choice to `settings` — the Cloudinary + push-CDN providers are implemented here (extending the `lib/storage/` abstraction from MEDIA-04), and the save action re-checks admin permission server-side.
 
-**Plans**: TBD
+**Plans**: 5 plans
 
-Plans:
+**Wave 1** (foundational — unblocks all of Wave 2)
 
-- [ ] 04-01: TBD (planning pending)
-- [ ] 04-02: TBD (planning pending)
+- [ ] 04-01-PLAN.md — Dashboard shell + pattern foundation: route restructure under `/dashboard/*` (D-01) + sidebar CMS nav with role-filter (D-02/D-05) + demo cleanup (D-03) + lean real-stats overview (D-04) + `(admin)`-scoped TanStack QueryClient (D-28) + PostForm `useMutation` retrofit (D-26 baseline) + auth-gate test marker sync (Pitfall 5)
 
-**Pitfalls owned:** cross-group import leakage prevention continues (bundle-budget check enforced in Phase 7); dashboard bloat avoided via lazy-loading.
+**Wave 2** (parallel vertical slices — blocked on 04-01)
+
+- [ ] 04-02-PLAN.md — Taxonomy + Media library + reusable MediaPicker: Categories + Tags TailAdmin tables (D-16) + Media library browser with drag-drop uploader + soft-delete warn (D-12/D-14/D-15) + reusable `<MediaPicker>` modal wired into PostForm feature-image + editor Toolbar image button (D-13)
+- [ ] 04-03-PLAN.md — Users & roles management + Profile: `listUsers` + `updateUser` actions + users table + drawer (D-07/D-08/D-10/D-11) + self-service profile editing for any role (D-09)
+- [ ] 04-04-PLAN.md — Pages management: `actions/pages.ts` + slimmed Tiptap editor (D-18) + T&C/Privacy/Contact seed (D-17/D-29a) + draft/published-only status (D-20) + Contact content-only (D-19)
+
+**Wave 3** (most technically nuanced — blocked on 04-02 for media.ts sequencing)
+
+- [ ] 04-05-PLAN.md — DASH-09 Storage Settings + new providers + crypto: `lib/crypto` AES-256-GCM (D-25) + Cloudinary provider (D-22) + generic S3-compatible push-CDN provider (D-21) + `lib/storage/registry` `getProviderByName` + `deleteMedia` multi-provider bug fix (Pitfall 0) + admin-only Storage Settings page (D-23) + "Test connection" probes (D-24) + `next.config.ts` remotePatterns (Pitfall 4) + instrumentation register + cloudinary@2.10.0 install + `SETTINGS_ENCRYPTION_KEY` env + new settings-keys seed (D-29b) + Wave 0 tests (cloudinary/push-cdn/crypto/storage-settings)
+
+**Pitfalls owned:** cross-group import leakage prevention continues (bundle-budget check enforced in Phase 7); dashboard bloat avoided via lazy-loading; `deleteMedia` multi-provider correctness bug fixed in Wave 3 (Pitfall 0 from RESEARCH.md).
 **Research flag:** none — TailAdmin wiring + RHF/Zod + TanStack Query are well-documented standard patterns.
 
 ### Phase 5: SEO Basics
