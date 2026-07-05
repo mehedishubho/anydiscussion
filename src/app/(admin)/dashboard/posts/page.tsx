@@ -4,7 +4,7 @@
 //
 // Server Component — calls listPosts() and renders into the existing AppSidebar/
 // AppHeader chrome via the (admin)/layout.tsx AuthGate → AdminShell wrapper.
-// The "New Post" button links to /posts/new (the lazy-loaded editor page).
+// The "New Post" button links to /dashboard/posts/new (the lazy-loaded editor page).
 import Link from "next/link";
 import { listPosts } from "@/actions/posts";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
@@ -47,7 +47,7 @@ export default async function PostsListPage() {
         <div className="mb-5 flex items-center justify-between">
           <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">All Posts</h3>
           <Link
-            href="/posts/new"
+            href="/dashboard/posts/new"
             className="inline-flex items-center justify-center gap-2 rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white shadow-theme-xs hover:bg-brand-600"
           >
             + New Post
@@ -89,7 +89,7 @@ export default async function PostsListPage() {
                     </TableCell>
                     <TableCell className="px-4 py-3 text-right">
                       <Link
-                        href={`/posts/${post.id}/edit`}
+                        href={`/dashboard/posts/${post.id}/edit`}
                         className="text-sm font-medium text-brand-500 hover:text-brand-600"
                       >
                         Edit
