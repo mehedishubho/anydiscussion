@@ -145,7 +145,7 @@ Plans:
   5. The `ecommerce/` demo folder and unused chart/table demos are removed, the heavy editor/charts are lazy-loaded, and dark mode works across the dashboard — initial dashboard load stays lean.
   6. An admin can open a Storage Settings page, pick the active image destination (local/Cloudinary/R2/push-CDN), enter per-provider credentials, and persist the choice to `settings` — the Cloudinary + push-CDN providers are implemented here (extending the `lib/storage/` abstraction from MEDIA-04), and the save action re-checks admin permission server-side.
 
-**Plans**: 1/5 plans executed
+**Plans**: 4/5 plans executed
 
 **Wave 1** (foundational — unblocks all of Wave 2)
 
@@ -153,9 +153,9 @@ Plans:
 
 **Wave 2** (parallel vertical slices — blocked on 04-01)
 
-- [ ] 04-02-PLAN.md — Taxonomy + Media library + reusable MediaPicker: Categories + Tags TailAdmin tables (D-16) + Media library browser with drag-drop uploader + soft-delete warn (D-12/D-14/D-15) + reusable `<MediaPicker>` modal wired into PostForm feature-image + editor Toolbar image button (D-13)
-- [ ] 04-03-PLAN.md — Users & roles management + Profile: `listUsers` + `updateUser` actions + users table + drawer (D-07/D-08/D-10/D-11) + self-service profile editing for any role (D-09)
-- [ ] 04-04-PLAN.md — Pages management: `actions/pages.ts` + slimmed Tiptap editor (D-18) + T&C/Privacy/Contact seed (D-17/D-29a) + draft/published-only status (D-20) + Contact content-only (D-19)
+- [x] 04-02-PLAN.md — Taxonomy + Media library + reusable MediaPicker: Categories + Tags TailAdmin tables (D-16) + Media library browser with drag-drop uploader + soft-delete warn (D-12/D-14/D-15) + reusable `<MediaPicker>` modal wired into PostForm feature-image + editor Toolbar image button (D-13)
+- [x] 04-03-PLAN.md — Users & roles management + Profile: `listUsers` + `updateUser` actions + users table + drawer (D-07/D-08/D-10/D-11) + self-service profile editing for any role (D-09)
+- [x] 04-04-PLAN.md — Pages management: `actions/pages.ts` + slimmed Tiptap editor (D-18) + T&C/Privacy/Contact seed (D-17/D-29a) + draft/published-only status (D-20) + Contact content-only (D-19)
 
 **Wave 3** (most technically nuanced — blocked on 04-02 for media.ts sequencing)
 
