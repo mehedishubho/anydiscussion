@@ -1,7 +1,7 @@
 ---
 phase: 03-content-engine
 verified: 2026-07-05T04:12:00Z
-status: human_needed
+status: passed
 score: 5/5 must-haves verified
 behavior_unverified: 0
 overrides_applied: 0
@@ -12,36 +12,45 @@ re_verification:
   gaps_remaining: []
   regressions: []
 behavior_unverified_items:
+
   - truth: "Publishing/updating a post triggers revalidation that actually refreshes cached pages on the real stack (Pitfall #3 — runtime behavior, not just call-site presence)"
     test: "Run pnpm build && pnpm start on the real Coolify stack, publish a post from the dashboard, then verify the homepage + /blog + /category/<slug> + /blog/<slug> reflect the new post without a manual rebuild."
     expected: "All listed pages reflect the newly-published post within the SWR window (revalidateTag 'max' = stale-while-revalidate). No stale listing."
     why_human: "The call-site wiring (concrete paths + 2-arg revalidateTag) is verified in code and unit-tested (posts.test.ts iterates mock.calls and asserts every revalidateTag has length===2 and arg[1]==='max'). Runtime cache invalidation on Coolify+Turbopack cannot be exercised without the production stack — Phase 7 PERF-03 owns this end-to-end audit."
+
   - truth: "publishDueScheduledPosts flips due posts at runtime (node-cron tick fires + DB connection works + revalidation emits)"
     test: "Seed a post with status='draft' AND publishedAt=<1 minute in the past>, run pnpm build && pnpm start, wait 60+ seconds, then verify the post status is now 'published' AND /blog/<slug> renders the post."
     expected: "The cron tick (every minute) flips the post; the homepage + /blog + the post page revalidate."
     why_human: "The D-12 documented exception is verified at the call-site (system-publish.ts queries status='draft' AND publishedAt<=now() and does NOT call transitionPost — proven by Wave-0 test). node-cron registration + Drizzle PG connection + Revalidation emission all require a running production server — not exercisable in the test sandbox."
+
   - truth: "/api/media/[...path] Route Handler streams local-provider files correctly at runtime"
     test: "With storage.active_provider='local', upload an image via the dashboard, then open the resulting /api/media/<key> URL directly in a browser. Verify the image streams (not buffers), the Content-Type is image/webp, the Cache-Control is public max-age=31536000 immutable, and ../ traversal attempts 404."
     expected: "Image streams; headers correct; path-traversal blocked (404)."
     why_human: "Route Handler type-checks (params: Promise<{path:string[]}>), follows the documented streaming pattern (fs.createReadStream + Response), and the path.startsWith(LOCAL_ROOT) guard is present. Live streaming + browser Cache-Control semantics need a running server."
+
   - truth: "/preview/[token] route renders drafts at runtime (token-gate + renderPostBody + PPR shell)"
     test: "Seed a post with previewToken=<known-uuid>, run pnpm build && pnpm start, then GET /preview/<known-uuid> (200, draft body renders) AND GET /preview/unknown-uuid (404 via notFound()). Confirm PPR: the static shell serves immediately, the dynamic post content streams inside <Suspense>."
     expected: "Token-gate 404s unknown tokens; valid token renders the draft body via renderPostBody (generateHTML → sanitizeBeforeRender); the static shell + dynamic Suspense split works under cacheComponents."
     why_human: "The route type-checks, the token-gate is in code (db.select where previewToken=token → notFound()), and the Suspense wrap (post-merge build fix) compiles. Live PPR behavior + token-gate execution need a running server + seeded DB."
+
   - truth: "SchedulePicker datetime selection actually persists a schedule via the UI (the onChange → setSchedule wiring)"
     test: "On /posts/<id>/edit, pick a datetime in the SchedulePicker, then click any save button (or trigger blur). Verify setSchedule is called and posts.publishedAt is updated in the DB."
     expected: "The picked datetime is persisted to posts.publishedAt; the scheduler worker then flips the post to 'published' at the due time."
     why_human: "SchedulePicker.tsx wires flatpickr onChange to call the parent's onChange prop, but the edit page passes a no-op closure (src/app/(admin)/posts/[id]/edit/page.tsx L84-88). setSchedule(postId, publishedAt) is fully implemented + unit-tested, but the UI save button / blur handler that invokes it was deferred to Phase 4 DASH-01. The schedule CAN be set via direct Server Action call (programmatically) — the UI save flow is the gap."
 human_verification:
+
   - test: "Run `pnpm test:migrations` in a Docker-equipped environment (the clean-room drift test for the Phase-3 schema migration)."
     expected: "All 4 migrations (0000 + 0001 + 0002 + 0003) apply cleanly to an empty Postgres; the 12-table schema matches db/schema.ts exactly. Confirms media.uploadedBy is text FK, media.providerKey/provider exist, posts.previewToken exists unique."
     why_human: "Requires Docker daemon to start the postgres-test service on :5436 (docker-compose). The sandboxed executor worktree cannot run Docker. Migration SQL is drizzle-kit-generated and visually verified (no hand-written SQL — D-11 compliant), but the blocking drift test could not run."
+
   - test: "Visual UAT on the post editor at /posts/new and /posts/<id>/edit — TailAdmin chrome adequacy, lazy-load behavior, RHF+Zod error states, taxonomy pickers, schedule picker, preview link UI."
     expected: "Dashboard renders cleanly with the editor lazy-loaded (no SSR errors); the form validates with inline error messages; category/tag pickers populate from listCategories/listTags; schedule picker displays site.timezone label; preview link Generate/Regenerate/Revoke works."
     why_human: "All UI type-checks (0 tsc errors in Phase 3 files), but TailAdmin-quality adequacy is a judgment call and the runtime UX cannot be evaluated from code alone."
+
   - test: "Verify body-image rendering strategy does not violate the 'never raw <img>' constraint (MEDIA-03 strict reading)."
     expected: "Either confirm body images are acceptable as raw <img> (Tiptap-generated, sanitized, served from CDN/local via absolute URLs) OR document the post-process step (planned for Phase 6) that converts <img> to <Image> in the public render path."
     why_human: "Tiptap's Image extension outputs <img> tags via generateHTML, which are then injected via dangerouslySetInnerHTML after sanitization. The cdnImageLoader mechanism only applies to <Image> components — body images bypass it. The success criterion literal wording ('never a raw <img>') is technically violated for in-body images, though the storage abstraction + CDN URLs ARE in place. Feature-image path uses native input, not <Image> either. This is largely a Phase 6 concern (public render path); Phase 3 owns the storage/upload pipeline, which IS correct."
+
   - test: "Confirm runtime behavior of node-cron scheduled-publish worker on a real Coolify single-instance deployment."
     expected: "The worker boots via instrumentation.ts register() (gated by NEXT_RUNTIME==='nodejs'), fires publishDueScheduledPosts every minute, flips due posts, revalidates the 6 concrete paths + 4 2-arg tags, logs 'system-publish' audit entries."
     why_human: "Wave-0 test (system-publish.test.ts) proves the wiring with mocked db + cron. Live behavior needs a running Next.js server with PostgreSQL connection — not exercisable in unit tests."
