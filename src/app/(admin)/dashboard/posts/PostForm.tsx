@@ -43,6 +43,7 @@ import { postSchema, zodResolver, type PostSchemaInput } from "./schema-client";
 import { savePost } from "@/actions/posts";
 import TaxonomyPicker from "./components/TaxonomyPicker";
 import MediaPicker from "@/components/dashboard/media/MediaPicker";
+import SeoPanel from "@/components/dashboard/posts/SeoPanel";
 
 const INPUT_CLASS =
   "h-11 w-full rounded-lg border appearance-none px-4 py-2.5 text-sm shadow-theme-xs placeholder:text-gray-400 focus:outline-hidden focus:ring-3 bg-transparent text-gray-800 border-gray-300 focus:border-brand-300 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:focus:border-brand-800";
@@ -224,6 +225,12 @@ export default function PostForm(props: PostFormProps) {
           }}
         />
       </div>
+
+      {/* Phase 5 D-08 — collapsible SEO panel (meta title, meta description,
+          canonical URL, OG image). All four fields are part of this RHF form
+          (registered via SeoPanel's prop spread) and submit with the rest of the
+          data into savePost, which upserts them into the post_seo table. */}
+      <SeoPanel register={register} errors={errors} />
 
       {submitError && (
         <div className="rounded-lg border border-error-300 bg-error-50 p-3 text-sm text-error-700 dark:border-error-700 dark:bg-error-900/20 dark:text-error-300">

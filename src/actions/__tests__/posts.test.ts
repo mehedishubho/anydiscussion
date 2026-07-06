@@ -133,6 +133,15 @@ vi.mock("@/lib/db", () => {
       categories: { id: "id", slug: "slug" },
       tags: { id: "id", slug: "slug" },
       postTags: { postId: "post_id", tagId: "tag_id" },
+      // Phase 5 D-08 — post_seo one-to-one table (accessed by upsertPostSeo in savePost).
+      postSeo: {
+        id: "id",
+        postId: "post_id",
+        metaTitle: "meta_title",
+        metaDescription: "meta_description",
+        ogImage: "og_image",
+        canonicalUrl: "canonical_url",
+      },
       user: { id: "id" },
       settings: { key: "key", value: "value" },
     },

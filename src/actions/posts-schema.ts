@@ -34,6 +34,16 @@ export const postSchema = z.object({
   // D-14: publishedAt stored as UTC; display timezone is site-configured (Asia/Dhaka v1).
   publishedAt: z.date().optional(),
   status: z.enum(["draft", "pending_review", "published"]).optional(),
+
+  // === Phase 5 D-08: post-editor SEO fields (post_seo one-to-one upsert) ===
+  // Simple UTF-16 .max() caps for the dashboard client form. The grapheme rule
+  // (SEO-06, Bangla-aware via Intl.Segmenter) is enforced SERVER-SIDE in savePost
+  // via seoMetaSchema.safeParse — the split keeps client error messages simple
+  // while the server applies the script-agnostic refine (D-10 shared-schema rule).
+  metaTitle: z.string().max(255).optional(),
+  metaDescription: z.string().max(600).optional(),
+  ogImage: z.string().url().optional().or(z.literal("")),
+  canonicalUrl: z.string().url().optional().or(z.literal("")),
 });
 
 export type PostSchemaInput = z.input<typeof postSchema>;

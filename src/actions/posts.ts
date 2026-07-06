@@ -25,6 +25,7 @@ import { transitionPost } from "@/lib/permissions/post-transitions";
 import { assertUniqueSlug } from "@/lib/slug";
 import { deriveExcerpt } from "@/lib/excerpt";
 import { sanitizeBeforeStore } from "@/lib/sanitize";
+import { seoMetaSchema } from "@/lib/seo/validation";
 import { postSchema } from "./posts-schema";
 
 type PostStatus = "draft" | "pending_review" | "published";
@@ -40,6 +41,11 @@ interface SavePostInput {
   featureImage?: string;
   publishedAt?: Date;
   status?: PostStatus;
+  // Phase 5 D-08: post_seo fields (upserted into the post_seo one-to-one table).
+  metaTitle?: string;
+  metaDescription?: string;
+  ogImage?: string;
+  canonicalUrl?: string;
 }
 
 /**
@@ -113,6 +119,7 @@ export async function savePost(input: SavePostInput) {
   const sanitizedBody = sanitizeBodyHtml(data.body);
 
   // 6. db.write.
+  let postId: number | undefined;
   if (input.id) {
     await db
       .update(schema.posts)
@@ -127,24 +134,91 @@ export async function savePost(input: SavePostInput) {
         updatedAt: new Date(),
       })
       .where(eq(schema.posts.id, input.id));
-    return { id: input.id };
+    postId = input.id;
+  } else {
+    const [row] = await db
+      .insert(schema.posts)
+      .values({
+        title: data.title,
+        slug: data.slug,
+        body: sanitizedBody,
+        excerpt,
+        status: "draft",
+        authorId: session.user.id,
+        categoryId: data.categoryId,
+        featureImage: data.featureImage ?? null,
+        publishedAt: data.publishedAt ?? null,
+      })
+      .returning({ id: schema.posts.id });
+    postId = row?.id;
   }
 
-  const [row] = await db
-    .insert(schema.posts)
-    .values({
-      title: data.title,
-      slug: data.slug,
-      body: sanitizedBody,
-      excerpt,
-      status: "draft",
-      authorId: session.user.id,
-      categoryId: data.categoryId,
-      featureImage: data.featureImage ?? null,
-      publishedAt: data.publishedAt ?? null,
-    })
-    .returning({ id: schema.posts.id });
-  return { id: row?.id };
+  // 7. Phase 5 D-08 — post_seo upsert. Runs AFTER the posts-row write so the
+  //    ownership/permission gate (step 1) covers these writes too (T-05-06).
+  //    Defensive: seoMetaSchema.safeParse (NOT .parse) so a malformed SEO input
+  //    logs and continues WITHOUT failing the whole post save — the post itself
+  //    is already persisted at this point. The grapheme rule (SEO-06) lives in
+  //    seoMetaSchema (src/lib/seo/validation.ts — reused per D-10, not re-implemented).
+  await upsertPostSeo(postId, input);
+
+  return { id: postId };
+}
+
+/**
+ * upsertPostSeo — Phase 5 D-08. Inserts or updates the one-to-one post_seo row.
+ *
+ * Defensive contract: a safeParse failure (e.g. grapheme limit exceeded) is LOGGED
+ * and SKIPPED — it never fails the surrounding savePost call. The post row is
+ * already saved; SEO is a secondary concern. The editor can re-save with valid SEO.
+ *
+ * Security (T-05-06): this runs inside savePost AFTER assertOwnsPost / requireCan,
+ * so the existing ownership gate covers the post_seo write. No new auth check needed.
+ * postSeo has no deletedAt (hard-delete per D-08; PK is `id`, not `postId`).
+ */
+async function upsertPostSeo(
+  postId: number | undefined,
+  input: SavePostInput,
+): Promise<void> {
+  if (!postId) return;
+
+  // D-10 — shared Zod schema, safeParse so the post save is resilient to bad SEO input.
+  const parsed = seoMetaSchema.safeParse({
+    metaTitle: input.metaTitle,
+    metaDescription: input.metaDescription,
+    ogImage: input.ogImage,
+    canonicalUrl: input.canonicalUrl,
+  });
+  if (!parsed.success) {
+    // Defensive log + continue. The post itself is already saved.
+    log.info("post_seo validation skipped", {
+      postId,
+      issues: parsed.error.issues.map((i) => i.message),
+    });
+    return;
+  }
+
+  // Empty strings → null (post_seo columns are nullable; "" is not a meaningful value).
+  const values = {
+    metaTitle: parsed.data.metaTitle || null,
+    metaDescription: parsed.data.metaDescription || null,
+    ogImage: parsed.data.ogImage || null,
+    canonicalUrl: parsed.data.canonicalUrl || null,
+  };
+
+  // One-to-one upsert: check for an existing row by postId, then update-or-insert.
+  const [existing] = await db
+    .select({ id: schema.postSeo.id })
+    .from(schema.postSeo)
+    .where(eq(schema.postSeo.postId, postId))
+    .limit(1);
+  if (existing) {
+    await db
+      .update(schema.postSeo)
+      .set(values)
+      .where(eq(schema.postSeo.id, existing.id));
+  } else {
+    await db.insert(schema.postSeo).values({ postId, ...values });
+  }
 }
 
 /**
