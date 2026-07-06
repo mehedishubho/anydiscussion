@@ -79,3 +79,81 @@ export const fakePage: PageLike = {
   canonical: "",
   updatedAt: new Date("2026-06-01T00:00:00Z"),
 };
+
+// ============================================================================
+// Plan 05-02 fixtures — sitemap.ts / robots.ts / rss.xml/route.ts tests
+// [CITED: 05-02-PLAN.md Task 1 <action> — post-row + page-row arrays + XML-special title]
+// ============================================================================
+
+/**
+ * Post rows simulating the sitemap DB query result (AFTER the SQL filter
+ * `status='published' AND deletedAt IS NULL`). Two published posts — the draft
+ * and soft-deleted fixtures below simulate rows that the query EXCLUDES, so the
+ * test can assert their slugs never appear in the output.
+ */
+export const fakeSitemapPosts: Array<{
+  slug: string;
+  updatedAt: Date;
+}> = [
+  { slug: "understanding-cache-components", updatedAt: new Date("2026-06-20T12:00:00Z") },
+  { slug: "drizzle-full-text-search", updatedAt: new Date("2026-06-18T10:00:00Z") },
+];
+
+/** Published page rows for the sitemap (one managed page). */
+export const fakeSitemapPages: Array<{
+  slug: string;
+  updatedAt: Date;
+}> = [
+  { slug: "about", updatedAt: new Date("2026-06-01T00:00:00Z") },
+];
+
+/** Slug of a draft post that must NEVER appear in the sitemap (D-05 exclusion). */
+export const DRAFT_POST_SLUG = "draft-post-excluded";
+
+/** Slug of a published-but-soft-deleted post that must NEVER appear (T-05-05). */
+export const SOFT_DELETED_POST_SLUG = "soft-deleted-post-excluded";
+
+/**
+ * RSS post rows — the full shape the RSS Route Handler selects
+ * (title, slug, body, excerpt, publishedAt). Two published posts with realistic
+ * dates; the body is minimal Tiptap JSON (renderPostBody is mocked in rss.test.ts).
+ */
+export const fakeRssPosts: Array<{
+  title: string;
+  slug: string;
+  body: unknown;
+  excerpt: string | null;
+  publishedAt: Date | null;
+}> = [
+  {
+    title: "First Published Post",
+    slug: "first-published-post",
+    body: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "Hello world" }] }] },
+    excerpt: "First post excerpt",
+    publishedAt: new Date("2026-06-20T08:00:00Z"),
+  },
+  {
+    title: "Second Published Post",
+    slug: "second-published-post",
+    body: null,
+    excerpt: "Second post excerpt",
+    publishedAt: new Date("2026-06-18T08:00:00Z"),
+  },
+];
+
+/**
+ * A single RSS post whose title + excerpt contain ALL FIVE XML-special characters
+ * (less-than, greater-than, ampersand, apostrophe, quote). Used to assert escapeXml
+ * covers every special char and that the raw chars NEVER reach the XML output
+ * (T-05-04 XML-injection mitigation).
+ */
+export const fakeRssPostWithSpecialChars = {
+  title: `A & B < C > D 'E' "F"`,
+  slug: "special-chars-post",
+  body: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "body" }] }] },
+  excerpt: `Excerpt with < & > 'and' "quotes"`,
+  publishedAt: new Date("2026-06-19T08:00:00Z"),
+} as const;
+
+/** The fixed sanitized-HTML string the renderPostBody mock returns in rss.test.ts. */
+export const MOCK_RENDERED_BODY = "<p>sanitized body html</p>";
