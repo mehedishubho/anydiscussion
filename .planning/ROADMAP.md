@@ -178,7 +178,7 @@ Plans:
   4. A post with a long Bangla meta description passes validation using a byte/reasonable-char-count rule, not a Latin-character limit (Bangla content does not get falsely rejected).
   5. An RSS feed at `/rss.xml` (or `/feed.xml`) publishes the latest posts for feed readers.
 
-**Plans**: 1/3 plans executed
+**Plans**: 2/3 plans executed
 
 Plans:
 
@@ -188,7 +188,7 @@ Plans:
 
 **Wave 2** *(parallel — blocked on 05-01)*
 
-- [ ] 05-02-PLAN.md — Standalone SEO routes: app/sitemap.ts (posts+pages, per-type priority/changefreq) + app/robots.ts (allow/disallow + sitemap pointer) + app/rss.xml/route.ts (full-text RSS 2.0 via renderPostBody, CDATA, escapeXml). Covers SEO-02, SEO-07, SEO-08.
+- [x] 05-02-PLAN.md — Standalone SEO routes: app/sitemap.ts (posts+pages, per-type priority/changefreq) + app/robots.ts (allow/disallow + sitemap pointer) + app/rss.xml/route.ts (full-text RSS 2.0 via renderPostBody, CDATA, escapeXml). Covers SEO-02, SEO-07, SEO-08.
 - [ ] 05-03-PLAN.md — Dashboard SEO surface + redirects check: post-editor SeoPanel + post_seo writes in savePost (D-08 gap closure) + admin-only settings/seo page + saveSeoSettings (requireRole('admin') FIRST + 2-arg revalidateTag) + app/not-found.tsx redirects-table lookup (D-12, Node runtime). Covers SEO-01 (dashboard data side), SEO-06 (live editor).
 
 **Pitfalls owned:** Bangla meta-length validation (byte/char, not Latin assumptions); sitemap must update via revalidation, not require a full rebuild.
