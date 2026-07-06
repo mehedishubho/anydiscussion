@@ -58,8 +58,9 @@ describe("SEO-03 / D-03: blogPostingJsonLd — schema.org BlogPosting shape", ()
   it("publisher is an Organization with a logo ImageObject when provided", () => {
     expect(ld.publisher["@type"]).toBe("Organization");
     expect(ld.publisher.name).toBe(fakeSettings.siteTitle);
-    expect(ld.publisher.logo["@type"]).toBe("ImageObject");
-    expect(ld.publisher.logo.url).toBe(fakeSettings.defaultOgImage);
+    expect(ld.publisher.logo).toBeDefined();
+    expect(ld.publisher.logo!["@type"]).toBe("ImageObject");
+    expect(ld.publisher.logo!.url).toBe(fakeSettings.defaultOgImage);
   });
 
   it("includes image as an array when provided", () => {

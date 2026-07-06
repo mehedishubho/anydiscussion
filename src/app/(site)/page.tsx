@@ -1,11 +1,24 @@
+// src/app/(site)/page.tsx
+// [CITED: 05-CONTEXT.md D-01 — wire generateMetadata into EXISTING (site) routes only]
+// [CITED: 05-RESEARCH.md Pitfall 1 (L707-711) — 'use cache' for settings-driven home route]
+//
+// Home route. Replaced the static `export const metadata` with an async
+// generateMetadata sourced from getSeoSettings() (the cached snapshot). The home
+// route is settings-driven and near-static — 'use cache' is the verified resolution
+// under cacheComponents:true (Pitfall 1). The layout's title.default becomes the
+// literal <title> for "/" (title.template applies only to child segments —
+// RESEARCH Anti-Patterns L687).
+
 import type { Metadata } from "next";
 import React from "react";
+import { getSeoSettings } from "@/lib/seo/settings";
+import { buildSiteMetadata } from "@/lib/seo/metadata";
 
-export const metadata: Metadata = {
-  title: "Any Discussion",
-  description:
-    "A fast, SEO-optimized blog from Any Discussion — clean, professional content.",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  "use cache";
+  const s = await getSeoSettings();
+  return buildSiteMetadata(s);
+}
 
 export default function HomePage() {
   return (

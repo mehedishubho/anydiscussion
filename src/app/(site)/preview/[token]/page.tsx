@@ -3,6 +3,8 @@
 // [CITED: PATTERNS.md row — gate-then-render analog: (admin)/layout.tsx AuthGate]
 // [CITED: 03-RESEARCH.md L302 — /preview/[token] architecture diagram node]
 // [CITED: CLAUDE.md — next/image only; dangerouslySetInnerHTML AFTER sanitize (Pitfall #2 site #2)]
+// [CITED: 05-CONTEXT.md D-01 — wire generateMetadata into this EXISTING (site) route]
+// [CITED: 05-RESEARCH.md Pitfall 1 alt path — params make this dynamic; NO 'use cache' needed]
 //
 // Public draft preview route. No auth required — the high-entropy previewToken
 // (crypto.randomUUID, 122 bits) IS the authorization (D-19). If the token is not
@@ -25,16 +27,53 @@ import { eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { renderPostBody } from "@/lib/post-render";
 import type { Metadata } from "next";
-
-// Defense-in-depth: prevent search engines from indexing draft previews (D-19 doesn't
-// require this but it's cheap — T-03-21 mitigation).
-export const metadata: Metadata = {
-  title: "Draft Preview | Any Discussion",
-  robots: { index: false, follow: false },
-};
+import { getSeoSettings } from "@/lib/seo/settings";
+import { buildPostMetadata } from "@/lib/seo/metadata";
 
 interface PreviewPageProps {
   params: Promise<{ token: string }>;
+}
+
+/**
+ * Preview metadata — looks up the post by token and builds metadata with a hard
+ * noindex (draft previews must NEVER be indexed — defense-in-depth per T-03-21).
+ * Returns a minimal "Not Found" metadata when the token is invalid so no existence
+ * leaks. NO 'use cache' here — params make this route dynamic by default (Pitfall 1
+ * alternative path); the DB lookup is per-request, which is correct for a revocable
+ * preview token.
+ */
+export async function generateMetadata({
+  params,
+}: PreviewPageProps): Promise<Metadata> {
+  const { token } = await params;
+  const [post] = await db
+    .select()
+    .from(schema.posts)
+    .where(eq(schema.posts.previewToken, token))
+    .limit(1);
+
+  if (!post) {
+    return { title: "Not Found", robots: { index: false, follow: false } };
+  }
+
+  const s = await getSeoSettings();
+  return {
+    ...buildPostMetadata(
+      {
+        id: post.id,
+        title: post.title,
+        slug: post.slug,
+        excerpt: post.excerpt,
+        featureImage: post.featureImage,
+        publishedAt: post.publishedAt,
+        updatedAt: post.updatedAt,
+        authorName: null,
+      },
+      null, // preview — no post_seo row needed
+      s,
+    ),
+    robots: { index: false, follow: false },
+  };
 }
 
 export default function PreviewPage({ params }: PreviewPageProps) {

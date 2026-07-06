@@ -4,7 +4,15 @@
 //
 // Pure-builder unit tests — no DB mock needed. The fixtures (shared-fixtures.ts)
 // are plain objects passed directly into the builder functions.
+//
+// NOTE: Next.js `Metadata.openGraph` and `Metadata.twitter` are discriminated unions
+// (OpenGraphMetadata | OpenGraphArticle | ..., TwitterMetadata | ...). The base
+// variants lack `type`, `card`, `publishedTime`, etc. — these fields exist only on
+// specific variants our builders construct. To assert on them without runtime casts
+// scattered through every test, we define typed accessor helpers below. The cast is
+// safe because our builders always construct the article/website/twitter-card variant.
 
+import type { Metadata } from "next";
 import { describe, it, expect } from "vitest";
 import {
   buildPostMetadata,
@@ -20,6 +28,32 @@ import {
   fakeSettingsNoOg,
   fakePage,
 } from "./shared-fixtures";
+
+/** Typed accessor for openGraph fields that exist only on specific union variants. */
+function og(m: Metadata) {
+  return m.openGraph as {
+    type?: string;
+    title?: string;
+    description?: string;
+    url?: string;
+    publishedTime?: string | null;
+    modifiedTime?: string | null;
+    authors?: string[];
+    images?: Array<{ url: string }>;
+    siteName?: string;
+  } | null | undefined;
+}
+
+/** Typed accessor for twitter fields that exist only on specific union variants. */
+function tw(m: Metadata) {
+  return m.twitter as {
+    card?: string;
+    title?: string;
+    description?: string;
+    site?: string;
+    images?: string[];
+  } | null | undefined;
+}
 
 describe("SEO-01 / SEO-04 / D-04: buildPostMetadata — canonical override + fallback", () => {
   it("respects postSeo.canonicalUrl override when set", () => {
@@ -65,37 +99,33 @@ describe("SEO-01 / SEO-04 / D-04: buildPostMetadata — canonical override + fal
 describe("SEO-05 / D-09: buildPostMetadata — OG fallback chain + twitter card", () => {
   it("uses postSeo.ogImage when set (highest priority)", () => {
     const m = buildPostMetadata(fakePost, fakePostSeo, fakeSettings);
-    expect(m.openGraph?.images).toEqual([{ url: fakePostSeo.ogImage }]);
+    expect(og(m)?.images).toEqual([{ url: fakePostSeo.ogImage }]);
   });
 
   it("falls back to post.featureImage when postSeo.ogImage is null", () => {
     const m = buildPostMetadata(fakePost, null, fakeSettings);
-    expect(m.openGraph?.images).toEqual([{ url: fakePost.featureImage }]);
+    expect(og(m)?.images).toEqual([{ url: fakePost.featureImage }]);
   });
 
   it("falls back to settings.defaultOgImage when neither postSeo nor post has an image", () => {
     const m = buildPostMetadata(fakePostNoImage, null, fakeSettings);
-    expect(m.openGraph?.images).toEqual([{ url: fakeSettings.defaultOgImage }]);
+    expect(og(m)?.images).toEqual([{ url: fakeSettings.defaultOgImage }]);
   });
 
   it("twitter.card is summary_large_image when an OG image resolves", () => {
     const m = buildPostMetadata(fakePost, fakePostSeo, fakeSettings);
-    expect(m.twitter?.card).toBe("summary_large_image");
+    expect(tw(m)?.card).toBe("summary_large_image");
   });
 
   it("twitter.card is summary when NO image resolves anywhere", () => {
-    const m = buildPostMetadata(
-      fakePostNoImage,
-      null,
-      fakeSettingsNoOg,
-    );
-    expect(m.twitter?.card).toBe("summary");
-    expect(m.twitter?.images).toBeUndefined();
+    const m = buildPostMetadata(fakePostNoImage, null, fakeSettingsNoOg);
+    expect(tw(m)?.card).toBe("summary");
+    expect(tw(m)?.images).toBeUndefined();
   });
 
   it("includes twitter:site handle when settings.twitterHandle is set", () => {
     const m = buildPostMetadata(fakePost, null, fakeSettings);
-    expect(m.twitter?.site).toBe("@anydiscussion");
+    expect(tw(m)?.site).toBe("@anydiscussion");
   });
 
   it("omits twitter:site when settings.twitterHandle is null", () => {
@@ -103,29 +133,29 @@ describe("SEO-05 / D-09: buildPostMetadata — OG fallback chain + twitter card"
       ...fakeSettings,
       twitterHandle: null,
     });
-    expect(m.twitter?.site).toBeUndefined();
+    expect(tw(m)?.site).toBeUndefined();
   });
 });
 
 describe("SEO-01: buildPostMetadata — openGraph article fields", () => {
   it("sets openGraph.type to 'article'", () => {
     const m = buildPostMetadata(fakePost, null, fakeSettings);
-    expect(m.openGraph?.type).toBe("article");
+    expect(og(m)?.type).toBe("article");
   });
 
   it("sets publishedTime as ISO 8601", () => {
     const m = buildPostMetadata(fakePost, null, fakeSettings);
-    expect(m.openGraph?.publishedTime).toBe(fakePost.publishedAt?.toISOString());
+    expect(og(m)?.publishedTime).toBe(fakePost.publishedAt?.toISOString());
   });
 
   it("sets modifiedTime as ISO 8601", () => {
     const m = buildPostMetadata(fakePost, null, fakeSettings);
-    expect(m.openGraph?.modifiedTime).toBe(fakePost.updatedAt.toISOString());
+    expect(og(m)?.modifiedTime).toBe(fakePost.updatedAt.toISOString());
   });
 
   it("includes authorName in authors when present", () => {
     const m = buildPostMetadata(fakePost, null, fakeSettings);
-    expect(m.openGraph?.authors).toEqual([fakePost.authorName]);
+    expect(og(m)?.authors).toEqual([fakePost.authorName]);
   });
 });
 
@@ -167,7 +197,7 @@ describe("SEO-01: buildSiteMetadata — metadataBase + title template", () => {
   it("returns metadataBase as a URL(canonicalBaseUrl)", () => {
     const m = buildSiteMetadata(fakeSettings);
     expect(m.metadataBase).toBeInstanceOf(URL);
-    expect(m.metadataBase?.href).toBe("https://anydiscussion.com/");
+    expect((m.metadataBase as URL).href).toBe("https://anydiscussion.com/");
   });
 
   it("returns title as {default, template} pair", () => {
@@ -180,17 +210,17 @@ describe("SEO-01: buildSiteMetadata — metadataBase + title template", () => {
 
   it("sets openGraph.type to 'website'", () => {
     const m = buildSiteMetadata(fakeSettings);
-    expect(m.openGraph?.type).toBe("website");
+    expect(og(m)?.type).toBe("website");
   });
 
   it("includes defaultOgImage in openGraph.images when set", () => {
     const m = buildSiteMetadata(fakeSettings);
-    expect(m.openGraph?.images).toEqual([{ url: fakeSettings.defaultOgImage }]);
+    expect(og(m)?.images).toEqual([{ url: fakeSettings.defaultOgImage }]);
   });
 
   it("omits images when defaultOgImage is empty", () => {
     const m = buildSiteMetadata(fakeSettingsNoOg);
-    expect(m.openGraph?.images).toBeUndefined();
+    expect(og(m)?.images).toBeUndefined();
   });
 });
 
