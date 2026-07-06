@@ -8,17 +8,18 @@
 // updateUser(session.user.id, { name, bio, avatar }) — the self-edit path strips
 // role server-side anyway (T-04-11 defense in depth).
 //
-// AVATAR FIELD — MediaPicker integration:
-//   Same as UserDrawer: the reusable <MediaPicker> modal is owned by Plan 04-02
-//   (parallel wave) and is not present in this worktree's build. The avatar field
-//   ships as a text input (paste CDN URL). Once 04-02 merges, upgrade to:
-//     <MediaPicker isOpen={pickerOpen} onClose={...} onSelect={(url) => setValue('avatar', url)} />
-//   Rule 3 auto-fix for the missing parallel-wave file; setValue target is identical.
+// AVATAR FIELD — MediaPicker (Plan 04-02, merged):
+//   The avatar field reuses the <MediaPicker> modal via setValue('avatar', url),
+//   mirroring PostForm's feature-image field (useState open-state, watch() preview,
+//   Replace/Remove + Select-image buttons, next/image thumbnail).
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import Image from "next/image";
 import { updateUser } from "@/actions/users";
+import MediaPicker from "@/components/dashboard/media/MediaPicker";
 import type { ProfileUser } from "./page";
 
 const profileSchema = z.object({
@@ -36,6 +37,8 @@ export default function ProfileForm({ initialUser }: { initialUser: ProfileUser 
   const {
     register,
     handleSubmit,
+    setValue,
+    watch,
     formState: { errors },
   } = useForm<ProfileInput>({
     resolver: zodResolver(profileSchema),
@@ -45,6 +48,8 @@ export default function ProfileForm({ initialUser }: { initialUser: ProfileUser 
       avatar: initialUser.avatar ?? "",
     },
   });
+  const [avatarPickerOpen, setAvatarPickerOpen] = useState(false);
+  const avatarValue = watch("avatar");
 
   // D-27 NON-optimistic. Profile is the single-source user record; wait for the
   // server to confirm before flipping UI state. invalidate ['users'] on success
@@ -131,19 +136,64 @@ export default function ProfileForm({ initialUser }: { initialUser: ProfileUser 
 
       <div>
         <label htmlFor="profile-avatar" className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-          Avatar URL
+          Avatar
         </label>
-        {/* MediaPicker (Plan 04-02) integration target — see file header.
-            Until 04-02 merges, this is a text input (Rule 3 auto-fix). */}
+        {/* Hidden RHF registration — keeps avatar in the form schema so Zod
+            validation still runs. The visible UI is the Select-image button +
+            thumbnail preview. The picker calls setValue('avatar', url). */}
         <input
-          id="profile-avatar"
+          type="hidden"
           {...register("avatar")}
-          placeholder="https://cdn.anydiscussion.com/... (optional)"
-          className={INPUT_CLASS}
+          aria-hidden
         />
-        <p className="mt-1 text-xs text-gray-500">
-          Paste a CDN URL. The media-library picker (Plan 04-02) will replace this field.
-        </p>
+        {avatarValue ? (
+          <div className="flex items-start gap-4 rounded-lg border border-gray-200 p-3 dark:border-gray-800">
+            <div className="relative h-20 w-32 shrink-0 overflow-hidden rounded-md bg-gray-100 dark:bg-gray-800">
+              <Image
+                src={avatarValue}
+                alt="Avatar preview"
+                fill
+                sizes="128px"
+                className="object-cover"
+              />
+            </div>
+            <div className="flex-1 space-y-2">
+              <p className="break-all text-xs text-gray-500">{avatarValue}</p>
+              <div className="flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={() => setAvatarPickerOpen(true)}
+                  className="text-xs font-medium text-brand-500 hover:text-brand-600"
+                >
+                  Replace
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setValue("avatar", "", { shouldValidate: true })}
+                  className="text-xs font-medium text-error-500 hover:text-error-600"
+                >
+                  Remove image
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setAvatarPickerOpen(true)}
+            className="inline-flex items-center justify-center rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white shadow-theme-xs hover:bg-brand-600"
+          >
+            Select image
+          </button>
+        )}
+        <MediaPicker
+          isOpen={avatarPickerOpen}
+          onClose={() => setAvatarPickerOpen(false)}
+          onSelect={(url) => {
+            setValue("avatar", url, { shouldValidate: true });
+            setAvatarPickerOpen(false);
+          }}
+        />
       </div>
 
       {submitError && (

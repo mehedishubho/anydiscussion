@@ -8,21 +8,19 @@
 //   - create: name, email, password, role, bio, avatar → createUser
 //   - edit:   name, role, bio, avatar (password hidden) → updateUser
 //
-// AVATAR FIELD — MediaPicker integration:
-//   The reusable <MediaPicker> modal is owned by Plan 04-02 (parallel wave). It is
-//   not present in this worktree's build, so the avatar field ships as a text input
-//   (paste CDN URL). Once Plan 04-02 merges, the field upgrades to:
-//     <MediaPicker isOpen={pickerOpen} onClose={...} onSelect={(url) => setValue('avatar', url)} />
-//   The text input is the Rule-3 auto-fix for the missing parallel-wave file; the
-//   wiring target (setValue('avatar', url)) is identical so the upgrade is a one-line swap.
-//   [Plan 04-02 declares the MediaPicker API: { isOpen, onClose, onSelect, accept? }]
-import { useEffect } from "react";
+// AVATAR FIELD — MediaPicker (Plan 04-02, merged):
+//   The avatar field reuses the <MediaPicker> modal via setValue('avatar', url),
+//   mirroring PostForm's feature-image field (useState open-state, watch() preview,
+//   Replace/Remove + Select-image buttons, next/image thumbnail).
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation } from "@tanstack/react-query";
+import Image from "next/image";
 import { Modal } from "@/components/ui/modal";
 import { createUser, updateUser } from "@/actions/users";
+import MediaPicker from "@/components/dashboard/media/MediaPicker";
 import type { UserRow } from "./page";
 
 // Zod schema — shared client-side validation. Mirrors the server action's input
@@ -64,6 +62,8 @@ export default function UserDrawer({
     register,
     handleSubmit,
     reset,
+    setValue,
+    watch,
     formState: { errors },
   } = useForm<UserDrawerInput>({
     resolver: zodResolver(userDrawerSchema),
@@ -76,6 +76,8 @@ export default function UserDrawer({
       avatar: "",
     },
   });
+  const [avatarPickerOpen, setAvatarPickerOpen] = useState(false);
+  const avatarValue = watch("avatar");
 
   // Reset form values whenever the drawer opens or the target user changes.
   useEffect(() => {
@@ -230,19 +232,64 @@ export default function UserDrawer({
 
           <div>
             <label htmlFor="user-avatar" className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
-              Avatar URL
+              Avatar
             </label>
-            {/* MediaPicker (Plan 04-02) integration target — see file header.
-                Until 04-02 merges, this is a text input (Rule 3 auto-fix). */}
+            {/* Hidden RHF registration — keeps avatar in the form schema so Zod
+                validation still runs. The visible UI is the Select-image button +
+                thumbnail preview. The picker calls setValue('avatar', url). */}
             <input
-              id="user-avatar"
+              type="hidden"
               {...register("avatar")}
-              placeholder="https://cdn.anydiscussion.com/... (optional)"
-              className={INPUT_CLASS}
+              aria-hidden
             />
-            <p className="mt-1 text-xs text-gray-500">
-              Paste a CDN URL. The media-library picker (Plan 04-02) will replace this field.
-            </p>
+            {avatarValue ? (
+              <div className="flex items-start gap-4 rounded-lg border border-gray-200 p-3 dark:border-gray-800">
+                <div className="relative h-20 w-32 shrink-0 overflow-hidden rounded-md bg-gray-100 dark:bg-gray-800">
+                  <Image
+                    src={avatarValue}
+                    alt="Avatar preview"
+                    fill
+                    sizes="128px"
+                    className="object-cover"
+                  />
+                </div>
+                <div className="flex-1 space-y-2">
+                  <p className="break-all text-xs text-gray-500">{avatarValue}</p>
+                  <div className="flex flex-wrap gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setAvatarPickerOpen(true)}
+                      className="text-xs font-medium text-brand-500 hover:text-brand-600"
+                    >
+                      Replace
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setValue("avatar", "", { shouldValidate: true })}
+                      className="text-xs font-medium text-error-500 hover:text-error-600"
+                    >
+                      Remove image
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setAvatarPickerOpen(true)}
+                className="inline-flex items-center justify-center rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white shadow-theme-xs hover:bg-brand-600"
+              >
+                Select image
+              </button>
+            )}
+            <MediaPicker
+              isOpen={avatarPickerOpen}
+              onClose={() => setAvatarPickerOpen(false)}
+              onSelect={(url) => {
+                setValue("avatar", url, { shouldValidate: true });
+                setAvatarPickerOpen(false);
+              }}
+            />
           </div>
 
           {submitError && (
