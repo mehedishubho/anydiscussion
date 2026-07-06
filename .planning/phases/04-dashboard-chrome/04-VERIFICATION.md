@@ -1,27 +1,21 @@
 ---
 phase: 04-dashboard-chrome
-verified: 2026-07-06T03:55:00Z
-status: gaps_found
-score: 31/32 must-haves verified
+verified: 2026-07-06T21:35:00Z
+status: passed
+score: 32/32 must-haves verified
 behavior_unverified: 0
 overrides_applied: 0
-gaps:
-  - truth: "Avatar field uses the <MediaPicker> modal from Plan 04-02 (component reuse — no duplicate picker implementation) [Plan 04-03 must_haves.truths]"
-    status: failed
-    reason: "Plan 04-03 shipped the avatar fields in src/app/(admin)/dashboard/users/UserDrawer.tsx AND src/app/(admin)/dashboard/profile/ProfileForm.tsx as plain text inputs (paste CDN URL) because <MediaPicker> lived in a parallel-wave worktree at execution time. 04-02 has since merged (MediaPicker.tsx exists at src/components/dashboard/media/MediaPicker.tsx) so the documented one-line swap (setValue('avatar', url) via <MediaPicker onSelect>) is unblocked but has NOT been applied. The text-input fallback is functional and the underlying DASH-04 requirement (users/roles management UI) is still satisfied at the management level, but the plan-level must_have is literally unmet. Code comment in UserDrawer.tsx lines 11-18 + 232-246 documents the integration target verbatim."
-    artifacts:
-      - path: "src/app/(admin)/dashboard/users/UserDrawer.tsx"
-        issue: "Avatar field is <input {...register('avatar')} /> (text input). The MediaPicker integration target is documented in the file header (lines 11-18) but the actual <MediaPicker> element is absent. The fix is a one-liner: replace the <input> with <MediaPicker isOpen={pickerOpen} onClose={...} onSelect={(url) => setValue('avatar', url)} /> + a small button to open it (mirror the PostForm feature-image wiring in src/app/(admin)/dashboard/posts/PostForm.tsx lines 218-225)."
-      - path: "src/app/(admin)/dashboard/profile/ProfileForm.tsx"
-        issue: "Same text-input pattern; same one-line fix needed."
-    missing:
-      - "Swap the avatar text input for <MediaPicker> in UserDrawer.tsx (one-line + button wiring, mirroring PostForm feature-image field)."
-      - "Apply the same swap in ProfileForm.tsx."
-      - "OR: add an override to VERIFICATION.md frontmatter accepting the text-input UX as the alternative implementation (the avatar field is functional; the picker is a UX-polish upgrade). Suggested override text is in the Human Verification section below."
+re_verification:
+  previous_status: gaps_found
+  previous_score: 31/32
+  gaps_closed:
+    - "Avatar field uses the <MediaPicker> modal from Plan 04-02 (component reuse — no duplicate picker implementation) [Plan 04-03 must_haves.truths row 20] — CLOSED by Plan 04-06 (commit d4d19a6, merged e101e79): UserDrawer.tsx + ProfileForm.tsx avatar fields now render <MediaPicker> with full PostForm-mirrored wiring."
+  gaps_remaining: []
+  regressions: []
 deferred:
   - truth: "pnpm test:migrations clean-room migration test passes (no schema drift) [Plan 04-04 Task 1 acceptance_criteria]"
     addressed_in: "Phase 7 — Performance & Deploy (and pre-UAT environment with running Postgres)"
-    evidence: "Plan 04-04 SUMMARY 'Issues Encountered' confirms the migration test requires a running Postgres instance (localhost:5436) that is not available in the CI/worktree environment (ECONNREFUSED). The plan explicitly states 'NO drizzle-kit generate migration needed (D-29 seed-only)'. Verification confirmed src/db/schema.ts is unchanged across the phase (the only Task-1 file modifications were to permissions.ts, seed.ts, instrumentation.ts — none touch schema.ts or migrations/). No drift risk exists."
+    evidence: "Plan 04-04 SUMMARY 'Issues Encountered' confirms the migration test requires a running Postgres instance (localhost:5436) that is not available in the CI/worktree environment (ECONNREFUSED). The plan explicitly states 'NO drizzle-kit generate migration needed (D-29 seed-only)'. Verification confirmed src/db/schema.ts is unchanged across the phase (the only Task-1 file modifications were to permissions.ts, seed.ts, instrumentation.ts — none touch schema.ts or migrations/). No drift risk exists. Plan 04-05 SUMMARY independently confirms the same constraint."
 behavior_unverified_items: []
 human_verification:
   - test: "Visual: dark mode toggle works on every new /dashboard/* route (DASH-08 / Plan 04-01 D-06 / Plan 04-02..04-05 DASH-08 obligations). Routes to spot-check: /dashboard, /dashboard/posts/*, /dashboard/profile, /dashboard/calendar, /dashboard/categories, /dashboard/tags, /dashboard/media, /dashboard/users, /dashboard/pages, /dashboard/pages/[id]/edit, /dashboard/settings/storage."
@@ -33,18 +27,18 @@ human_verification:
   - test: "Visual: /dashboard overview renders real stats with seeded data (Plan 04-01 D-04). Stat tiles (Draft / Pending review / Published counts), pending-review preview list (max 5), media count tile, + New post CTA."
     expected: "Server Component reads listPosts + listMedia, partitions by status, renders the tiles. Static prerender shell must NOT contain the marker '<h1>Dashboard overview</h1>' (auth-gate test asserts this). Authenticated render must show the tiles."
     why_human: "Needs a running DB + seeded posts/media to confirm the dynamic read path."
-  - test: "Visual: MediaPicker end-to-end across three consumers (Plan 04-02 must_haves.truths row 4). Open picker from (a) PostForm feature-image field, (b) editor Toolbar image button, (c) avatar field — IF the avatar swap is applied. For each, exercise Library browse → click-select, Upload → drag-drop → auto-select, External URL → paste → submit."
-    expected: "All three tabs land a working URL. PostForm shows thumbnail preview; Toolbar inserts image into editor; avatar (once integrated) populates the field."
-    why_human: "Three-tab interaction across consumers needs a running browser + DB with seeded media."
+  - test: "Visual: MediaPicker end-to-end across THREE consumers (Plan 04-02 must_haves.truths row 4 + Plan 04-06 gap-closure). Open picker from (a) PostForm feature-image field, (b) editor Toolbar image button, (c) avatar field in BOTH UserDrawer AND ProfileForm — the avatar swap is now IN PLACE. For each, exercise Library browse → click-select, Upload → drag-drop → auto-select, External URL → paste → submit."
+    expected: "All three tabs land a working URL. PostForm shows thumbnail preview; Toolbar inserts image into editor; avatar populates the field and renders the next/image thumbnail preview (Replace/Remove buttons functional). ProfileForm avatar (self-service) behaves identically."
+    why_human: "Three-tab interaction across four consumer entry-points needs a running browser + DB with seeded media."
   - test: "Visual: MediaUploader drag-drop multi-file + per-file progress + alt-text prompt + 10MB cap (Plan 04-02 D-14). Drag 3 files; observe per-file pending/success/error state; type alt text per file; verify rejected files surface 'File exceeds 10.0 MB (D-08)'."
     expected: "react-dropzone maxSize=MEDIA_MAX_SIZE_BYTES (10MB) enforced client-side; server-side mediaUploadSchema rejects oversized files (verified in test T-03-12). UI must surface both layers."
     why_human: "Drag-drop interaction + per-file visual state requires a live session."
   - test: "Visual: media delete warn-confirm (Plan 04-02 D-15). Delete a media item referenced by a post body or feature-image; observe a confirm dialog warning 'N posts reference this image'; user can proceed (warn does NOT block)."
     expected: "findMediaReferences runs before delete; warning text shows matches; delete proceeds on user confirmation."
     why_human: "Needs seeded posts + media with references."
-  - test: "Visual: users table + drawer flow (Plan 04-03 D-07/D-08/D-10/D-11). Sign in as admin → /dashboard/users renders table with name/email/role/status/actions. Create a new editor via drawer. Ban/unban them (optimistic UI). Revoke sessions. Assign admin role. Verify drawer avatar field accepts a URL (current state — see Gaps)."
-    expected: "Optimistic ban/unban flips row state immediately; onError rolls back. Server actions re-check requireCan (verified in tests). Profile form is self-service for any role (no role field on self-edit)."
-    why_human: "Multi-action visual flow + optimistic UI rollback requires a running browser + DB."
+  - test: "Visual: users table + drawer flow INCLUDING the new MediaPicker avatar (Plan 04-03 D-07/D-08/D-10/D-11 + Plan 04-06). Sign in as admin → /dashboard/users renders table with name/email/role/status/actions. Create a new editor via drawer — exercise the avatar Select-image button → pick from library → confirm thumbnail preview renders → save. Edit an existing user → avatar preview shows current URL → Replace opens picker → Remove clears the field. Ban/unban (optimistic UI). Revoke sessions. Assign admin role."
+    expected: "Optimistic ban/unban flips row state immediately; onError rolls back. Avatar picker writes URL via setValue('avatar', url) and preview reads watch('avatar'); Remove button calls setValue('avatar', '', { shouldValidate: true }) and returns to Select-image empty state. Server actions re-check requireCan (verified in tests). Profile form is self-service for any role (no role field on self-edit)."
+    why_human: "Multi-action visual flow + optimistic UI rollback + picker interaction requires a running browser + DB."
   - test: "Visual: pages editor slimmed (Plan 04-04 D-18). Edit /dashboard/pages/[id]/edit for T&C/Privacy/Contact. Verify only title/slug/body/status/metaTitle/metaDescription/canonical fields (NO category/tags/excerpt/feature-image/schedule/preview)."
     expected: "Slimmed PageForm with the same Phase-3 Tiptap editor (extensions single source of truth). PagesTable STATUS_BADGE shows Draft/Published only (no Pending Review)."
     why_human: "Visual layout confirmation + dark mode on the new routes."
@@ -62,60 +56,80 @@ human_verification:
 # Phase 4: Dashboard Chrome — Verification Report
 
 **Phase Goal:** The editorial team manages the full content lifecycle through a polished TailAdmin dashboard wired to real data — posts, taxonomy, media, users/roles, dashboard-managed pages, AND the active image storage destination (local/Cloudinary/R2/push-CDN) — with a lean initial load and a single shared form/validation pattern.
-**Verified:** 2026-07-06T03:55:00Z
-**Status:** gaps_found
-**Re-verification:** No — initial verification
+**Verified:** 2026-07-06T21:35:00Z
+**Status:** passed
+**Re-verification:** Yes — after gap closure (Plan 04-06 / commit d4d19a6 / merge e101e79)
 
 ## Goal Achievement
 
-The phase goal is substantively achieved: all 9 DASH requirements are satisfied at the requirement level, all 5 plans landed, build is green, 243/243 tests pass, auth-gate PASS. ONE plan-level must_have is literally unmet (Plan 04-03 avatar field ships as text input instead of <MediaPicker>); the underlying DASH-04 capability is still delivered with a UX downgrade. Status is `gaps_found` because a plan must_have FAILED and an artifact is a documented stub. The fix is a one-line swap now that Plan 04-02's MediaPicker has merged.
+The phase goal is fully achieved. All 9 DASH requirements are satisfied. All 5 original plans (04-01..04-05) plus the gap-closure plan (04-06) landed. The single must_have gap from the prior verification (Plan 04-03 avatar field as text input) is CLOSED — Plan 04-06 swapped both avatar consumers (UserDrawer.tsx + ProfileForm.tsx) to the reusable `<MediaPicker>` modal from Plan 04-02, mirroring PostForm's feature-image wiring verbatim. Build is green (5.3s compile, all 13 `/dashboard/*` routes registered with PPR markers). Full test suite passes (243/243, 24 test files). Auth-gate structural check PASS. No regressions from the gap-closure edit.
+
+Status is `passed` (code-verification gate): 32/32 must-have truths VERIFIED, 0 behavior-unverified, 0 gaps. The 11 visual/external-service checks in `human_verification` are UAT-owed items routed to the end-of-phase UAT checkpoint (`04-UAT.md` sink) — they are inherent limitations of static verification (browser/DB/live-creds interactions), not code defects, and were carried forward unchanged from the prior report.
 
 ### Observable Truths
 
 | #   | Truth (must_have from PLAN frontmatter) | Status | Evidence |
 | --- | --------------------------------------- | ------ | -------- |
-| 1   | Every admin page is reachable under the /dashboard/* URL prefix [04-01] | ✓ VERIFIED | Build route table: `/dashboard`, `/dashboard/posts`, `/dashboard/posts/new`, `/dashboard/posts/[id]/edit`, `/dashboard/profile`, `/dashboard/calendar`, `/dashboard/categories`, `/dashboard/tags`, `/dashboard/media`, `/dashboard/users`, `/dashboard/pages`, `/dashboard/pages/[id]/edit`, `/dashboard/settings/storage` all registered. `src/app/(admin)/posts/` and `src/app/(admin)/(others-pages)/` no longer exist (ls confirms). |
-| 2   | (admin)-scoped QueryClientProvider wraps AdminShell's children ONLY [04-01] | ✓ VERIFIED | `src/app/(admin)/QueryProvider.tsx` exports a `"use client"` provider with `useState(() => new QueryClient({ ... }))`. `src/app/(admin)/AdminShell.tsx` line 58 wraps `{children}` with `<QueryProvider>`. `src/app/layout.tsx` NOT modified. |
-| 3   | AppSidebar contains ONLY the CMS nav + collapsed Components reference group [04-01] | ✓ VERIFIED | `src/layout/AppSidebar.tsx` grep: `Ecommerce` = 0 hits, `basic-tables\|form-elements\|line-chart\|bar-chart` = 0 hits. navItems = Posts/Categories/Tags/Media/Pages/Users(admin)/Settings(admin)/Profile/Calendar. othersItems = collapsed Components group referencing (ui-elements) showcase. |
-| 4   | Sidebar items filter by viewer role (UX layer only) [04-01] | ✓ VERIFIED | `requiredRole?: Role` field on NavItem + `hasRole(role, required)` helper (line 117). Role propagated via `(admin)/layout.tsx` AuthGate (line 43) → AdminShell `role` prop → AppSidebar. Comment "UX ONLY — every mutating Server Action still re-checks permissions server-side" present (line 22). |
-| 5   | /dashboard overview shows server-rendered real stats [04-01] | ✓ VERIFIED | `src/app/(admin)/dashboard/page.tsx` is a Server Component (no `"use client"`) calling `listPosts({limit:500})` + `listMedia({limit:2000})`, partitioning by status, rendering stat tiles (Draft/Pending review/Published), pending-review preview list (max 5), media count tile, "+ New post" CTA → `/dashboard/posts/new`. No "Dashboard content will be wired" placeholder. Marker `<h1>Dashboard overview</h1>` present (referenced by auth-gate test). |
-| 6   | (others-pages)/{blank,charts,forms,tables} demo routes + now-unused component files deleted [04-01] | ✓ VERIFIED | `ls "src/app/(admin)/(others-pages)/"` → not found. `ls "src/components/charts/"` → not found. `ls "src/components/form/form-elements/"` → not found. (ui-elements) showcase preserved (build route table includes /alerts, /avatars, /badge, /buttons, /images, /modals, /videos). |
-| 7   | Phase 2 auth-gate test (test-auth-gate.mjs) passes after route move + marker sync [04-01] | ✓ VERIFIED | `pnpm test:auth-gate` exits 0. Structural check PASS. HTTP check SKIPPED (port 3939 EADDRINUSE — server unavailable; environmental, not a code defect). |
-| 8   | PostForm.tsx wraps savePost in TanStack useMutation (NOT optimistic per D-27) [04-01] | ✓ VERIFIED | `src/app/(admin)/dashboard/posts/PostForm.tsx` line 91-97: `useMutation({ mutationFn: savePost, onSuccess: () => queryClient.invalidateQueries({ queryKey: ["posts"] }) })`. `mutation.isPending` drives disabled (line 244). `mutation.error?.message` surfaces failures (line 109). D-27 comment present in file header. |
-| 9   | Dark mode renders on /dashboard, /dashboard/posts, /dashboard/profile, /dashboard/calendar [04-01] | ⚠ HUMAN | ThemeContext provides dark mode by design (no rebuild required per D-06). Visual confirmation needs browser session — see Human Verification section. |
-| 10  | /dashboard/categories renders TailAdmin table over listCategories with create/edit/soft-delete [04-02] | ✓ VERIFIED | `src/app/(admin)/dashboard/categories/page.tsx` (Server Component) + `CategoriesTable.tsx` (client, 6 useMutation hits). Build route table includes /dashboard/categories (Partial Prerender). |
-| 11  | /dashboard/tags renders TailAdmin table over listTags [04-02] | ✓ VERIFIED | Same pattern: page.tsx + TagsTable.tsx (5 useMutation hits). Route registered. |
-| 12  | /dashboard/media renders grid+list+details+uploader; soft-delete warns via findMediaReferences [04-02] | ✓ VERIFIED | MediaGrid.tsx + MediaUploader.tsx (2 useDropzone hits) + page.tsx. `findMediaReferences` in `src/actions/media.ts` (2 hits — export + JSDoc). 15/15 media tests pass. |
-| 13  | Reusable <MediaPicker> modal invoked from PostForm feature-image + Toolbar image button [04-02] | ✓ VERIFIED | `src/components/dashboard/media/MediaPicker.tsx` exists with 3 tabs (Library/Upload/External URL). PostForm references MediaPicker (1+ hits). Toolbar references MediaPicker (8 hits). Toolbar `window.prompt` count = 0 (replaced). |
-| 14  | MediaPicker preserves Phase 3 D-10 external-URL option [04-02] | ✓ VERIFIED | MediaPicker.tsx has Tab `"external"` with URL input + `Use this URL` button. `submitExternal()` validates URL shape via `new URL(trimmed)`. |
-| 15  | Optimistic UI on taxonomy CRUD + media delete; NOT optimistic on upload [04-02] | ✓ VERIFIED | CategoriesTable/TagsTable useMutation patterns with onMutate/onError; MediaUploader per-file useMutation WITHOUT onMutate (per D-27). Verified via SUMMARY + grep. |
-| 16  | /dashboard/users table admin-only; create/disable/role-assign via drawer [04-03] | ✓ VERIFIED | `src/app/(admin)/dashboard/users/page.tsx` (Server Component calling listUsers). UsersTable.tsx (7 useMutation hits) + UserDrawer.tsx (RHF+Zod side drawer). `listUsers` + `updateUser` in `src/actions/users.ts` with requireCan FIRST. 6 new users.test.ts cases pass. |
-| 17  | Admin CANNOT destructively delete a user (D-08 disable-only) [04-03] | ✓ VERIFIED | `grep -c 'deleteUser' src/actions/users.ts` = 0. Ban/unban use the existing `banUser`/`unbanUser` primitives. |
-| 18  | Role assignment via dropdown; updateUser re-checks requireCan user:update server-side [04-03] | ✓ VERIFIED | UserDrawer.tsx has `<select {...register("role")}>` with admin/editor/author options. `updateUser` code: `if (!isSelf) { await requireCan({ user: ["update"] }); }` (line 239-242). |
-| 19  | Self-service profile at /dashboard/profile for any role [04-03] | ✓ VERIFIED | `src/app/(admin)/dashboard/profile/page.tsx` replaced TailAdmin demo. `ProfileForm.tsx` calls `updateUser(session.user.id, {...})`. Server-side `isSelf` path strips `role` from input (line 237). |
-| 20  | **Avatar field uses the <MediaPicker> modal from Plan 04-02 [04-03]** | ✗ FAILED | UserDrawer.tsx lines 232-246: avatar field is `<input {...register("avatar")} />` (text input). ProfileForm.tsx: same text input pattern. MediaPicker from 04-02 IS now merged (`src/components/dashboard/media/MediaPicker.tsx`) but the one-line swap has NOT been applied. The file header documents the integration target verbatim. The underlying DASH-04 capability still works (URL is accepted). See Gaps Summary. |
-| 21  | listUsers + updateUser server actions added with permission-check-first [04-03] | ✓ VERIFIED | `src/actions/users.ts` exports `listUsers` (line 177) + `updateUser` (line 220). `requireCan({ user: ["read"] })` at line 179; `requireCan({ user: ["update"] })` at line 241 (guarded by `!isSelf`). |
-| 22  | Ban/role-change optimistic; profile save NOT optimistic [04-03] | ✓ VERIFIED | UsersTable ban/unban useMutation with onMutate optimistic; UserDrawer create/edit + ProfileForm useMutation WITHOUT onMutate. D-27 split honored. |
-| 23  | /dashboard/pages table over listPages; status badge Draft/Published only [04-04] | ✓ VERIFIED | `src/app/(admin)/dashboard/pages/page.tsx` + PagesTable.tsx. `grep -c 'pending_review' src/app/(admin)/dashboard/pages/page.tsx` = 0. Route registered. |
-| 24  | /dashboard/pages/[id]/edit slimmed Tiptap editor; drops post-only fields [04-04] | ✓ VERIFIED | PageForm.tsx + edit page.tsx exist. `grep -cE 'CategoryPicker\|TagPicker\|featureImage\|SchedulePicker\|previewToken' PageForm.tsx` = 0. EditorProvider reused (Phase 3 editor). |
-| 25  | Page status draft\|published only (NO pending_review per D-20) [04-04] | ✓ VERIFIED | `grep -c 'pending_review' src/actions/pages-schema.ts` = 0. pageSchema uses `z.enum(["draft","published"])`. Schema rejection tested in pages.test.ts. |
-| 26  | Page body uses same lib/sanitize pipeline as posts [04-04] | ✓ VERIFIED | `src/actions/pages.ts` imports `sanitizeBeforeStore` from `@/lib/sanitize`. `sanitizeBodyHtml` walker is verbatim copy of posts.ts walker (T-04-17). |
-| 27  | T&C + Privacy + Contact pages seeded idempotently at first boot (D-17) [04-04] | ✓ VERIFIED | `src/lib/storage/seed.ts` exports `seedPages()` (line 73) with three rows + `onConflictDoNothing({ target: schema.pages.slug })`. `src/instrumentation.ts` calls `seedPages()` inside the `NEXT_RUNTIME === "nodejs"` gate (line 50). About NOT seeded. |
-| 28  | Page actions (createPage/updatePage/listPages/getPage/softDeletePage) permission-check-first [04-04] | ✓ VERIFIED | `src/actions/pages.ts` has 5 requireCan({page:[...]}) calls (one per action). Plan-deviation note: 04-04 added the `page` RBAC resource to `src/lib/auth/permissions.ts` because the Phase-2 statement set did not include `page` — without this addition, requireCan would throw FORBIDDEN for admins. 13/13 pages tests pass. |
-| 29  | Page save uses RHF+Zod+useMutation; optimistic per D-27 [04-04] | ✓ VERIFIED | PageForm.tsx uses useMutation. Optimistic UI present. onSuccess invalidates ['pages']. |
-| 30  | An admin can open /dashboard/settings/storage + pick active provider + enter credentials [04-05] | ✓ VERIFIED | `src/app/(admin)/dashboard/settings/storage/page.tsx` (Server Component) + `StorageSettingsForm.tsx` exist. Provider selector + per-provider sections. Sidebar Storage link wired (`grep -c '/dashboard/settings/storage' src/layout/AppSidebar.tsx` ≥ 1). Route registered with PPR marker. |
-| 31  | saveStorageSettings re-checks requireRole('admin') FIRST [04-05] | ✓ VERIFIED | `src/actions/storage-settings.ts` line 116: `await requireRole("admin")` BEFORE any encryption or DB write. Same for `getStorageSettings` (line 164) + `testStorageConnection` (line 205). 3 MUST_NOT_BE_REACHED tests prove ordering. |
-| 32  | Provider credentials AES-256-GCM encrypted at rest; envelope iv:authTag:ciphertext base64 [04-05] | ✓ VERIFIED | `src/lib/crypto/index.ts` uses `crypto.createCipheriv("aes-256-gcm", key, iv)` (line 82). Envelope format `iv:authTag:ciphertext` (line 88). 12 crypto tests pass including tamper detection. |
-| 33  | getStorageSettings returns redactCredentials(creds) — secret fields empty [04-05 Pitfall 7] | ✓ VERIFIED | `storage-settings.ts` line 178: `redactCredentials(JSON.parse(decrypt(blob)))`. Regex `/secret\|api[-_]?key\|token\|password/i` (lib/crypto/index.ts line 49). Plan-deviation: dropped bare "key" alternative from research-sourced regex because it incorrectly matched `accessKeyId` (the public identifier). 4 redact variants tested. |
-| 34  | Per-provider 'Test connection' probe before Save [04-05 D-24] | ✓ VERIFIED | `testStorageConnection` switches on provider: local → fs.access; r2/push-cdn → ListObjectsV2Command MaxKeys:1; cloudinary → cloudinary.v2.api.ping. Returns `{ok, error?}`, never throws. StorageSettingsForm renders inline ok/error feedback. |
-| 35  | Cloudinary provider: upload_stream; bypasses sharp; transform URLs [04-05 D-22] | ✓ VERIFIED | `src/lib/storage/cloudinary.ts`: `cloudinary.uploader.upload_stream` + `Readable.from(buffer).pipe(stream)` (Pitfall 3). Returns `variants: []`. getPublicUrl returns cloudinary.url with f_auto/q_auto/w_<N> transforms. 11 cloudinary tests pass. |
-| 36  | Push-CDN provider: S3Client + sharp variants + cdnBaseUrl overlay [04-05 D-21] | ✓ VERIFIED | `src/lib/storage/push-cdn.ts`: reuses @aws-sdk/client-s3 S3Client-with-custom-endpoint pattern. Same 3-variant sharp pipeline as local.ts. getPublicUrl returns `${cdnBaseUrl}/${key}`. 10 push-cdn tests pass. |
-| 37  | deleteMedia Pitfall 0 fix: routes via getProviderByName(row.provider ?? 'local') [04-05] | ✓ VERIFIED | `src/actions/media.ts` line 180: `const provider = getProviderByName(row.provider ?? "local")`. `getActiveProvider` not used in deleteMedia (line 74 still uses it for uploadMedia). `getProviderByName` exported from `src/lib/storage/registry.ts` line 100. 2 Pitfall 0 test cases in media.test.ts pass (17/17 total). |
-| 38  | next.config.ts images.remotePatterns includes res.cloudinary.com [04-05 Pitfall 4] | ✓ VERIFIED | `next.config.ts` line 29: `{ protocol: "https", hostname: "res.cloudinary.com" }`. Push-CDN hostname intentionally NOT wildcard-allowlisted (security boundary — operator adds their CDN hostname when configuring push-CDN; documented). |
-| 39  | instrumentation.ts registers cloudinary + push-cdn at boot [04-05] | ✓ VERIFIED | `src/instrumentation.ts` lines 61-68: dynamic-import `cloudinaryProvider` + `pushCdnProvider` + `registerStorageProvider`. Best-effort creds decrypt + configure (lines 74-89) wrapped in try/catch. All inside `NEXT_RUNTIME === "nodejs"` gate. |
-| 40  | Missing SETTINGS_ENCRYPTION_KEY → graceful failure at call time (not boot) [04-05] | ✓ VERIFIED | `lib/crypto/index.ts` `getKey()` reads env var lazily inside `encrypt`/`decrypt` (line 60). Throws clear "SETTINGS_ENCRYPTION_KEY missing or invalid" Error with generation command. Module loads cleanly without the env var. crypto.test.ts case proves graceful failure. |
+| 1   | Every admin page is reachable under the /dashboard/* URL prefix [04-01] | ✓ VERIFIED | Build route table (re-confirmed 2026-07-06): `/dashboard`, `/dashboard/posts`, `/dashboard/posts/new`, `/dashboard/posts/[id]/edit`, `/dashboard/profile`, `/dashboard/calendar`, `/dashboard/categories`, `/dashboard/tags`, `/dashboard/media`, `/dashboard/users`, `/dashboard/pages`, `/dashboard/pages/[id]/edit`, `/dashboard/settings/storage` — 13 routes, all with PPR markers (◐). `src/app/(admin)/posts/` and `src/app/(admin)/(others-pages)/` absent. |
+| 2   | (admin)-scoped QueryClientProvider wraps AdminShell's children ONLY [04-01] | ✓ VERIFIED | `src/app/(admin)/QueryProvider.tsx` exists ("use client", `useState(() => new QueryClient({...}))`). AdminShell wraps children. `src/app/layout.tsx` not modified. (Regression: file present.) |
+| 3   | AppSidebar contains ONLY the CMS nav + collapsed Components reference group [04-01] | ✓ VERIFIED | `src/layout/AppSidebar.tsx`: navItems = Posts/Categories/Tags/Media/Pages/Users(admin)/Settings(admin)/Profile/Calendar; othersItems = collapsed Components showcase. No Ecommerce/chart/table demo entries. (Regression: file present.) |
+| 4   | Sidebar items filter by viewer role (UX layer only) [04-01] | ✓ VERIFIED | `requiredRole?: Role` on NavItem + `hasRole(role, required)` helper; role propagated via (admin)/layout.tsx AuthGate → AdminShell → AppSidebar. "UX ONLY" comment present. (Regression: file present.) |
+| 5   | /dashboard overview shows server-rendered real stats [04-01] | ✓ VERIFIED | `src/app/(admin)/dashboard/page.tsx` Server Component calling listPosts+listMedia, partitioning by status. No placeholder text. (Regression: file present, route registers with PPR marker.) |
+| 6   | (others-pages)/{blank,charts,forms,tables} demo routes + now-unused component files deleted [04-01] | ✓ VERIFIED | `ls "src/app/(admin)/(others-pages)/"` → not found. `ls "src/components/charts/"` → not found. (ui-elements) showcase preserved. (Regression: directories still absent.) |
+| 7   | Phase 2 auth-gate test (test-auth-gate.mjs) passes after route move + marker sync [04-01] | ✓ VERIFIED | Structural check PASS (re-confirmed via full `pnpm test` run 2026-07-06: 243/243). HTTP check requires port 3939 (environmental, not code). |
+| 8   | PostForm.tsx wraps savePost in TanStack useMutation (NOT optimistic per D-27) [04-01] | ✓ VERIFIED | PostForm useMutation + invalidateQueries(['posts']); mutation.isPending drives disabled. (Regression: PostForm still has 9 MediaPicker mentions — feature-image wiring untouched by gap-closure edit.) |
+| 9   | Dark mode renders on /dashboard, /dashboard/posts, /dashboard/profile, /dashboard/calendar [04-01] | ⚠ HUMAN (UAT) | ThemeContext provides dark mode by design (D-06 verify-don't-rebuild). Visual confirmation routed to UAT — see `human_verification` list item 1. |
+| 10  | /dashboard/categories renders TailAdmin table over listCategories with create/edit/soft-delete [04-02] | ✓ VERIFIED | `src/app/(admin)/dashboard/categories/page.tsx` + `CategoriesTable.tsx`. (Regression: both files present; route registers.) |
+| 11  | /dashboard/tags renders TailAdmin table over listTags [04-02] | ✓ VERIFIED | `src/app/(admin)/dashboard/tags/page.tsx` + `TagsTable.tsx`. (Regression: both files present; route registers.) |
+| 12  | /dashboard/media renders grid+list+details+uploader; soft-delete warns via findMediaReferences [04-02] | ✓ VERIFIED | MediaGrid + MediaUploader + page.tsx. findMediaReferences exported from src/actions/media.ts. (Regression: files present.) |
+| 13  | Reusable <MediaPicker> modal invoked from PostForm feature-image + Toolbar image button [04-02] | ✓ VERIFIED | `src/components/dashboard/media/MediaPicker.tsx` exists (default export, 3 tabs, accept='image' default). PostForm references it (9 grep hits); Toolbar references it. MediaPicker.tsx last commit `c342e87` — NOT modified by the gap-closure (commit d4d19a6); reused unchanged as required. |
+| 14  | MediaPicker preserves Phase 3 D-10 external-URL option [04-02] | ✓ VERIFIED | MediaPicker.tsx Tab "external" + submitExternal() URL validation via `new URL(trimmed)`. (Regression: file unchanged.) |
+| 15  | Optimistic UI on taxonomy CRUD + media delete; NOT optimistic on upload [04-02] | ✓ VERIFIED | CategoriesTable/TagsTable onMutate optimistic; MediaUploader per-file useMutation WITHOUT onMutate (D-27). (Regression: files present.) |
+| 16  | /dashboard/users table admin-only; create/disable/role-assign via drawer [04-03] | ✓ VERIFIED | `src/app/(admin)/dashboard/users/page.tsx` + UsersTable.tsx + UserDrawer.tsx. listUsers + updateUser in src/actions/users.ts with requireCan FIRST. (Regression: all three files present; route registers.) |
+| 17  | Admin CANNOT destructively delete a user (D-08 disable-only) [04-03] | ✓ VERIFIED | No `deleteUser` export in src/actions/users.ts. Ban/unban use existing primitives. (Regression: action file present.) |
+| 18  | Role assignment via dropdown; updateUser re-checks requireCan user:update server-side [04-03] | ✓ VERIFIED | UserDrawer.tsx `<select {...register("role")}>`. updateUser: `if (!isSelf) { await requireCan({ user: ["update"] }); }`. (Regression: file present, role dropdown intact at line 206-214.) |
+| 19  | Self-service profile at /dashboard/profile for any role [04-03] | ✓ VERIFIED | `src/app/(admin)/dashboard/profile/page.tsx` + ProfileForm.tsx → updateUser(session.user.id, {...}); server self-edit path strips role. (Regression: file present, route registers.) |
+| 20  | **Avatar field uses the <MediaPicker> modal from Plan 04-02 (component reuse) [04-03] — GAP CLOSED by Plan 04-06** | ✓ VERIFIED | **CLOSED.** UserDrawer.tsx lines 79-80, 233-293: `useState(avatarPickerOpen)`, `watch("avatar")`, hidden `<input type="hidden" {...register("avatar")} aria-hidden />` (keeps Zod validation on the field — correct, not a stub), conditional preview with next/image `Image` (src=avatarValue, fill, sizes, object-cover), Replace button → setAvatarPickerOpen(true), Remove image → setValue("avatar", "", { shouldValidate: true }), Select-image button when empty, trailing `<MediaPicker isOpen={avatarPickerOpen} onClose={...} onSelect={(url) => { setValue("avatar", url, { shouldValidate: true }); setAvatarPickerOpen(false); }} />`. ProfileForm.tsx lines 15-22, 51-52, 137-197: IDENTICAL wiring (verified by full read — both consumers mirror PostForm's feature-image field exactly; only the field name `avatar` and state-var names `avatarPickerOpen`/`avatarValue` differ). The standalone CDN-URL text input is REMOVED from both files (replaced, not supplemented). Header comments updated (lines 11-14 in both). Labels renamed to "Avatar". Commit d4d19a6 (2 files, +130/-33), merged e101e79. |
+| 21  | listUsers + updateUser server actions added with permission-check-first [04-03] | ✓ VERIFIED | src/actions/users.ts exports listUsers + updateUser; requireCan({user:["read"]}) and requireCan({user:["update"]}) (guarded by !isSelf). (Regression: file present.) |
+| 22  | Ban/role-change optimistic; profile save NOT optimistic [04-03] | ✓ VERIFIED | UsersTable ban/unban onMutate optimistic; UserDrawer create/edit + ProfileForm useMutation WITHOUT onMutate. D-27 split honored. (Regression: file present; ProfileForm still NON-optimistic per line 54 comment.) |
+| 23  | /dashboard/pages table over listPages; status badge Draft/Published only [04-04] | ✓ VERIFIED | PagesTable.tsx; no `pending_review` in page.tsx. (Regression: route registers.) |
+| 24  | /dashboard/pages/[id]/edit slimmed Tiptap editor; drops post-only fields [04-04] | ✓ VERIFIED | PageForm.tsx reuses Phase-3 EditorProvider; no CategoryPicker/TagPicker/featureImage/SchedulePicker/previewToken. (Regression: file present.) |
+| 25  | Page status draft\|published only (NO pending_review per D-20) [04-04] | ✓ VERIFIED | pages-schema.ts uses `z.enum(["draft","published"])`. (Regression: file present.) |
+| 26  | Page body uses same lib/sanitize pipeline as posts [04-04] | ✓ VERIFIED | src/actions/pages.ts imports sanitizeBeforeStore from @/lib/sanitize. (Regression: file present.) |
+| 27  | T&C + Privacy + Contact pages seeded idempotently at first boot (D-17) [04-04] | ✓ VERIFIED | src/lib/storage/seed.ts exports seedPages() with onConflictDoNothing; src/instrumentation.ts calls it inside NEXT_RUNTIME=nodejs gate. (Regression: files present.) |
+| 28  | Page actions (createPage/updatePage/listPages/getPage/softDeletePage) permission-check-first [04-04] | ✓ VERIFIED | src/actions/pages.ts has 5 requireCan({page:[...]}) calls. 04-04 added `page` RBAC resource to permissions.ts (necessary — without it requireCan throws FORBIDDEN for admins). 13 pages tests pass. (Regression: file present.) |
+| 29  | Page save uses RHF+Zod+useMutation; optimistic per D-27 [04-04] | ✓ VERIFIED | PageForm.tsx useMutation; onSuccess invalidates ['pages']. (Regression: file present.) |
+| 30  | An admin can open /dashboard/settings/storage + pick active provider + enter credentials [04-05] | ✓ VERIFIED | `src/app/(admin)/dashboard/settings/storage/page.tsx` + StorageSettingsForm.tsx. Provider selector + per-provider sections. Sidebar Storage link wired. (Regression: files present; route registers with PPR marker.) |
+| 31  | saveStorageSettings re-checks requireRole('admin') FIRST [04-05] | ✓ VERIFIED | src/actions/storage-settings.ts has 3 `requireRole("admin")` calls (re-confirmed by grep 2026-07-06) — one per action (save/get/testConnection), each BEFORE any encryption/DB write. 3 MUST_NOT_BE_REACHED tests prove ordering. |
+| 32  | Provider credentials AES-256-GCM encrypted at rest; envelope iv:authTag:ciphertext base64 [04-05] | ✓ VERIFIED | src/lib/crypto/index.ts uses aes-256-gcm; envelope `iv:authTag:ciphertext`. 12 crypto tests pass. (Regression: file present.) |
+| 33  | getStorageSettings returns redactCredentials(creds) — secret fields empty [04-05 Pitfall 7] | ✓ VERIFIED | storage-settings.ts line 178 redactCredentials(JSON.parse(decrypt(blob))). Regex /secret\|api[-_]?key\|token\|password/i. (Regression: file present.) |
+| 34  | Per-provider 'Test connection' probe before Save [04-05 D-24] | ✓ VERIFIED | testStorageConnection switches on provider: local→fs.access; r2/push-cdn→ListObjectsV2Command MaxKeys:1; cloudinary→cloudinary.v2.api.ping. (Regression: file present.) |
+| 35  | Cloudinary provider: upload_stream; bypasses sharp; transform URLs [04-05 D-22] | ✓ VERIFIED | src/lib/storage/cloudinary.ts upload_stream + Readable.from(buffer).pipe; variants:[]; cloudinary.url f_auto/q_auto/w_<N>. 11 tests pass. (Regression: file present.) |
+| 36  | Push-CDN provider: S3Client + sharp variants + cdnBaseUrl overlay [04-05 D-21] | ✓ VERIFIED | src/lib/storage/push-cdn.ts S3Client + 3-variant sharp + cdnBaseUrl overlay. 10 tests pass. (Regression: file present.) |
+| 37  | deleteMedia Pitfall 0 fix: routes via getProviderByName(row.provider ?? 'local') [04-05] | ✓ VERIFIED | src/actions/media.ts line 180 (re-confirmed by grep 2026-07-06): `const provider = getProviderByName(row.provider ?? "local")`. getProviderByName exported from registry.ts line 100. 2 Pitfall 0 test cases pass (17/17 media tests). |
+| 38  | next.config.ts images.remotePatterns includes res.cloudinary.com [04-05 Pitfall 4] | ✓ VERIFIED | next.config.ts line 29: res.cloudinary.com entry. Push-CDN intentionally not wildcarded. (Regression: file present; build green.) |
+| 39  | instrumentation.ts registers cloudinary + push-cdn at boot [04-05] | ✓ VERIFIED | src/instrumentation.ts dynamic-import register calls inside NEXT_RUNTIME=nodejs gate; best-effort creds configure. (Regression: file present.) |
+| 40  | Missing SETTINGS_ENCRYPTION_KEY → graceful failure at call time (not boot) [04-05] | ✓ VERIFIED | lib/crypto/index.ts getKey() reads env lazily; throws clear Error with generation command. crypto.test.ts proves graceful failure. (Regression: file present.) |
 
-**Score:** 31/32 truths verified (1 FAILED — avatar MediaPicker integration in Plan 04-03). The failed truth does not break DASH-04 at the requirement level (avatar field accepts URL text); it is a plan-fidelity miss.
+**Score:** 32/32 truths verified (0 FAILED, 0 behavior-unverified). The previously failed truth #20 is now VERIFIED via Plan 04-06. 1 truth (#9 dark mode) routes to UAT as a visual check — counted VERIFIED at the code level (ThemeContext unchanged per D-06) with visual confirmation owed downstream.
+
+### Re-verification Detail: The Closed Gap (Truth #20)
+
+The prior verification (2026-07-06T03:55:00Z) reported truth #20 FAILED because Plan 04-03 shipped the avatar field in both `UserDrawer.tsx` and `ProfileForm.tsx` as a text input (CDN-URL paste), pending the merge of Plan 04-02's `<MediaPicker>` component from a parallel worktree. Plan 04-02 has since merged; Plan 04-06 (commit `d4d19a6`, merged `e101e79`) applied the documented one-line-per-file swap.
+
+**Verification of the closure (full read of both files):**
+
+`src/app/(admin)/dashboard/users/UserDrawer.tsx` (lines 11-14, 15, 20, 23, 65-66, 79-80, 233-293):
+- Header comment updated — documents MediaPicker reuse via setValue('avatar', url), mirroring PostForm feature-image.
+- Imports: `useState` added to react import; `Image` from next/image; `MediaPicker` default-imported from `@/components/dashboard/media/MediaPicker`.
+- useForm destructure extended with `setValue, watch`.
+- `const [avatarPickerOpen, setAvatarPickerOpen] = useState(false);` + `const avatarValue = watch("avatar");` (lines 79-80).
+- Avatar field block (lines 233-293): hidden registered `<input type="hidden" {...register("avatar")} aria-hidden />` (preserves Zod validation — correct, not a stub); conditional preview row with next/image `Image` (src=avatarValue, fill, sizes="128px", object-cover) + URL text + Replace button (→setAvatarPickerOpen(true)) + Remove image button (→setValue("avatar", "", { shouldValidate: true })); Select-image button when empty (→setAvatarPickerOpen(true)); trailing `<MediaPicker isOpen={avatarPickerOpen} onClose={...} onSelect={(url) => { setValue("avatar", url, { shouldValidate: true }); setAvatarPickerOpen(false); }} />`.
+- Label "Avatar" (not "Avatar URL"). No CDN-URL placeholder text input remains.
+
+`src/app/(admin)/dashboard/profile/ProfileForm.tsx` (lines 11-14, 15, 20, 22, 40-41, 51-52, 137-197): IDENTICAL wiring. The file previously had no react import — Plan 04-06 added `import { useState } from "react"`. All other elements mirror UserDrawer exactly.
+
+The pattern is identical to PostForm's feature-image field (verified by reading PostForm's feature-image block — only the field name `avatar` vs `featureImage` and state-var names `avatarPickerOpen`/`avatarValue` vs `mediaPickerOpen`/`featureImageValue` differ). MediaPicker.tsx is reused unchanged (its last commit is `c342e87`, not the gap-closure commit `d4d19a6`).
 
 ### Deferred Items
 
@@ -127,84 +141,79 @@ The phase goal is substantively achieved: all 9 DASH requirements are satisfied 
 
 | Artifact | Expected | Status | Details |
 | -------- | -------- | ------ | ------- |
-| `src/app/(admin)/QueryProvider.tsx` | TanStack QueryClient scoped to (admin) | ✓ VERIFIED | Exists; uses `useState(() => new QueryClient({...}))`; QueryClientProvider + devtools-in-dev. |
-| `src/app/(admin)/AdminShell.tsx` | Wraps children with QueryProvider; accepts role prop | ✓ VERIFIED | Role prop forwarded to AppSidebar; QueryProvider wraps children (line 58). |
-| `src/app/(admin)/dashboard/page.tsx` | Lean real-stats overview | ✓ VERIFIED | Server Component; calls listPosts+listMedia; stat tiles + pending review list + media count + CTA. |
-| `src/layout/AppSidebar.tsx` | CMS nav + role filter | ✓ VERIFIED | navItems + othersItems replaced; hasRole() helper + requiredRole field; UX-only comment. |
-| `src/app/(admin)/dashboard/categories/{page,CategoriesTable}.tsx` | TailAdmin category management | ✓ VERIFIED | Both files exist; useMutation × 6 in CategoriesTable. |
-| `src/app/(admin)/dashboard/tags/{page,TagsTable}.tsx` | TailAdmin tag management | ✓ VERIFIED | Both files exist; useMutation × 5 in TagsTable. |
-| `src/app/(admin)/dashboard/media/{page,MediaGrid,MediaUploader}.tsx` | Media library browser | ✓ VERIFIED | All three exist; useDropzone × 2 in MediaUploader. |
-| `src/components/dashboard/media/MediaPicker.tsx` | Reusable modal (D-13) | ✓ VERIFIED | Exists with 3 tabs (Library/Upload/External URL); wired into PostForm + Toolbar. |
-| `src/actions/users.ts` (extended) | + listUsers + updateUser | ✓ VERIFIED | listUsers + updateUser exported; self-edit path strips role; no destructive deleteUser. |
-| `src/app/(admin)/dashboard/users/{page,UsersTable,UserDrawer}.tsx` | Admin-only users management | ✓ VERIFIED | All three exist; UsersTable has 7 useMutation hits; UserDrawer is RHF+Zod side drawer. |
-| `src/app/(admin)/dashboard/profile/ProfileForm.tsx` | Self-service form | ✓ VERIFIED | Exists; calls updateUser(self); no role field per D-09. |
-| `src/actions/pages.ts` + `pages-schema.ts` + `pages.test.ts` | Pages CRUD with permission-check-first | ✓ VERIFIED | All three exist; 5 actions exported; 13 tests pass; schema rejects pending_review. |
-| `src/app/(admin)/dashboard/pages/{page,PagesTable,PageForm,schema-client.ts}` | List + slimmed editor | ✓ VERIFIED | All four exist; PageForm reuses Phase-3 EditorProvider; STATUS_BADGE excludes pending_review. |
-| `src/lib/storage/seed.ts` (extended) | + seedPages() + storage provider cred slots | ✓ VERIFIED | seedPages() exports three rows; settings storage.{r2,cloudinary,push_cdn}_creds + encryption_key_version seeded. |
-| `src/lib/crypto/index.ts` | AES-256-GCM encrypt/decrypt/redactCredentials | ✓ VERIFIED | Exists; uses aes-256-gcm; lazy key read inside encrypt/decrypt; redactCredentials regex drops bare "key" alt. |
-| `src/lib/storage/cloudinary.ts` | CloudinaryProvider (D-22) | ✓ VERIFIED | Exists; upload_stream + Readable.from(buffer).pipe; bypasses sharp; transform URLs. |
-| `src/lib/storage/push-cdn.ts` | PushCdnProvider (D-21) | ✓ VERIFIED | Exists; S3Client + sharp 3-variant + cdnBaseUrl overlay. |
-| `src/lib/storage/registry.ts` (extended) | + getProviderByName(name) | ✓ VERIFIED | Sync lookup added (line 100); getActiveProvider + registerStorageProvider unchanged. |
-| `src/actions/storage-settings.ts` + schema + test | Admin-gated save/get/testConnection | ✓ VERIFIED | All three exist; 3 actions each call requireRole('admin') FIRST; redactCredentials in getStorageSettings. |
-| `src/app/(admin)/dashboard/settings/storage/{page,StorageSettingsForm,schema-client}.tsx` | Admin-only Storage Settings UI | ✓ VERIFIED | All three exist; RHF+Zod+useMutation (NOT optimistic); Test connection button per provider. |
-| `src/actions/media.ts` (edited) | deleteMedia routes via getProviderByName | ✓ VERIFIED | Line 180 confirms Pitfall 0 fix; getActiveProvider still used in uploadMedia + findMediaReferences. |
-| `src/instrumentation.ts` (extended) | Registers cloudinary + push-cdn at boot | ✓ VERIFIED | Dynamic-import register calls inside NEXT_RUNTIME nodejs gate; best-effort creds configure. |
-| `next.config.ts` (edited) | + res.cloudinary.com remotePattern | ✓ VERIFIED | Line 29; push-CDN intentionally not wildcarded. |
-| `.env.example` (edited) | + SETTINGS_ENCRYPTION_KEY placeholder | ✓ VERIFIED | Plan 04-05 SUMMARY + acceptance criteria confirm; verbatim read of file blocked by sandbox permission. |
-| `package.json` | cloudinary@2.10.0 added | ✓ VERIFIED | Line 43: `"cloudinary": "2.10.0"`. |
-| `src/app/(admin)/dashboard/users/UserDrawer.tsx` (avatar field) | Uses `<MediaPicker>` from Plan 04-02 | ✗ FAILED | Lines 232-246: text input stub, not MediaPicker. Documented as one-line swap once 04-02 merges; 04-02 has merged but the swap has not been applied. |
-| `src/app/(admin)/dashboard/profile/ProfileForm.tsx` (avatar field) | Uses `<MediaPicker>` from Plan 04-02 | ✗ FAILED | Same text-input pattern as UserDrawer; same one-line fix needed. |
+| `src/app/(admin)/QueryProvider.tsx` | TanStack QueryClient scoped to (admin) | ✓ VERIFIED | Exists; uses `useState(() => new QueryClient({...}))`. (Regression: file present.) |
+| `src/app/(admin)/AdminShell.tsx` | Wraps children with QueryProvider; accepts role prop | ✓ VERIFIED | (Regression: file present.) |
+| `src/app/(admin)/dashboard/page.tsx` | Lean real-stats overview | ✓ VERIFIED | (Regression: file present; route registers.) |
+| `src/layout/AppSidebar.tsx` | CMS nav + role filter | ✓ VERIFIED | (Regression: file present.) |
+| `src/app/(admin)/dashboard/categories/{page,CategoriesTable}.tsx` | TailAdmin category management | ✓ VERIFIED | (Regression: files present; route registers.) |
+| `src/app/(admin)/dashboard/tags/{page,TagsTable}.tsx` | TailAdmin tag management | ✓ VERIFIED | (Regression: files present.) |
+| `src/app/(admin)/dashboard/media/{page,MediaGrid,MediaUploader}.tsx` | Media library browser | ✓ VERIFIED | (Regression: files present.) |
+| `src/components/dashboard/media/MediaPicker.tsx` | Reusable modal (D-13) | ✓ VERIFIED | Exists; reused UNCHANGED by Plan 04-06 (last commit c342e87). Default export, 3 tabs, accept='image' default. |
+| `src/actions/users.ts` (extended) | + listUsers + updateUser | ✓ VERIFIED | (Regression: file present.) |
+| `src/app/(admin)/dashboard/users/{page,UsersTable,UserDrawer}.tsx` | Admin-only users management | ✓ VERIFIED | All three exist. UserDrawer avatar field NOW renders `<MediaPicker>` (4 grep hits) — gap closed. |
+| `src/app/(admin)/dashboard/profile/ProfileForm.tsx` | Self-service form | ✓ VERIFIED | Exists. Avatar field NOW renders `<MediaPicker>` (4 grep hits) — gap closed. |
+| `src/actions/pages.ts` + `pages-schema.ts` + `pages.test.ts` | Pages CRUD with permission-check-first | ✓ VERIFIED | (Regression: files present; 13 tests pass.) |
+| `src/app/(admin)/dashboard/pages/{page,PagesTable,PageForm,schema-client.ts}` | List + slimmed editor | ✓ VERIFIED | (Regression: files present.) |
+| `src/lib/storage/seed.ts` (extended) | + seedPages() + storage provider cred slots | ✓ VERIFIED | (Regression: file present.) |
+| `src/lib/crypto/index.ts` | AES-256-GCM encrypt/decrypt/redactCredentials | ✓ VERIFIED | (Regression: file present.) |
+| `src/lib/storage/cloudinary.ts` | CloudinaryProvider (D-22) | ✓ VERIFIED | (Regression: file present.) |
+| `src/lib/storage/push-cdn.ts` | PushCdnProvider (D-21) | ✓ VERIFIED | (Regression: file present.) |
+| `src/lib/storage/registry.ts` (extended) | + getProviderByName(name) | ✓ VERIFIED | (Regression: file present.) |
+| `src/actions/storage-settings.ts` + schema + test | Admin-gated save/get/testConnection | ✓ VERIFIED | (Regression: file present; 3 requireRole('admin') calls intact.) |
+| `src/app/(admin)/dashboard/settings/storage/{page,StorageSettingsForm,schema-client}.tsx` | Admin-only Storage Settings UI | ✓ VERIFIED | (Regression: files present; route registers.) |
+| `src/actions/media.ts` (edited) | deleteMedia routes via getProviderByName | ✓ VERIFIED | Line 180 confirmed (Pitfall 0 fix intact). |
+| `src/instrumentation.ts` (extended) | Registers cloudinary + push-cdn at boot | ✓ VERIFIED | (Regression: file present.) |
+| `next.config.ts` (edited) | + res.cloudinary.com remotePattern | ✓ VERIFIED | (Regression: file present; build green.) |
+| `.env.example` (edited) | + SETTINGS_ENCRYPTION_KEY placeholder | ✓ VERIFIED | (Regression: documented in Plan 04-05 SUMMARY.) |
+| `package.json` | cloudinary@2.10.0 added | ✓ VERIFIED | (Regression: dependency present.) |
+| `src/app/(admin)/dashboard/users/UserDrawer.tsx` (avatar field) | Uses `<MediaPicker>` from Plan 04-02 | ✓ VERIFIED | **GAP CLOSED.** Lines 233-293 render `<MediaPicker>` with full PostForm-mirrored wiring. Text-input stub REMOVED. Hidden registered input preserves Zod validation (correct pattern, not a stub). |
+| `src/app/(admin)/dashboard/profile/ProfileForm.tsx` (avatar field) | Uses `<MediaPicker>` from Plan 04-02 | ✓ VERIFIED | **GAP CLOSED.** Lines 137-197: IDENTICAL wiring to UserDrawer. Text-input stub REMOVED. |
 
 ### Key Link Verification
 
 | From | To | Via | Status | Details |
 | ---- | -- | --- | ------ | ------- |
-| AdminShell.tsx | QueryProvider.tsx | `<QueryProvider>{children}</QueryProvider>` (line 58) | ✓ WIRED | Import + JSX use confirmed. |
-| AppSidebar navItems | /dashboard/* routes | href props in NavItem[] | ✓ WIRED | All CMS paths start with `/dashboard/`. |
-| (admin)/layout.tsx | AppSidebar role prop | `<AdminShell role={role}>` (line 44) | ✓ WIRED | Role propagated from getSession().user.role. |
-| PostForm.tsx feature-image | MediaPicker | `<MediaPicker onSelect={(url) => setValue("featureImage", url, { shouldValidate: true })}>` (line 218-225) | ✓ WIRED | Imports + JSX use; thumbnail preview via `watch('featureImage')`. |
-| Toolbar.tsx image button | MediaPicker | `<MediaPicker onSelect={(url) => editor.chain().focus().setImage({src:url}).run()}>` | ✓ WIRED | 8 MediaPicker mentions in Toolbar; `window.prompt` count = 0. |
-| CategoriesTable/TagsTable | actions/categories + actions/tags | useMutation wrapping create/update/softDelete | ✓ WIRED | Phase-3 actions unchanged (10/10 taxonomy tests pass). |
-| MediaGrid | deleteMedia + findMediaReferences | useMutation; warn-confirm UI | ✓ WIRED | findMediaReferences exported (2 hits in media.ts). |
-| UsersTable → ban/unban/revoke | actions/users | useMutation with onMutate optimistic | ✓ WIRED | 7 useMutation hits in UsersTable; Phase-2 primitives surfaced. |
-| UserDrawer avatar field | MediaPicker | (target: `<MediaPicker onSelect={(url) => setValue('avatar', url)}>` | ✗ NOT WIRED | Current state: `<input {...register("avatar")} />` text input. |
-| ProfileForm avatar field | MediaPicker | (target: same) | ✗ NOT WIRED | Same as above. |
-| PageForm → actions/pages | useMutation wrapping savePage | createPage vs updatePage dispatch by initial.id | ✓ WIRED | PageForm has 5 useMutation hits; onSuccess invalidates ['pages']. |
-| StorageSettingsForm → actions/storage-settings | useMutation save + testStorageConnection | NOT optimistic per D-27 | ✓ WIRED | StorageSettingsForm exists; saveStorageSettings + testStorageConnection imported. |
-| saveStorageSettings → lib/crypto encrypt → db.update settings | encrypt → upsertSetting | ✓ WIRED | line 124-127; configureCloudinary/configurePushCdn called after save. |
-| getStorageSettings → decrypt → redactCredentials | decrypt + redactCredentials | ✓ WIRED | line 178/181/184; secret fields zeroed before client response. |
-| deleteMedia → getProviderByName(row.provider) | registry.getProviderByName | ✓ WIRED | line 180; Pitfall 0 fix proven by 2 test cases. |
-| instrumentation.ts → registerStorageProvider("cloudinary"/"push-cdn") | dynamic-import registry + providers | ✓ WIRED | lines 61-68; best-effort creds configure (74-89). |
+| AdminShell.tsx | QueryProvider.tsx | `<QueryProvider>{children}</QueryProvider>` | ✓ WIRED | (Regression: unchanged.) |
+| AppSidebar navItems | /dashboard/* routes | href props | ✓ WIRED | (Regression: unchanged.) |
+| (admin)/layout.tsx | AppSidebar role prop | `<AdminShell role={role}>` | ✓ WIRED | (Regression: unchanged.) |
+| PostForm.tsx feature-image | MediaPicker | `<MediaPicker onSelect={(url) => setValue("featureImage", url, { shouldValidate: true })}>` + watch preview | ✓ WIRED | (Regression: PostForm MediaPicker grep = 9 hits, untouched by gap-closure.) |
+| Toolbar.tsx image button | MediaPicker | `<MediaPicker onSelect={(url) => editor.chain().focus().setImage({src:url}).run()}>` | ✓ WIRED | (Regression: unchanged.) |
+| CategoriesTable/TagsTable | actions/categories + actions/tags | useMutation wrapping create/update/softDelete | ✓ WIRED | (Regression: unchanged.) |
+| MediaGrid | deleteMedia + findMediaReferences | useMutation; warn-confirm UI | ✓ WIRED | (Regression: unchanged.) |
+| UsersTable → ban/unban/revoke | actions/users | useMutation with onMutate optimistic | ✓ WIRED | (Regression: unchanged.) |
+| UserDrawer avatar field | MediaPicker | `<MediaPicker onSelect={(url) => setValue('avatar', url, { shouldValidate: true })}>` | ✓ WIRED | **GAP CLOSED.** Line 285-292: picker element present with isOpen=avatarPickerOpen + onSelect → setValue. useState open-state (line 79) + watch('avatar') preview (line 80) confirmed. |
+| ProfileForm avatar field | MediaPicker | `<MediaPicker onSelect={(url) => setValue('avatar', url, { shouldValidate: true })}>` | ✓ WIRED | **GAP CLOSED.** Line 189-196: IDENTICAL wiring. useState (line 51) + watch (line 52) confirmed. |
+| PageForm → actions/pages | useMutation wrapping savePage | createPage vs updatePage dispatch | ✓ WIRED | (Regression: unchanged.) |
+| StorageSettingsForm → actions/storage-settings | useMutation save + testStorageConnection | ✓ WIRED | (Regression: unchanged.) |
+| saveStorageSettings → lib/crypto encrypt → db.update settings | encrypt → upsertSetting | ✓ WIRED | (Regression: unchanged.) |
+| getStorageSettings → decrypt → redactCredentials | decrypt + redactCredentials | ✓ WIRED | (Regression: unchanged.) |
+| deleteMedia → getProviderByName(row.provider) | registry.getProviderByName | ✓ WIRED | (Regression: line 180 intact.) |
+| instrumentation.ts → registerStorageProvider("cloudinary"/"push-cdn") | dynamic-import registry + providers | ✓ WIRED | (Regression: unchanged.) |
 
 ### Data-Flow Trace (Level 4)
 
 | Artifact | Data Variable | Source | Produces Real Data | Status |
 | -------- | ------------- | ------ | ------------------ | ------ |
-| `dashboard/page.tsx` | posts (listPosts) | `@/actions/posts` listPosts({limit:500}) | Yes — action queries db.posts (Phase 3) | ✓ FLOWING |
-| `dashboard/page.tsx` | mediaCount | `@/actions/media` listMedia({limit:2000}).length | Yes — action queries db.media | ✓ FLOWING |
+| `dashboard/page.tsx` | posts (listPosts) | `@/actions/posts` listPosts({limit:500}) | Yes — db.posts query | ✓ FLOWING |
+| `dashboard/page.tsx` | mediaCount | listMedia({limit:2000}).length | Yes — db.media query | ✓ FLOWING |
 | `dashboard/categories/page.tsx` | rows | listCategories() | Yes — db.categories query | ✓ FLOWING |
 | `dashboard/users/page.tsx` | rows | listUsers() | Yes — db.user select | ✓ FLOWING |
-| `dashboard/pages/page.tsx` | rows | listPages() | Yes — db.pages where deletedAt IS NULL | ✓ FLOWING |
-| `dashboard/settings/storage/page.tsx` | initial | getStorageSettings() | Yes — reads settings.{cloudinary,r2,push_cdn}_creds + storage.active_provider; decrypts + redacts | ✓ FLOWING |
+| `dashboard/pages/page.tsx` | rows | listPages() | Yes — db.pages query | ✓ FLOWING |
+| `dashboard/settings/storage/page.tsx` | initial | getStorageSettings() | Yes — reads + decrypts + redacts settings | ✓ FLOWING |
 | MediaPicker | rows (Library tab) | listMedia({limit:100}) | Yes — reuses (["media"]) query key | ✓ FLOWING |
 | PostForm feature-image | watch('featureImage') | MediaPicker onSelect → setValue | Yes — URL written via picker | ✓ FLOWING |
-| UserDrawer avatar | register('avatar') | (intended: MediaPicker onSelect → setValue) | Currently: user-typed URL string | ⚠ STATIC (text input) |
-| ProfileForm avatar | register('avatar') | (same) | Same as above | ⚠ STATIC (text input) |
+| UserDrawer avatar | watch('avatar') | MediaPicker onSelect → setValue('avatar', url) | Yes — URL written via picker (Plan 04-06) | ✓ FLOWING (was STATIC — text input) |
+| ProfileForm avatar | watch('avatar') | MediaPicker onSelect → setValue('avatar', url) | Yes — URL written via picker (Plan 04-06) | ✓ FLOWING (was STATIC — text input) |
 
 ### Behavioral Spot-Checks
 
 | Behavior | Command | Result | Status |
 | -------- | ------- | ------ | ------ |
-| Full test suite | `pnpm test` | 243/243 pass (24 test files) | ✓ PASS |
-| Auth-gate test | `pnpm test:auth-gate` | Structural PASS; HTTP SKIPPED (EADDRINUSE — port 3939 in use by another local server; environmental) | ✓ PASS (structural) |
-| Production build | `pnpm build` | Compiled successfully; all 13 `/dashboard/*` routes registered with PPR markers; middleware-manifest has 1 entry / 4 matchers | ✓ PASS |
-| Cloudinary provider test | `pnpm vitest run src/lib/storage/__tests__/cloudinary.test.ts` | 11/11 pass (per Plan 04-05 SUMMARY; full suite run confirms 243 total) | ✓ PASS |
-| Push-CDN provider test | `pnpm vitest run src/lib/storage/__tests__/push-cdn.test.ts` | 10/10 pass | ✓ PASS |
-| Crypto test | `pnpm vitest run src/lib/crypto/__tests__/crypto.test.ts` | 12/12 pass (round-trip + tamper detection + redact variants + missing-key graceful failure) | ✓ PASS |
-| Storage settings test | `pnpm vitest run src/actions/__tests__/storage-settings.test.ts` | 12/12 pass (3 MUST_NOT_BE_REACHED admin-gate + 4 save + 2 redact-on-read + 5 probes) | ✓ PASS |
-| Pages test | `pnpm vitest run src/actions/__tests__/pages.test.ts` | 13/13 pass (permission-check-first ordering + D-20 schema + soft-delete + NOT_FOUND) | ✓ PASS |
-| Users test (extended) | `pnpm vitest run src/actions/__tests__/users.test.ts` | (Phase-2 suite + 6 new listUsers/updateUser cases pass within 243 total) | ✓ PASS |
-| Media test (Pitfall 0) | `pnpm vitest run src/actions/__tests__/media.test.ts` | 17/17 pass (15 prior + 2 Pitfall 0 multi-provider delete cases) | ✓ PASS |
+| Full test suite | `pnpm test` | 243/243 pass (24 test files) — re-confirmed 2026-07-06T21:30:59Z | ✓ PASS |
+| Production build | `pnpm build` | Compiled successfully in 5.3s; all 13 `/dashboard/*` routes registered with PPR markers (◐); middleware-manifest intact | ✓ PASS |
+| Auth-gate (structural) | `pnpm test` (test-auth-gate.mjs included) | Structural PASS within 243/243 | ✓ PASS |
+| MediaPicker reused unchanged | `git log --follow src/components/dashboard/media/MediaPicker.tsx` | Last commit `c342e87` (NOT the gap-closure commit `d4d19a6`) — reused, not modified | ✓ PASS |
+| Gap-closure merge scope | `git diff e101e79~1 e101e79 --stat` | 2 code files (UserDrawer + ProfileForm, +130/-33) + new 04-06 SUMMARY — no scope creep | ✓ PASS |
 | Migration test | `pnpm test:migrations` | DEFERRED — no Postgres in worktree env (ECONNREFUSED at localhost:5436) | ? DEFERRED |
 
 ### Probe Execution
@@ -217,85 +226,59 @@ The phase goal is substantively achieved: all 9 DASH requirements are satisfied 
 
 | Requirement | Source Plan | Description | Status | Evidence |
 | ----------- | ----------- | ----------- | ------ | -------- |
-| DASH-01 | 04-01 | TailAdmin posts list / new / edit pages wired to real data | ✓ SATISFIED | `/dashboard/posts/{page,new/page,[id]/edit/page}` exist; PostForm uses useMutation savePost (Phase-3 action unchanged); posts/page.tsx Server Component. |
-| DASH-02 | 04-02 | Categories + tags management UI | ✓ SATISFIED | `/dashboard/categories` + `/dashboard/tags` TailAdmin tables over Phase-3 actions. 10/10 taxonomy tests pass. |
-| DASH-03 | 04-02 | Media library browser UI | ✓ SATISFIED | `/dashboard/media` grid+list+uploader; reusable `<MediaPicker>` wired into PostForm + Toolbar; findMediaReferences warn-don't-block. |
-| DASH-04 | 04-03 | Users + roles management UI (admin only — create/disable users, assign role) | ✓ SATISFIED (with plan-level avatar UX caveat — see Gap #1) | `/dashboard/users` admin-only (sidebar + requireCan user:read). UserDrawer supports create/edit/ban/unban/revoke/role-assign. Profile self-service for any role. The avatar field currently accepts URL text (NOT via MediaPicker) — the management capability is intact; the picker integration is a plan-fidelity gap. |
-| DASH-05 | 04-04 | Pages management UI (T&C, Privacy, Contact content) using the same Tiptap editor | ✓ SATISFIED | `/dashboard/pages` + `/dashboard/pages/[id]/edit`; slimmed PageForm reuses Phase-3 Tiptap editor; T&C/Privacy/Contact seeded idempotently; status draft\|published only. |
-| DASH-06 | 04-01..04-05 | Forms via RHF + Zod (schema shared server-side); TanStack Query for mutations/optimistic UI | ✓ SATISFIED | PostForm, CategoriesTable, TagsTable, MediaGrid, MediaUploader, UserDrawer, ProfileForm, UsersTable, PageForm, PagesTable, StorageSettingsForm all use RHF+Zod+useMutation. Optimistic UI split per D-27 (taxonomy CRUD + media delete + page save + ban/unban = optimistic; post save + media upload + storage save + profile save = NOT optimistic). |
-| DASH-07 | 04-01 | Remove `ecommerce/` demo + unused chart/table demos; keep initial dashboard load lean (lazy-load editor/charts) | ✓ SATISFIED | `components/ecommerce/` not found (already removed in Phase 1 per SUMMARY). `components/charts/`, `components/form/form-elements/`, `(others-pages)/{blank,charts,forms,tables}/` all deleted in Plan 04-01. AppSidebar grep confirms 0 demo entries. (ui-elements) showcase preserved as collapsed Components group. Editor lazy-loaded via Phase-3 next/dynamic. |
-| DASH-08 | 04-01 | Dark mode applied to the dashboard (existing ThemeContext) | ⚠ NEEDS HUMAN | ThemeContext unchanged (D-06 verify-don't-rebuild). Dark mode Tailwind variants present in new components (e.g. `dark:bg-gray-900`, `dark:text-white/90` throughout). Visual confirmation across all new routes needs browser session — see Human Verification. |
-| DASH-09 | 04-05 | Storage Settings page (admin-only) + provider selection + per-provider credentials + Cloudinary + push-CDN providers + admin re-check | ✓ SATISFIED | `/dashboard/settings/storage` + saveStorageSettings/getStorageSettings/testStorageConnection all admin-gated; lib/crypto AES-256-GCM; Cloudinary + push-CDN providers implemented; deleteMedia Pitfall 0 fix; next.config.ts remotePatterns extended; instrumentation.ts registers providers at boot. |
+| DASH-01 | 04-01 | TailAdmin posts list / new / edit pages wired to real data | ✓ SATISFIED | `/dashboard/posts/{page,new/page,[id]/edit/page}` exist; PostForm useMutation savePost. (Regression: routes register.) |
+| DASH-02 | 04-02 | Categories + tags management UI | ✓ SATISFIED | `/dashboard/categories` + `/dashboard/tags` TailAdmin tables. (Regression: routes register.) |
+| DASH-03 | 04-02 | Media library browser UI | ✓ SATISFIED | `/dashboard/media` grid+list+uploader; reusable `<MediaPicker>` wired into PostForm + Toolbar + (now) both avatar consumers. |
+| DASH-04 | 04-03 (+ 04-06 gap-closure) | Users + roles management UI (admin only — create/disable users, assign role) | ✓ SATISFIED (full plan-fidelity restored) | `/dashboard/users` admin-only; UserDrawer create/edit/ban/unban/revoke/role-assign; Profile self-service. **The avatar field now uses `<MediaPicker>` (Plan 04-06) — the prior UX downgrade is removed; DASH-04 reaches full plan-fidelity.** |
+| DASH-05 | 04-04 | Pages management UI (T&C, Privacy, Contact content) using the same Tiptap editor | ✓ SATISFIED | `/dashboard/pages` + slimmed editor; T&C/Privacy/Contact seeded; status draft\|published only. (Regression: routes register.) |
+| DASH-06 | 04-01..04-05 | Forms via RHF + Zod (schema shared server-side); TanStack Query for mutations/optimistic UI | ✓ SATISFIED | All dashboard forms use RHF+Zod+useMutation. Optimistic split per D-27. (Regression: pattern intact.) |
+| DASH-07 | 04-01 | Remove `ecommerce/` demo + unused chart/table demos; lazy-load editor/charts | ✓ SATISFIED | Demo routes/components deleted; AppSidebar grep clean. (Regression: still absent.) |
+| DASH-08 | 04-01 | Dark mode applied to the dashboard (existing ThemeContext) | ⚠ NEEDS HUMAN (UAT) | ThemeContext unchanged (D-06). Visual confirmation routed to UAT. |
+| DASH-09 | 04-05 | Storage Settings page (admin-only) + provider selection + per-provider credentials + Cloudinary + push-CDN providers + admin re-check | ✓ SATISFIED | `/dashboard/settings/storage` + 3 admin-gated actions; AES-256-GCM; Cloudinary + push-CDN providers; deleteMedia Pitfall 0 fix. (Regression: all intact.) |
 
-All 9 requirements accounted for. No ORPHANED requirements (every DASH-01..09 maps to at least one executed plan).
+All 9 requirements accounted for. No ORPHANED requirements.
 
 ### Anti-Patterns Found
 
 | File | Line | Pattern | Severity | Impact |
 | ---- | ---- | ------- | -------- | ------ |
-| `src/app/(admin)/dashboard/users/UserDrawer.tsx` | 232-246 | Documented text-input stub for avatar field (Plan 04-02 MediaPicker was in parallel worktree) | ⚠ WARNING | Plan-fidelity miss. The integration target is documented inline (file header lines 11-18) — the swap is one-line per consumer now that 04-02 merged. Underlying capability works (URL accepted). |
-| `src/app/(admin)/dashboard/profile/ProfileForm.tsx` | (avatar field) | Same as above | ⚠ WARNING | Same one-line swap. |
-| `src/components/editor/toolbar/Toolbar.tsx` | (Link button) | Uses global `prompt(...)` instead of `window.prompt(...)` to satisfy strict acceptance grep | ℹ INFO | Documented deviation in Plan 04-02 SUMMARY. The IMAGE button was the target of the must_have; the LINK button's prompt is a different feature. Functionally identical in `'use client'` component. |
+| `src/components/editor/toolbar/Toolbar.tsx` | (Link button) | Uses global `prompt(...)` instead of `window.prompt(...)` | ℹ INFO | Documented deviation in Plan 04-02 SUMMARY. The IMAGE button (the must_have target) uses MediaPicker. Functionally identical in `'use client'`. Not a gap. |
 
-No `TBD`/`FIXME`/`XXX` debt markers in any Phase-4-modified file (random-sample scan via grep on summary-documented key files returned no blocker markers).
+The two avatar-field text-input stubs flagged in the prior report are **RESOLVED** — both now render `<MediaPicker>`. No `TBD`/`FIXME`/`XXX` debt markers in any Phase-4-modified file.
 
-### Human Verification Required
+### Human Verification Required (UAT-Owed)
 
-11 items need human verification — see frontmatter `human_verification` for the full enumerated list. Highlights:
+11 items are routed to the end-of-phase UAT checkpoint (`04-UAT.md` sink) — see frontmatter `human_verification` for the full enumerated list. These are inherent limitations of static verification (browser/DB/live-creds interactions), NOT code defects. Highlights:
 
-1. **Dark mode on all new `/dashboard/*` routes** (DASH-08 / Plan 04-01 D-06). Visual property — ThemeContext unchanged; needs browser toggle on each route.
-2. **Sidebar role-filter across admin/editor/author** (Plan 04-01 D-05). Three live sessions needed to confirm Users/Settings visibility differs.
-3. **Real-stats overview with seeded data** (Plan 04-01 D-04). Needs running Postgres + seeded posts/media.
-4. **MediaPicker end-to-end across consumers** (Plan 04-02 must_haves). Three-tab interaction (Library/Upload/External URL) across PostForm feature-image + Toolbar image button.
-5. **MediaUploader drag-drop + per-file progress + alt-text + 10MB cap** (Plan 04-02 D-14).
-6. **Media delete warn-confirm via findMediaReferences** (Plan 04-02 D-15).
-7. **Users table + drawer flow** (Plan 04-03 D-07/D-08/D-10/D-11).
-8. **Pages editor slimmed** (Plan 04-04 D-18).
-9. **Storage Settings save + provider switch + Test connection** (Plan 04-05 D-23/D-24/D-25) — needs operator Cloudinary + push-CDN accounts for live verification.
-10. **Pitfall 0 multi-provider delete** (Plan 04-05 must_haves) — needs live R2 + Cloudinary creds.
-11. **Storage Settings form never pre-fills secrets** (Pitfall 7).
+1. Dark mode visual on all new `/dashboard/*` routes (DASH-08).
+2. Sidebar role-filter across admin/editor/author.
+3. Real-stats overview with seeded data.
+4. **MediaPicker end-to-end across THREE consumers (now including both avatar fields — gap closure unblocked this check)** — Library/Upload/External URL tabs × PostForm feature-image + Toolbar image + UserDrawer avatar + ProfileForm avatar.
+5. MediaUploader drag-drop + per-file progress + alt-text + 10MB cap.
+6. Media delete warn-confirm via findMediaReferences.
+7. **Users drawer flow INCLUDING the new MediaPicker avatar** (Select-image → pick → preview → save; Replace/Remove).
+8. Pages editor slimmed (visual layout).
+9. Storage Settings save + provider switch + Test connection (needs live Cloudinary/push-CDN creds).
+10. Pitfall 0 multi-provider delete (needs live R2 + Cloudinary).
+11. Storage Settings form never pre-fills secrets (Pitfall 7 visual contract).
 
-Plus the Gap #1 remediation decision (fix-or-override for the avatar MediaPicker swap).
+The avatar MediaPicker visual check (item 7, expanded in item 4) was previously contingent on the gap closure — that contingency is now resolved; the check can proceed at UAT.
 
 ### Gaps Summary
 
-**One gap (Plan-fidelity, NOT phase-goal-blocking):**
+**Zero gaps.** The single gap from the prior verification (Plan 04-03 avatar field as text input instead of `<MediaPicker>`) is **CLOSED** by Plan 04-06 (commit `d4d19a6`, merged `e101e79`). Both avatar consumers (`UserDrawer.tsx`, `ProfileForm.tsx`) now render the reusable `<MediaPicker>` modal with the full PostForm-mirrored wiring (useState open-state, watch() preview, hidden registered input for Zod validation, Replace/Remove + Select-image buttons, next/image thumbnail, setValue('avatar', url) on select). The Rule-3 text-input fallback is removed (not supplemented). MediaPicker.tsx is reused unchanged. No regressions detected across the other 31 must-haves (build green, 243/243 tests, all critical artifacts intact, Pitfall 0 fix intact, 3 admin-gates intact).
 
-Plan 04-03's must_haves.truths row explicitly requires the avatar field in `UserDrawer.tsx` AND `ProfileForm.tsx` to use `<MediaPicker>` from Plan 04-02. The 04-03 executor shipped the field as a text input because 04-02 (which owns MediaPicker.tsx) ran in a parallel worktree. This was a documented Rule-3 auto-fix at execution time. **04-02 has since merged** (`src/components/dashboard/media/MediaPicker.tsx` exists with the documented API), but the one-line swap was not applied before phase-close.
+**Deferred-verification-debt (not a gap):** `pnpm test:migrations` deferred — no Postgres in worktree env. D-29 seed-only → `src/db/schema.ts` unchanged across Phase 4 → no drift risk. Runs in pre-UAT (Phase 7 / live Postgres).
 
-**Why this is a gap, not a phase-goal blocker:** The underlying DASH-04 capability (users + roles management UI) is fully delivered. The avatar field IS functional (accepts a CDN URL string and persists it). The picker upgrade is a UX-polish improvement explicitly anticipated by the plan — just not yet applied.
+**Documented deviations (none break requirement coverage; carried forward from prior verification):**
 
-**Two remediation paths:**
-
-- **Fix path (preferred):** Apply the documented one-line swap in both files. Pattern (mirror PostForm feature-image field in src/app/(admin)/dashboard/posts/PostForm.tsx lines 218-225):
-  ```tsx
-  // Replace the text input with:
-  <MediaPicker
-    isOpen={avatarPickerOpen}
-    onClose={() => setAvatarPickerOpen(false)}
-    onSelect={(url) => { setValue("avatar", url); setAvatarPickerOpen(false); }}
-  />
-  // + a button to open it + useState for the open state.
-  ```
-- **Override path (acceptable per verification-overrides.md):** If the team accepts the text-input UX as the alternative implementation, add an `overrides:` entry to this VERIFICATION.md frontmatter:
-  ```yaml
-  overrides:
-    - must_have: "Avatar field uses the <MediaPicker> modal from Plan 04-02 (component reuse — no duplicate picker implementation)"
-      reason: "Avatar field accepts CDN URL via text input. The reusable <MediaPicker> from Plan 04-02 is merged and available, but the avatar field keeps the simpler text-input UX. The URL is validated server-side and rendered via next/image. No regression to DASH-04 management capability."
-      accepted_by: "{maintainer}"
-      accepted_at: "{ISO timestamp}"
-  ```
-
-**Deferred-verification-debt (not a gap):** `pnpm test:migrations` was deferred because no Postgres is available in the worktree env. Per D-29 (seed-only), `src/db/schema.ts` and `src/db/migrations/` are unchanged across Phase 4 — no drift risk exists. The test should run in pre-UAT (Phase 7 / live Postgres).
-
-**Documented deviations (none break requirement coverage):**
-
-1. **04-04 added `page` RBAC resource** to `src/lib/auth/permissions.ts`. Necessary — without it, `requireCan({ page: [...] })` throws FORBIDDEN for admins. Mirrors taxonomy pattern: admin + editor full CRUD; author read-only. Server-side requireCan remains authoritative. Does not break DASH-05 coverage.
-2. **04-04 created separate client `<PagesTable>`** component. Plan 04-04 action text explicitly permitted "inline OR separate file". useMutation cannot live in a server component; the split was required.
-3. **04-05 fixed redactCredentials regex** (dropped bare "key" alternative). Bug-fix — the research-sourced regex incorrectly redacted `accessKeyId` (AWS public identifier). The plan's authoritative `<behavior>` example preserves `accessKeyId: "AKIA"`. Does not break DASH-09; strengthens Pitfall 7.
-4. **04-02 Toolbar Link button** uses global `prompt(...)` instead of `window.prompt(...)`. Documented — the must_have targeted only the IMAGE button. Functionally identical in `'use client'`.
+1. 04-04 added `page` RBAC resource to permissions.ts (necessary — without it requireCan throws FORBIDDEN for admins).
+2. 04-04 created separate client `<PagesTable>` (plan explicitly permitted inline OR separate; useMutation requires client component).
+3. 04-05 fixed redactCredentials regex (dropped bare "key" — bug-fix; research-sourced regex incorrectly redacted accessKeyId, the public identifier).
+4. 04-02 Toolbar Link button uses global `prompt(...)` (documented; must_have targeted only IMAGE button).
 
 ---
 
-_Verified: 2026-07-06T03:55:00Z_
+_Verified: 2026-07-06T21:35:00Z (re-verification after Plan 04-06 gap closure)_
+_Previous verification: 2026-07-06T03:55:00Z (status: gaps_found, score: 31/32)_
 _Verifier: Claude (gsd-verifier)_
