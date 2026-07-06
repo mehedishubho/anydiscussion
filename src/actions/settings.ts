@@ -21,9 +21,9 @@
 import { revalidatePath, revalidateTag } from "next/cache";
 import { db, schema } from "@/lib/db";
 import { eq } from "drizzle-orm";
-import { z } from "zod";
 import { requireRole } from "@/lib/permissions";
 import { log } from "@/lib/log";
+import { seoSettingsSchema, type SeoSettingsInput } from "./seo-settings-schema";
 
 /**
  * getSetting — read a single key from the settings key-value table.
@@ -55,22 +55,9 @@ const SEO_KEYS = {
   twitterHandle: "seo.twitter_handle",
 } as const;
 
-/**
- * seoSettingsSchema — the Zod schema for the settings/seo dashboard form.
- * Shared client+server per CLAUDE.md (D-10). The client form uses this via
- * zodResolver; the Server Action calls .parse. siteTitle + canonicalBaseUrl are
- * required (the site MUST have a title + a canonical base for metadataBase); the
- * other three are optional (empty string = "use the auto-derive fallback").
- */
-export const seoSettingsSchema = z.object({
-  siteTitle: z.string().min(1, "Site title is required").max(255),
-  siteDescription: z.string().max(500).optional(),
-  defaultOgImage: z.string().url().optional().or(z.literal("")),
-  canonicalBaseUrl: z.string().url("Canonical base URL must be a valid URL"),
-  twitterHandle: z.string().max(50).optional(),
-});
-
-export type SeoSettingsInput = z.input<typeof seoSettingsSchema>;
+// seoSettingsSchema + SeoSettingsInput live in ./seo-settings-schema (separate
+// pure-schema module) because a "use server" file can ONLY export async functions.
+// Mirrors the storage-settings → storage-settings-schema split.
 
 /**
  * upsertSetting — write-or-insert a single settings row by key. Mirrors the
