@@ -145,7 +145,7 @@ Plans:
   5. The `ecommerce/` demo folder and unused chart/table demos are removed, the heavy editor/charts are lazy-loaded, and dark mode works across the dashboard — initial dashboard load stays lean.
   6. An admin can open a Storage Settings page, pick the active image destination (local/Cloudinary/R2/push-CDN), enter per-provider credentials, and persist the choice to `settings` — the Cloudinary + push-CDN providers are implemented here (extending the `lib/storage/` abstraction from MEDIA-04), and the save action re-checks admin permission server-side.
 
-**Plans**: 5/5 plans complete
+**Plans**: 6/6 plans complete
 
 **Wave 1** (foundational — unblocks all of Wave 2)
 
@@ -181,6 +181,8 @@ Plans:
 **Plans**: TBD
 
 Plans:
+
+- [x] 04-06-PLAN.md
 
 - [ ] 05-01: TBD (planning pending)
 - [ ] 05-02: TBD (planning pending)
