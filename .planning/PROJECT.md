@@ -12,7 +12,10 @@ Editors/authors can publish well-optimized blog posts and readers can consume th
 
 ### Validated
 
-(None yet — ship to validate)
+- **Phase 1 (Foundation):** Next.js 16 App Router app, Drizzle + 8-table schema + first migration, R2/sharp media pipeline, `(site)`/`(admin)` isolation — FOUND-01..06.
+- **Phase 2 (Auth + RBAC):** Better Auth + admin/RBAC plugin, proxy.ts route gate, server-side permission checks, draft/pending_review/published status enum — AUTH-01..08.
+- **Phase 3 (Content Engine):** Posts CRUD + Tiptap v3 JSON round-trip, double-sanitize, categories/tags, provider-based media (local default + R2), revalidation — CONT-01..15.
+- **Phase 4 (Dashboard Chrome):** TailAdmin wired to real data (posts/categories/tags/media/users + roles/pages), Storage Settings (Cloudinary + push-CDN providers, AES-256-GCM credential encryption, `deleteMedia` Pitfall 0 fix), RHF+Zod+TanStack Query dashboard-wide, demo cleanup — DASH-01..09.
 
 ### Active
 
@@ -123,4 +126,5 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-02 — Phase 1 (Foundation) complete: Next.js 16 config (cacheComponents/standalone/CDN loader), 8-table Drizzle schema + first migration (zero hand-written SQL), R2/sharp media pipeline, (site)/(admin) ESLint isolation. FOUND-01..06 validated. Dev ports remapped to 5435/5436 (host 5432/5433 taken by sibling projects).*
+*Last updated: 2026-07-06 — Phase 4 (Dashboard Chrome) complete: TailAdmin wired to real data (posts/categories/tags/media/users+roles/pages), Storage Settings (Cloudinary + push-CDN providers, AES-256-GCM cred encryption, `deleteMedia` Pitfall 0 fix), RHF+Zod+TanStack Query dashboard-wide, unused chart/form/table demos removed. DASH-01..09 validated. 243/243 tests, all 13 `/dashboard/*` routes registered. 11 visual UAT items carried to `/gsd-verify-work`; `test:migrations` deferred to Phase 7 (D-29 seed-only, no schema drift).*
+*Prior: 2026-07-02 — Phase 1 (Foundation) complete: Next.js 16 config (cacheComponents/standalone/CDN loader), 8-table Drizzle schema + first migration (zero hand-written SQL), R2/sharp media pipeline, (site)/(admin) ESLint isolation. FOUND-01..06 validated. Dev ports remapped to 5435/5436 (host 5432/5433 taken by sibling projects).*
