@@ -62,12 +62,12 @@ v1 = authoring + public-site MVP, extended with the full agreed feature set. Eac
 
 ### SEO
 
-- [ ] **SEO-01**: `generateMetadata` per public route sourced from `post_seo` / `settings`
+- [x] **SEO-01**: `generateMetadata` per public route sourced from `post_seo` / `settings`
 - [ ] **SEO-02**: Dynamic `sitemap.ts` (published posts + pages) + `robots.ts`
-- [ ] **SEO-03**: JSON-LD `BlogPosting` schema per post
-- [ ] **SEO-04**: Canonical handling (respect `canonical_url` override; else derive from slug)
-- [ ] **SEO-05**: OG + Twitter card images (per-post `og_image`, fallback to feature image / site default)
-- [ ] **SEO-06**: Bangla-aware meta length validation (byte/reasonable char count, not Latin-character limits)
+- [x] **SEO-03**: JSON-LD `BlogPosting` schema per post
+- [x] **SEO-04**: Canonical handling (respect `canonical_url` override; else derive from slug)
+- [x] **SEO-05**: OG + Twitter card images (per-post `og_image`, fallback to feature image / site default)
+- [x] **SEO-06**: Bangla-aware meta length validation (byte/reasonable char count, not Latin-character limits)
 - [ ] **SEO-07**: RSS feed (`/rss.xml` or `/feed.xml`) of published posts
 - [ ] **SEO-08**: Sitemap priority / changefreq metadata per content type
 
@@ -198,12 +198,12 @@ Which phases cover which requirements. Updated during roadmap creation (Step 8).
 | DASH-07 | Phase 4 — Dashboard Chrome | Complete |
 | DASH-08 | Phase 4 — Dashboard Chrome | Complete |
 | DASH-09 | Phase 4 — Dashboard Chrome | Complete |
-| SEO-01 | Phase 5 — SEO Basics | Pending |
+| SEO-01 | Phase 5 — SEO Basics | Complete |
 | SEO-02 | Phase 5 — SEO Basics | Pending |
-| SEO-03 | Phase 5 — SEO Basics | Pending |
-| SEO-04 | Phase 5 — SEO Basics | Pending |
-| SEO-05 | Phase 5 — SEO Basics | Pending |
-| SEO-06 | Phase 5 — SEO Basics | Pending |
+| SEO-03 | Phase 5 — SEO Basics | Complete |
+| SEO-04 | Phase 5 — SEO Basics | Complete |
+| SEO-05 | Phase 5 — SEO Basics | Complete |
+| SEO-06 | Phase 5 — SEO Basics | Complete |
 | SEO-07 | Phase 5 — SEO Basics | Pending |
 | SEO-08 | Phase 5 — SEO Basics | Pending |
 | SITE-01 | Phase 6 — Public Frontend | Pending |

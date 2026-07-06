@@ -178,13 +178,13 @@ Plans:
   4. A post with a long Bangla meta description passes validation using a byte/reasonable-char-count rule, not a Latin-character limit (Bangla content does not get falsely rejected).
   5. An RSS feed at `/rss.xml` (or `/feed.xml`) publishes the latest posts for feed readers.
 
-**Plans**: 3 plans
+**Plans**: 1/3 plans executed
 
 Plans:
 
 **Wave 1**
 
-- [ ] 05-01-PLAN.md — SEO engine foundation (lib/seo/* pure builders + tests) + [BLOCKING] schema-push (redirects table + pnpm db:generate) + SEO settings seeds + cached getSeoSettings ('use cache' + cacheTag) + site-wide generateMetadata + JSON-LD on (site)/layout.tsx/home/preview. Covers SEO-01, SEO-03, SEO-04, SEO-05, SEO-06.
+- [x] 05-01-PLAN.md — SEO engine foundation (lib/seo/* pure builders + tests) + [BLOCKING] schema-push (redirects table + pnpm db:generate) + SEO settings seeds + cached getSeoSettings ('use cache' + cacheTag) + site-wide generateMetadata + JSON-LD on (site)/layout.tsx/home/preview. Covers SEO-01, SEO-03, SEO-04, SEO-05, SEO-06.
 
 **Wave 2** *(parallel — blocked on 05-01)*
 
