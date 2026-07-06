@@ -29,6 +29,13 @@
       "when": 1783169740766,
       "tag": "0003_phase3_schema_cleanup",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1783364884699,
+      "tag": "0004_gigantic_black_tom",
+      "breakpoints": true
     }
   ]
 }

@@ -59,6 +59,43 @@ export async function seedStorageSettings(): Promise<void> {
 }
 
 /**
+ * Idempotently seed the Phase-5 site-wide SEO settings (D-11). Safe to call
+ * multiple times — onConflictDoNothing on `settings.key` PK means re-runs are
+ * no-ops; admin-set values (via the settings/seo dashboard page in Plan 03) are
+ * NEVER overwritten by this seed.
+ *
+ * The five keys feed getSeoSettings() — the single cached snapshot consumed by
+ * every metadata-emitting route (D-04 metadataBase, D-09 OG fallback, D-03
+ * WebSite/Organization JSON-LD, D-10 twitter handle):
+ *   - site.title               — the site name (title template + WebSite JSON-LD)
+ *   - site.description         — default meta description (home route)
+ *   - seo.default_og_image     — OG fallback when no per-post image (D-09 chain)
+ *   - site.canonical_base_url  — metadataBase (env NEXT_PUBLIC_SITE_URL fallback)
+ *   - seo.twitter_handle       — twitter:site handle (e.g. "@anydiscussion")
+ *
+ * Call from: src/instrumentation.ts at first boot (NEXT_RUNTIME === "nodejs"),
+ * after seedStorageSettings().
+ */
+export async function seedSeoSettings(): Promise<void> {
+  await db
+    .insert(schema.settings)
+    .values([
+      { key: "site.title", value: "Any Discussion" },
+      {
+        key: "site.description",
+        value: "A fast, SEO-optimized blog from Any Discussion.",
+      },
+      { key: "seo.default_og_image", value: "" },
+      {
+        key: "site.canonical_base_url",
+        value: process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000",
+      },
+      { key: "seo.twitter_handle", value: "" },
+    ])
+    .onConflictDoNothing();
+}
+
+/**
  * Idempotently seed the three legal/contact pages (D-17). Safe to call multiple
  * times — onConflictDoNothing on `pages.slug` (unique) means re-runs are no-ops.
  * A user-edited body is NEVER overwritten by this seed.

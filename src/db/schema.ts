@@ -148,6 +148,21 @@ export const settings = pgTable("settings", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+// redirects (D-12 — CLAUDE.md "Database schema": old_path, new_path, status_code 301/302)
+// Ships EMPTY in v1 (D-12). The redirects-manager UI that populates this table is
+// v2 SETT-03. The redirects-check wiring (app/not-found.tsx, Node runtime) is Plan 03.
+export const redirects = pgTable("redirects", {
+  id: serial("id").primaryKey(),
+  oldPath: varchar("old_path", { length: 255 }).notNull().unique(),
+  newPath: varchar("new_path", { length: 255 }).notNull(),
+  statusCode: integer("status_code").default(301).notNull(), // 301 | 302
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at")
+    .defaultNow()
+    .$onUpdate(() => new Date())
+    .notNull(),
+});
+
 // === Phase 2: Auth tables (Better Auth CLI-generated, merged here so the single
 // schema passed to drizzleAdapter({ schema }) contains them) ===
 // [CITED: better-auth/docs/concepts/database.mdx + plugins/admin.mdx — RESEARCH.md Pattern 2]
