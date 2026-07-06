@@ -50,15 +50,15 @@ v1 = authoring + public-site MVP, extended with the full agreed feature set. Eac
 
 ### Dashboard Chrome
 
-- [ ] **DASH-01**: TailAdmin posts list / new / edit pages wired to real data
-- [ ] **DASH-02**: Categories + tags management UI
-- [ ] **DASH-03**: Media library browser UI
-- [ ] **DASH-04**: Users + roles management UI (admin only — create/disable users, assign role)
-- [ ] **DASH-05**: Pages management UI (T&C, Privacy, Contact content) using the same Tiptap editor
-- [ ] **DASH-06**: Forms via React Hook Form + Zod (schema shared server-side for Server Action validation); TanStack Query for mutations/optimistic UI
-- [ ] **DASH-07**: Remove `ecommerce/` demo + unused chart/table demos; keep initial dashboard load lean (lazy-load editor/charts)
-- [ ] **DASH-08**: Dark mode applied to the dashboard (existing ThemeContext)
-- [ ] **DASH-09**: Storage Settings page (admin-only) — choose the active image destination (local/Cloudinary/R2/push-CDN) + enter per-provider credentials, persisted to `settings`; the underlying action re-checks admin permission server-side. Adds the Cloudinary + push-CDN image providers so they become selectable from this UI (extends the `lib/storage/` abstraction from MEDIA-04)
+- [x] **DASH-01**: TailAdmin posts list / new / edit pages wired to real data
+- [x] **DASH-02**: Categories + tags management UI
+- [x] **DASH-03**: Media library browser UI
+- [x] **DASH-04**: Users + roles management UI (admin only — create/disable users, assign role)
+- [x] **DASH-05**: Pages management UI (T&C, Privacy, Contact content) using the same Tiptap editor
+- [x] **DASH-06**: Forms via React Hook Form + Zod (schema shared server-side for Server Action validation); TanStack Query for mutations/optimistic UI
+- [x] **DASH-07**: Remove `ecommerce/` demo + unused chart/table demos; keep initial dashboard load lean (lazy-load editor/charts)
+- [x] **DASH-08**: Dark mode applied to the dashboard (existing ThemeContext)
+- [x] **DASH-09**: Storage Settings page (admin-only) — choose the active image destination (local/Cloudinary/R2/push-CDN) + enter per-provider credentials, persisted to `settings`; the underlying action re-checks admin permission server-side. Adds the Cloudinary + push-CDN image providers so they become selectable from this UI (extends the `lib/storage/` abstraction from MEDIA-04)
 
 ### SEO
 
@@ -189,15 +189,15 @@ Which phases cover which requirements. Updated during roadmap creation (Step 8).
 | MEDIA-02 | Phase 3 — Content Engine | Pending |
 | MEDIA-03 | Phase 3 — Content Engine | Pending |
 | MEDIA-04 | Phase 3 — Content Engine | Pending |
-| DASH-01 | Phase 4 — Dashboard Chrome | Pending |
-| DASH-02 | Phase 4 — Dashboard Chrome | Pending |
-| DASH-03 | Phase 4 — Dashboard Chrome | Pending |
-| DASH-04 | Phase 4 — Dashboard Chrome | Pending |
-| DASH-05 | Phase 4 — Dashboard Chrome | Pending |
-| DASH-06 | Phase 4 — Dashboard Chrome | Pending |
-| DASH-07 | Phase 4 — Dashboard Chrome | Pending |
-| DASH-08 | Phase 4 — Dashboard Chrome | Pending |
-| DASH-09 | Phase 4 — Dashboard Chrome | Pending |
+| DASH-01 | Phase 4 — Dashboard Chrome | Complete |
+| DASH-02 | Phase 4 — Dashboard Chrome | Complete |
+| DASH-03 | Phase 4 — Dashboard Chrome | Complete |
+| DASH-04 | Phase 4 — Dashboard Chrome | Complete |
+| DASH-05 | Phase 4 — Dashboard Chrome | Complete |
+| DASH-06 | Phase 4 — Dashboard Chrome | Complete |
+| DASH-07 | Phase 4 — Dashboard Chrome | Complete |
+| DASH-08 | Phase 4 — Dashboard Chrome | Complete |
+| DASH-09 | Phase 4 — Dashboard Chrome | Complete |
 | SEO-01 | Phase 5 — SEO Basics | Pending |
 | SEO-02 | Phase 5 — SEO Basics | Pending |
 | SEO-03 | Phase 5 — SEO Basics | Pending |
