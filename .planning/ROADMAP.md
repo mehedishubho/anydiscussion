@@ -19,7 +19,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: Auth + RBAC** - Better Auth + admin plugin, proxy cookie gate, permission helpers, review-workflow status enum shipped together (code complete 2026-07-02; pending UAT — email round-trip deferred, see 02-VERIFICATION.md / 02-UAT.md) (completed 2026-07-03)
 - [x] **Phase 3: Content Engine** - Posts CRUD + Tiptap JSON round-trip, double-sanitization, categories/tags, provider-based media (local default + R2), revalidation wired in (completed 2026-07-04)
 - [x] **Phase 4: Dashboard Chrome** - TailAdmin wired to real data (posts, taxonomy, media, users, pages) + Storage Settings (Cloudinary/push-CDN providers), RHF+Zod, TanStack Query, demo cleanup (completed 2026-07-05)
-- [ ] **Phase 5: SEO Basics** - generateMetadata per route, dynamic sitemap + robots, JSON-LD, canonical, OG/Twitter cards, RSS
+- [x] **Phase 5: SEO Basics** - generateMetadata per route, dynamic sitemap + robots, JSON-LD, canonical, OG/Twitter cards, RSS (completed 2026-07-06)
 - [ ] **Phase 6: Public Frontend** - Home/blog/archive, category/tag/author archives, single post (Cache Components + Suspense), search, About/Contact/legal, dark mode
 - [ ] **Phase 7: Performance & Deploy** - Lighthouse/CWV pass, bundle-budget audit, revalidation audit end-to-end, auth rate limiting, Coolify staging, Dokploy, self host
 - [ ] **Phase 8: Backup & Disaster Recovery** - Configurable multi-destination backups (local default/Google Drive/R2), schedule + retention, automated restore-drill with alerting, Backup Settings dashboard page
@@ -178,7 +178,7 @@ Plans:
   4. A post with a long Bangla meta description passes validation using a byte/reasonable-char-count rule, not a Latin-character limit (Bangla content does not get falsely rejected).
   5. An RSS feed at `/rss.xml` (or `/feed.xml`) publishes the latest posts for feed readers.
 
-**Plans**: 2/3 plans executed
+**Plans**: 3/3 plans complete
 
 Plans:
 
@@ -189,7 +189,7 @@ Plans:
 **Wave 2** *(parallel — blocked on 05-01)*
 
 - [x] 05-02-PLAN.md — Standalone SEO routes: app/sitemap.ts (posts+pages, per-type priority/changefreq) + app/robots.ts (allow/disallow + sitemap pointer) + app/rss.xml/route.ts (full-text RSS 2.0 via renderPostBody, CDATA, escapeXml). Covers SEO-02, SEO-07, SEO-08.
-- [ ] 05-03-PLAN.md — Dashboard SEO surface + redirects check: post-editor SeoPanel + post_seo writes in savePost (D-08 gap closure) + admin-only settings/seo page + saveSeoSettings (requireRole('admin') FIRST + 2-arg revalidateTag) + app/not-found.tsx redirects-table lookup (D-12, Node runtime). Covers SEO-01 (dashboard data side), SEO-06 (live editor).
+- [x] 05-03-PLAN.md — Dashboard SEO surface + redirects check: post-editor SeoPanel + post_seo writes in savePost (D-08 gap closure) + admin-only settings/seo page + saveSeoSettings (requireRole('admin') FIRST + 2-arg revalidateTag) + app/not-found.tsx redirects-table lookup (D-12, Node runtime). Covers SEO-01 (dashboard data side), SEO-06 (live editor).
 
 **Pitfalls owned:** Bangla meta-length validation (byte/char, not Latin assumptions); sitemap must update via revalidation, not require a full rebuild.
 **Research flag:** none — `generateMetadata`, `sitemap.ts`, and JSON-LD are standard Next.js Metadata API patterns. (Redirects-manager UI is fast-follow — `proxy.ts` checks the table but v1 ships it empty.)
