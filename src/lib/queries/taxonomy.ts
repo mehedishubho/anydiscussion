@@ -79,3 +79,25 @@ export async function listCategoriesWithCounts() {
     .groupBy(schema.categories.id)
     .orderBy(asc(schema.categories.name));
 }
+
+/**
+ * listTags — all non-deleted tags, sorted by name (D-22 UX for the tag picker).
+ *
+ * Used by the archive filter bar's tag multi-select (D-12). Published content is
+ * public — NO permission gate. Cached via 'use cache' + cacheTag("posts-list").
+ */
+export async function listTags() {
+  "use cache";
+  cacheLife("hours");
+  cacheTag("posts-list");
+
+  return await db
+    .select({
+      id: schema.tags.id,
+      name: schema.tags.name,
+      slug: schema.tags.slug,
+    })
+    .from(schema.tags)
+    .where(isNull(schema.tags.deletedAt))
+    .orderBy(asc(schema.tags.name));
+}

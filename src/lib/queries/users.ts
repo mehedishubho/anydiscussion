@@ -10,7 +10,7 @@
 
 import { cacheLife, cacheTag } from "next/cache";
 import { db, schema } from "@/lib/db";
-import { eq, isNull, and, desc } from "drizzle-orm";
+import { eq, isNull, and, desc, asc, sql } from "drizzle-orm";
 
 /** Default page size for author post lists. */
 const AUTHOR_PAGE_SIZE = 10;
@@ -62,4 +62,35 @@ export async function listAuthorPosts(username: string, page: number) {
     .orderBy(desc(schema.posts.publishedAt))
     .offset(offset)
     .limit(AUTHOR_PAGE_SIZE);
+}
+
+/**
+ * listAuthors — distinct authors (users with a username set) who have at least
+ * one published post. Used by the archive filter bar's author dropdown (D-12).
+ *
+ * Only returns users whose `username` is set (D-11 — username is the public slug;
+ * users without one cannot be linked). Cached via 'use cache' + cacheTag("posts-list").
+ */
+export async function listAuthors() {
+  "use cache";
+  cacheLife("hours");
+  cacheTag("posts-list");
+
+  return await db
+    .select({
+      id: schema.user.id,
+      name: schema.user.name,
+      username: schema.user.username,
+    })
+    .from(schema.user)
+    .innerJoin(schema.posts, eq(schema.posts.authorId, schema.user.id))
+    .where(
+      and(
+        eq(schema.posts.status, "published"),
+        isNull(schema.posts.deletedAt),
+        sql`${schema.user.username} IS NOT NULL`,
+      ),
+    )
+    .groupBy(schema.user.id, schema.user.name, schema.user.username)
+    .orderBy(asc(schema.user.name));
 }
