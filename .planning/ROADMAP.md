@@ -208,13 +208,13 @@ Plans:
   4. A reader can view the About page (hard-coded TSX/MDX), submit the Contact form (delivered via SMTP, honeypot + rate-limited, no paid API), read T&C/Privacy from the dashboard-managed `pages` table, and hit a proper 404 on an unmatched path; a draft preview link works for an unpublished post (gated by secret token, consuming CONT-10).
   5. Single posts expose derived reading time + a table of contents (from headings), social share buttons + a read-progress indicator, a working view count, and dark mode across the public site; the analytics script (default Umami, swappable) is injected from `settings`.
 
-**Plans**: 7 plans
+**Plans**: 1/7 plans executed
 
 Plans:
 
 **Wave 1** (BLOCKING foundation — unblocks all of Wave 2)
 
-- [ ] 06-01-PLAN.md — Foundation slice: schema migration (posts.featured, posts.views, user.username, FTS tsvector+GIN) + published-only read-query module (lib/queries/*) + view-count atomic write (D-01/D-02) + Bangla-aware reading-time (D-15) + TOC builder + in-memory rate-limit + Person/BreadcrumbList JSON-LD + settings seeds + [BLOCKING] drizzle-kit generate + Wave 0 tests. Covers SITE-07 (query), SITE-08 (FTS query), SITE-13 (utils), SITE-17 (write path).
+- [x] 06-01-PLAN.md — Foundation slice: schema migration (posts.featured, posts.views, user.username, FTS tsvector+GIN) + published-only read-query module (lib/queries/*) + view-count atomic write (D-01/D-02) + Bangla-aware reading-time (D-15) + TOC builder + in-memory rate-limit + Person/BreadcrumbList JSON-LD + settings seeds + [BLOCKING] drizzle-kit generate + Wave 0 tests. Covers SITE-07 (query), SITE-08 (FTS query), SITE-13 (utils), SITE-17 (write path).
 
 **Wave 2** *(parallel — blocked on Wave 1)*
 
