@@ -24,7 +24,7 @@ services:
   postgres-test:
     image: postgres:17-alpine
     ports:
-      - "5436:5432"
+      - "5438:5436"
     environment:
       POSTGRES_USER: anydiscussion
       POSTGRES_PASSWORD: 125524
