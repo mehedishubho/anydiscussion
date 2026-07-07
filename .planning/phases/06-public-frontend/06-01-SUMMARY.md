@@ -195,3 +195,7 @@ None. All functions are fully implemented with real database queries (no mock/pl
 ## Next Steps
 
 Ready for plan 06-02 (Site chrome: header/footer/dark-mode/analytics injection) and plan 06-03 (single-post page with PPR + Suspense). All foundation primitives are in place: the query modules, reading-time, TOC, rate-limit, and JSON-LD builders are consumed by every downstream plan in this phase.
+
+## Self-Check: PASSED
+
+All 10 key files exist on disk. All 6 commits verified in git log.
