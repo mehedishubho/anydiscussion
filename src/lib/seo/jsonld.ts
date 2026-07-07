@@ -110,3 +110,65 @@ export function organizationJsonLd(s: OrganizationJsonLdInput) {
     logo: s.defaultOgImage,
   };
 }
+
+// ============================================================================
+// Plan 06-01 Task 2 — Person + BreadcrumbList builders
+// [CITED: 06-01-PLAN.md — closes Phase 5 D-03 deferrals for author/taxonomy archives]
+// ============================================================================
+
+/** Input for the author-page Person builder (SITE-06 / D-11). */
+export interface PersonJsonLdInput {
+  name: string;
+  /** Absolute URL of the author page (e.g. https://anydiscussion.com/author/mehedi). */
+  url: string;
+  jobTitle?: string;
+  description?: string;
+}
+
+/** Input item for the BreadcrumbList builder (each crumb). */
+export interface BreadcrumbItem {
+  name: string;
+  url: string;
+}
+
+/** Input for the taxonomy-archive BreadcrumbList builder (SITE-04/05 / D-14). */
+export interface BreadcrumbListJsonLdInput {
+  /** Ordered breadcrumbs from Home to the current page. */
+  items: BreadcrumbItem[];
+}
+
+/**
+ * Build a schema.org Person object for /author/[username] (SITE-06 / D-03).
+ *
+ * Closes the Phase 5 D-03 deferral for author pages. jobTitle + description
+ * are optional (the author may not have set them in their profile).
+ */
+export function personJsonLd(i: PersonJsonLdInput) {
+  return {
+    "@context": "https://schema.org",
+    "@type": "Person",
+    name: i.name,
+    url: i.url,
+    ...(i.jobTitle ? { jobTitle: i.jobTitle } : {}),
+    ...(i.description ? { description: i.description } : {}),
+  };
+}
+
+/**
+ * Build a schema.org BreadcrumbList for /category/[slug] and /tag/[slug] (SITE-04/05 / D-14).
+ *
+ * Closes the Phase 5 D-03 deferral for taxonomy archives. itemListElement is
+ * ordered Home › Category/Tag with sequential positions (1-based).
+ */
+export function breadcrumbListJsonLd(i: BreadcrumbListJsonLdInput) {
+  return {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: i.items.map((item, idx) => ({
+      "@type": "ListItem",
+      position: idx + 1,
+      name: item.name,
+      item: item.url,
+    })),
+  };
+}

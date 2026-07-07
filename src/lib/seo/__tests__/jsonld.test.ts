@@ -10,6 +10,8 @@ import {
   blogPostingJsonLd,
   websiteJsonLd,
   organizationJsonLd,
+  personJsonLd,
+  breadcrumbListJsonLd,
 } from "../jsonld";
 import { fakePost, fakePostSeo, fakeSettings } from "./shared-fixtures";
 
@@ -130,5 +132,78 @@ describe("SEO-03 / D-03: organizationJsonLd — schema.org Organization", () => 
     expect(ld.name).toBe(fakeSettings.siteTitle);
     expect(ld.url).toBe(fakeSettings.canonicalBaseUrl);
     expect(ld.logo).toBe(fakeSettings.defaultOgImage);
+  });
+});
+
+// ============================================================================
+// Plan 06-01 Task 2 — Person + BreadcrumbList JSON-LD builders
+// [CITED: 06-01-PLAN.md Task 2 — closes Phase 5 D-03 deferrals for author/taxonomy]
+// ============================================================================
+
+describe("SITE-06 / D-03: personJsonLd — schema.org Person shape", () => {
+  const ld = personJsonLd({
+    name: "Mehedi Shubho",
+    url: "https://anydiscussion.com/author/mehedi",
+    jobTitle: "Founder & Editor",
+    description: "Tech writer and developer.",
+  });
+
+  it("sets @context and @type=Person", () => {
+    expect(ld["@context"]).toBe("https://schema.org");
+    expect(ld["@type"]).toBe("Person");
+  });
+
+  it("sets name, url, jobTitle, description", () => {
+    expect(ld.name).toBe("Mehedi Shubho");
+    expect(ld.url).toBe("https://anydiscussion.com/author/mehedi");
+    expect(ld.jobTitle).toBe("Founder & Editor");
+    expect(ld.description).toBe("Tech writer and developer.");
+  });
+
+  it("omits jobTitle when not provided", () => {
+    const ld2 = personJsonLd({
+      name: "Anonymous",
+      url: "https://example.com/author/anon",
+    });
+    expect(ld2.jobTitle).toBeUndefined();
+    expect(ld2.description).toBeUndefined();
+  });
+});
+
+describe("SITE-04/05 / D-03: breadcrumbListJsonLd — schema.org BreadcrumbList", () => {
+  const ld = breadcrumbListJsonLd({
+    items: [
+      { name: "Home", url: "https://anydiscussion.com" },
+      { name: "Technology", url: "https://anydiscussion.com/category/tech" },
+    ],
+  });
+
+  it("sets @context and @type=BreadcrumbList", () => {
+    expect(ld["@context"]).toBe("https://schema.org");
+    expect(ld["@type"]).toBe("BreadcrumbList");
+  });
+
+  it("itemListElement has correct length and position", () => {
+    expect(ld.itemListElement).toHaveLength(2);
+    expect(ld.itemListElement[0].position).toBe(1);
+    expect(ld.itemListElement[1].position).toBe(2);
+  });
+
+  it("each item is a ListItem with name + url", () => {
+    expect(ld.itemListElement[0]["@type"]).toBe("ListItem");
+    expect(ld.itemListElement[0].name).toBe("Home");
+    expect(ld.itemListElement[0].item).toBe("https://anydiscussion.com");
+    expect(ld.itemListElement[1].name).toBe("Technology");
+    expect(ld.itemListElement[1].item).toBe(
+      "https://anydiscussion.com/category/tech",
+    );
+  });
+
+  it("handles a single-item breadcrumb", () => {
+    const ld2 = breadcrumbListJsonLd({
+      items: [{ name: "Home", url: "https://anydiscussion.com" }],
+    });
+    expect(ld2.itemListElement).toHaveLength(1);
+    expect(ld2.itemListElement[0].position).toBe(1);
   });
 });

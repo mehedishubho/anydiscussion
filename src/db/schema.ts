@@ -32,8 +32,19 @@ import {
   primaryKey,
   boolean,
   index,
+  customType,
 } from "drizzle-orm/pg-core";
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
+
+// tsvector column type — PostgreSQL's built-in full-text search type.
+// Drizzle's `vector()` builder is for the pgvector extension (embeddings, requires
+// `dimensions`), NOT for tsvector. We define a custom type so generatedAlwaysAs
+// works for the FTS search column (D-09).
+const tsvector = customType<{ data: string }>({
+  dataType() {
+    return "tsvector";
+  },
+});
 
 // Enums
 export const postStatusEnum = pgEnum("post_status", [
@@ -44,26 +55,54 @@ export const postStatusEnum = pgEnum("post_status", [
 export const pageStatusEnum = pgEnum("page_status", ["draft", "published"]);
 
 // posts
-export const posts = pgTable("posts", {
-  id: serial("id").primaryKey(),
-  title: text("title").notNull(),
-  slug: varchar("slug", { length: 255 }).notNull().unique(),
-  body: jsonb("body"), // Tiptap JSON
-  excerpt: text("excerpt"),
-  status: postStatusEnum("status").default("draft").notNull(),
-  // D-07 FK closure (Phase 2): authorId → user.id (text UUID — Better Auth PK),
-  // categoryId → categories.id. Mirrors the postTags.postId.references() pattern below.
-  authorId: text("author_id").references(() => user.id),
-  categoryId: integer("category_id").references(() => categories.id),
-  featureImage: text("feature_image"),
-  // D-19 (Phase 3): draft preview links — /preview/[token] route. Nullable (set on
-  // first generation); rotates on publish (old link 404s). crypto.randomUUID() value.
-  previewToken: varchar("preview_token", { length: 255 }).unique(),
-  publishedAt: timestamp("published_at"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-  deletedAt: timestamp("deleted_at"), // soft-delete (D-08)
-});
+// Phase-6 deltas (Plan 06-01 Task 1):
+//  - D-04: featured (boolean, manual editorial flag for the home hero)
+//  - D-01: views (integer, simple counter — atomic +1, no de-dupe)
+//  - D-09: searchVector (generated tsvector from title + excerpt using 'simple'
+//          config — no PG Bengali stemmer exists; 'simple' has no stemming so
+//          Bangla queries match. FTS is against title + excerpt ONLY, NOT body
+//          (body is jsonb — structural noise per Pitfall 4).
+//  The table switches from the 2-arg to the 3-arg pgTable form to add the GIN
+//  index on the generated tsvector column (mirrors postTags/session pattern).
+export const posts = pgTable(
+  "posts",
+  {
+    id: serial("id").primaryKey(),
+    title: text("title").notNull(),
+    slug: varchar("slug", { length: 255 }).notNull().unique(),
+    body: jsonb("body"), // Tiptap JSON
+    excerpt: text("excerpt"),
+    status: postStatusEnum("status").default("draft").notNull(),
+    // D-07 FK closure (Phase 2): authorId → user.id (text UUID — Better Auth PK),
+    // categoryId → categories.id. Mirrors the postTags.postId.references() pattern below.
+    authorId: text("author_id").references(() => user.id),
+    categoryId: integer("category_id").references(() => categories.id),
+    featureImage: text("feature_image"),
+    // D-19 (Phase 3): draft preview links — /preview/[token] route. Nullable (set on
+    // first generation); rotates on publish (old link 404s). crypto.randomUUID() value.
+    previewToken: varchar("preview_token", { length: 255 }).unique(),
+    publishedAt: timestamp("published_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+    deletedAt: timestamp("deleted_at"), // soft-delete (D-08)
+    // D-04 (Phase 6): manual editorial flag — editors tick "Feature this" in the
+    // post editor. Home hero = most-recently-published featured post.
+    featured: boolean("featured").default(false).notNull(),
+    // D-01 (Phase 6): simple view counter — atomic UPDATE views = views + 1.
+    // No de-dupe (accepts minor inflation from refreshes/crawlers — vanity metric).
+    views: integer("views").default(0).notNull(),
+    // D-09 (Phase 6): generated tsvector for Postgres full-text search.
+    // 'simple' config = no stemming (Bangla has no PG stemmer — SEARCH-02 v2 caveat).
+    // Generated from title + excerpt ONLY (NOT body — jsonb structural noise, Pitfall 4).
+    searchVector: tsvector("search_vector").generatedAlwaysAs(
+      sql`to_tsvector('simple', coalesce(title, '') || ' ' || coalesce(excerpt, ''))`,
+    ),
+  },
+  (t) => ({
+    // GIN index for fast @@ tsquery matching on the searchVector column.
+    searchIdx: index("posts_search_vector_idx").using("gin", t.searchVector),
+  }),
+);
 
 // post_seo (one-to-one with posts) — hard-delete per D-08 (no deletedAt)
 export const postSeo = pgTable("post_seo", {
@@ -185,6 +224,10 @@ export const user = pgTable("user", {
   banExpires: timestamp("ban_expires"),
   bio: text("bio"),
   avatar: text("avatar"),
+  // D-11 (Phase 6): public username slug for /author/[username] URLs.
+  // user.id is a UUID (bad for public URLs). Nullable — set via the dashboard
+  // profile UI. Verified NEW: user has `name` (display) but no slug field.
+  username: varchar("username", { length: 255 }).unique(),
 });
 
 export const session = pgTable(

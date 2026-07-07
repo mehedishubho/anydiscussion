@@ -22,7 +22,7 @@ interface ProseMirrorNode {
  * Recursively walk a ProseMirror JSON tree, collecting `text` from text nodes
  * (concatenated with single spaces between block boundaries).
  */
-function collectText(node: ProseMirrorNode | undefined | null, blocks: string[] = [""]): string[] {
+export function collectText(node: ProseMirrorNode | undefined | null, blocks: string[] = [""]): string[] {
   if (!node) return blocks;
   if (typeof node.text === "string") {
     blocks[blocks.length - 1] += node.text;

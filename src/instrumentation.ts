@@ -45,14 +45,21 @@ export async function register() {
     // after startScheduler; a failure here is logged inside the seeders but does
     // not block server startup (the app degrades to "no seeded rows" rather than
     // refusing to boot — the admin can still write rows by hand via the dashboard).
-    const { seedStorageSettings, seedPages, seedSeoSettings } = await import(
-      "@/lib/storage/seed"
-    );
+    const {
+      seedStorageSettings,
+      seedPages,
+      seedSeoSettings,
+      seedPublicFrontendSettings,
+    } = await import("@/lib/storage/seed");
     await seedStorageSettings();
     await seedPages();
     // Plan 05-01 (D-11) — seed the five site-wide SEO settings keys so the
     // settings exist before any getSeoSettings() consumer reads them.
     await seedSeoSettings();
+    // Plan 06-01 — seed the public-frontend settings keys (contact recipient,
+    // analytics script/ID, footer socials) so they exist before any public
+    // route reads them (D-07/D-17).
+    await seedPublicFrontendSettings();
 
     // Plan 04-05 (DASH-09) — register the new providers at boot so the providers map
     // is populated for the admin's choice. The providers stay UNCONFIGURED (no creds)
