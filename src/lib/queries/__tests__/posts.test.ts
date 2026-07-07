@@ -51,7 +51,11 @@ vi.mock("@/lib/db", () => {
         from: vi.fn(() => chainableSelect()),
       })),
       update: vi.fn(() => ({
-        set: vi.fn(() => ({ where: (...a: unknown[]) => updateMock(...a) })),
+        set: vi.fn(() => ({
+          where: vi.fn(() => ({
+            returning: (...a: unknown[]) => updateMock(...a),
+          })),
+        })),
       })),
     },
     schema: {
