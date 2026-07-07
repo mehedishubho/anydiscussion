@@ -28,6 +28,7 @@ import { buildSiteMetadata } from "@/lib/seo/metadata";
 import { websiteJsonLd, organizationJsonLd } from "@/lib/seo/jsonld";
 import SiteHeader from "@/components/site/SiteHeader";
 import SiteFooter from "@/components/site/SiteFooter";
+import Analytics from "@/components/site/Analytics";
 
 /**
  * Site-wide generateMetadata (D-02). Reads the cached SEO settings snapshot and
@@ -113,6 +114,13 @@ export default async function SiteLayout({
       <SiteHeader />
       <main className="flex-1">{children}</main>
       <SiteFooter />
+
+      {/*
+        Analytics injection (ANAL-01/02, D-17). Reads analytics.script +
+        analytics.umami_id from settings; renders nothing by default (Umami instance
+        deploys in Phase 7). Validates https:// before emitting (T-06-05 mitigation).
+      */}
+      <Analytics />
     </div>
   );
 }
