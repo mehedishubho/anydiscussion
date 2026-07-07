@@ -208,12 +208,25 @@ Plans:
   4. A reader can view the About page (hard-coded TSX/MDX), submit the Contact form (delivered via SMTP, honeypot + rate-limited, no paid API), read T&C/Privacy from the dashboard-managed `pages` table, and hit a proper 404 on an unmatched path; a draft preview link works for an unpublished post (gated by secret token, consuming CONT-10).
   5. Single posts expose derived reading time + a table of contents (from headings), social share buttons + a read-progress indicator, a working view count, and dark mode across the public site; the analytics script (default Umami, swappable) is injected from `settings`.
 
-**Plans**: TBD
+**Plans**: 7 plans
 
 Plans:
 
-- [ ] 06-01: TBD (planning pending)
-- [ ] 06-02: TBD (planning pending)
+**Wave 1** (BLOCKING foundation — unblocks all of Wave 2)
+
+- [ ] 06-01-PLAN.md — Foundation slice: schema migration (posts.featured, posts.views, user.username, FTS tsvector+GIN) + published-only read-query module (lib/queries/*) + view-count atomic write (D-01/D-02) + Bangla-aware reading-time (D-15) + TOC builder + in-memory rate-limit + Person/BreadcrumbList JSON-LD + settings seeds + [BLOCKING] drizzle-kit generate + Wave 0 tests. Covers SITE-07 (query), SITE-08 (FTS query), SITE-13 (utils), SITE-17 (write path).
+
+**Wave 2** *(parallel — blocked on Wave 1)*
+
+- [ ] 06-02-PLAN.md — (site) chrome + dark mode + analytics: SiteHeader (nav + categories dropdown + search icon) + SiteFooter + route-isolated ThemeToggle (D-13, separate localStorage key, no ThemeContext import) + no-flash head script + analytics script injection (ANAL-01/02, https-validated URL+ID only). Covers SITE-16, ANAL-01, ANAL-02.
+- [ ] 06-03-PLAN.md — Single-post /blog/[slug] (HIGHEST spike — RESOLVED): PPR cached body (LCP) + two separate Suspense holes (ViewCount via connection() + RelatedPosts via 'use cache') + PostCard + TOC client island + reading-time + share buttons + read-progress + heading-ID post-processing. Covers SITE-07, SITE-13, SITE-14, SITE-17.
+- [ ] 06-05-PLAN.md — Contact form (SITE-10): RHF + Zod shared schema + submitContact Server Action (honeypot + per-IP rate-limit + lib/email fire-and-forget, no DB per D-08) + /contact page (dashboard-managed content). Covers SITE-10.
+- [ ] 06-06-PLAN.md — Marketing/legal pages: About (hard-coded TSX, SITE-09) + T&C/Privacy (render published pages rows via renderPostBody, SITE-11) + 404 styling (second Suspense for SuggestedPosts, Pitfall 6) + preview verify/polish (SITE-15, Phase 3 D-19). Covers SITE-09, SITE-11, SITE-12, SITE-15.
+
+**Wave 3** *(parallel — blocked on Wave 1 + 06-03 for PostCard)*
+
+- [ ] 06-04-PLAN.md — Browse + taxonomy: Home magazine (featured hero + latest grid + category teasers, D-03/D-04) + /blog paginated feed + /archive filterable dense list (D-12) + /category/[slug] + /tag/[slug] (reuse ArchiveList + BreadcrumbList JSON-LD, D-14). Covers SITE-01, SITE-02, SITE-03, SITE-04, SITE-05.
+- [ ] 06-07-PLAN.md — Search + Author: /search (server GET form + Postgres FTS ranked results, 'simple' config, D-09) + /author/[username] (bio header + posts + Person JSON-LD, D-11). Covers SITE-06, SITE-08.
 
 **Pitfalls owned:** #3 (publish→visible tested end-to-end on the real stack in Phase 7), #2 reinforced (re-sanitize at render before any `dangerouslySetInnerHTML`); cross-group leakage forbidden.
 **Research flag:** HIGHEST — Cache Components + `<Suspense>` boundary placement on the single-post page (`/[slug]`) is the single most likely place to need a spike; confirm `cacheLife`/`cacheTag` profile behavior and where to place Suspense boundaries for related-posts/view-count before building all archive routes.
