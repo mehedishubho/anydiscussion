@@ -56,11 +56,11 @@ describe("D-15 / deriveReadingTime — Bangla-aware reading time", () => {
   });
 
   it("counts Bangla words correctly via Intl.Segmenter — not undercounted", () => {
-    // 10 Bangla sentences, each ~40 words → ~400 words → ~2 min at 200 WPM.
+    // Each Bangla sentence has ~14 words. 30 repetitions → ~420 words → ~2 min at 200 WPM.
     // This verifies Intl.Segmenter is used (whitespace split would also work
     // for Bangla since words are space-separated, but the point is >= 2, not 1).
     const banglaSentence = "এই ব্লগে আপনি পাবেন প্রযুক্তি বিজ্ঞান এবং প্রোগ্রামিং ও জীবনযাপন নিয়ে গভীর বিশ্লেষণমূলক আলোচনা। ";
-    const banglaText = banglaSentence.repeat(20).trim();
+    const banglaText = banglaSentence.repeat(30).trim();
     const body = {
       type: "doc",
       content: [
