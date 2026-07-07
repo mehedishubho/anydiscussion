@@ -32,6 +32,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { Suspense } from "react";
 import { renderPostBody } from "@/lib/post-render";
 import { buildPostMetadata, type PostLike, type PostSeoLike } from "@/lib/seo/metadata";
 import { blogPostingJsonLd } from "@/lib/seo/jsonld";
@@ -39,6 +40,12 @@ import { getSeoSettings } from "@/lib/seo/settings";
 import { getPostForPublic } from "@/lib/queries/posts";
 import { deriveReadingTime } from "@/lib/reading-time";
 import { buildToc, type TocItem } from "@/lib/toc";
+import ViewCount from "@/components/site/ViewCount";
+import RelatedPosts from "@/components/site/RelatedPosts";
+import {
+  ViewCountSkeleton,
+  RelatedPostsSkeleton,
+} from "@/components/site/skeletons";
 
 interface PostPageProps {
   params: Promise<{ slug: string }>;
@@ -244,6 +251,28 @@ export default async function PostPage({ params }: PostPageProps) {
               </ul>
             </nav>
           ) : null}
+
+          {/* STREAMING HOLE #1 — view count. Two SEPARATE Suspense boundaries
+              (Pitfall 2 — don't combine with related-posts). ViewCount's FIRST
+              line is `await connection()` (next/server) — the per-request signal
+              that prevents build hangs / silent caching (Pitfall 1). Then runs
+              the atomic UPDATE views = views + 1 (D-01) and renders the count.
+              The increment fires exactly once per real visit — the streaming
+              slot is never part of the cached prerender, so ISR regeneration of
+              the static body does NOT re-invoke it. */}
+          <div className="mt-12 flex items-center gap-2 border-t border-gray-200 pt-6 text-sm text-gray-500 dark:border-gray-800 dark:text-gray-400">
+            <Suspense fallback={<ViewCountSkeleton />}>
+              <ViewCount postId={post.id} />
+            </Suspense>
+          </div>
+
+          {/* STREAMING HOLE #2 — related posts. 'use cache' + cacheLife('hours') +
+              cacheTag('posts-list') + cacheTag(`category-${cid}`) inside the
+              component — matches publishPost's existing 2-arg revalidateTag(...,
+              "max") calls so publishes refresh this slot. */}
+          <Suspense fallback={<RelatedPostsSkeleton />}>
+            <RelatedPosts postId={post.id} categoryId={post.categoryId} />
+          </Suspense>
         </article>
 
         {/* Desktop TOC — sticky sidebar (D-05). Hidden on mobile where the inline
