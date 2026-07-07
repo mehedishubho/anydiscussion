@@ -96,6 +96,36 @@ export async function seedSeoSettings(): Promise<void> {
 }
 
 /**
+ * Idempotently seed the Phase-6 public-frontend settings keys (D-07/D-17).
+ * Safe to call multiple times — onConflictDoNothing on `settings.key` PK means
+ * re-runs are no-ops; admin-set values are NEVER overwritten by this seed.
+ *
+ * The six keys feed public-frontend concerns:
+ *   - contact.recipient_email — the admin inbox for Contact form submissions (D-07).
+ *       Empty default — admin sets via the dashboard settings page without a redeploy.
+ *   - analytics.script / analytics.umami_id — Umami script URL + website ID (D-17).
+ *       Empty defaults — the Umami instance deploys in Phase 7; injection-only this phase.
+ *   - footer.social_twitter / footer.social_facebook / footer.social_linkedin —
+ *       optional footer social links rendered by SiteFooter (empty = hidden).
+ *
+ * Call from: src/instrumentation.ts at first boot (NEXT_RUNTIME === "nodejs"),
+ * after seedSeoSettings().
+ */
+export async function seedPublicFrontendSettings(): Promise<void> {
+  await db
+    .insert(schema.settings)
+    .values([
+      { key: "contact.recipient_email", value: "" },
+      { key: "analytics.script", value: "" },
+      { key: "analytics.umami_id", value: "" },
+      { key: "footer.social_twitter", value: "" },
+      { key: "footer.social_facebook", value: "" },
+      { key: "footer.social_linkedin", value: "" },
+    ])
+    .onConflictDoNothing();
+}
+
+/**
  * Idempotently seed the three legal/contact pages (D-17). Safe to call multiple
  * times — onConflictDoNothing on `pages.slug` (unique) means re-runs are no-ops.
  * A user-edited body is NEVER overwritten by this seed.
