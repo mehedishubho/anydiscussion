@@ -25,6 +25,12 @@
 //
 // Forward-compatibility (D-12): the redirects table ships EMPTY in v1. This
 // wiring is ready for the SETT-03 v2 redirects-manager UI. No seed data needed.
+//
+// Phase 6 (SITE-12): the 404 now ALSO streams "suggested posts" + a search link.
+// CRITICAL — Pitfall 6 / T-06-16: the SuggestedPosts DB read lives inside its OWN
+// <Suspense> boundary, SEPARATE from the RedirectChecker Suspense. Inlining a DB
+// read outside <Suspense> breaks the static 404 shell ("Uncached data was accessed
+// outside of <Suspense>"). Two boundaries, never one combined.
 import GridShape from "@/components/common/GridShape";
 import Image from "next/image";
 import Link from "next/link";
@@ -33,6 +39,7 @@ import { headers } from "next/headers";
 import { permanentRedirect, redirect } from "next/navigation";
 import { db, schema } from "@/lib/db";
 import { eq } from "drizzle-orm";
+import { listPublished } from "@/lib/queries/posts";
 
 /**
  * RedirectChecker — async component that queries the redirects table for the
@@ -81,10 +88,62 @@ async function RedirectChecker(): Promise<null> {
 }
 
 /**
+ * SuggestedPosts — async component that streams a few popular/recent published
+ * posts for the friendly 404 (SITE-12 / D-16). Runs inside its OWN <Suspense>
+ * boundary, SEPARATE from the RedirectChecker Suspense (Pitfall 6 / T-06-16).
+ *
+ * Calls listPublished from @/lib/queries/posts (a cached read). The Suspense
+ * boundary keeps the static 404 shell prerenderable while the suggested-posts
+ * slot streams. Returns null if no posts exist yet (graceful empty state).
+ *
+ * Deliberately lightweight: a heading + 3 plain links, NOT PostCard (keeps the
+ * 404 bundle minimal — D-16 friendly 404, not a content surface).
+ */
+async function SuggestedPosts(): Promise<React.ReactElement | null> {
+  try {
+    const posts = await listPublished({ page: 1, pageSize: 3 });
+    if (!posts || posts.length === 0) return null;
+
+    return (
+      <div className="mx-auto mt-10 w-full max-w-[472px] text-center">
+        <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+          Popular Posts
+        </h2>
+        <ul className="space-y-2">
+          {posts.map((row) => {
+            // listPublished returns a union: plain posts row (no tagId) or a joined
+            // { posts, postTags } row (with tagId). Normalize to the posts shape.
+            const post = "posts" in row ? row.posts : row;
+            return (
+              <li key={post.id}>
+                <Link
+                  href={`/blog/${post.slug}`}
+                  className="text-sm font-medium text-brand-500 hover:underline dark:text-brand-400"
+                >
+                  {post.title}
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+    );
+  } catch {
+    // Graceful degradation — never crash the 404 over a suggested-posts read.
+    return null;
+  }
+}
+
+/**
  * NotFound — the root 404 page. The RedirectChecker runs inside <Suspense> so
  * the 404 UI stays in the static prerender shell (Cache Components requirement).
  * The fallback is null so nothing renders until the checker completes; if a
  * redirect is found, the user is redirected without ever seeing the 404.
+ *
+ * Phase 6 (SITE-12): a friendly 404 — "Back to Home" + a "Search the site" link,
+ * plus a SECOND <Suspense> streaming SuggestedPosts (popular/recent). Pitfall 6:
+ * this is a SEPARATE boundary from the RedirectChecker Suspense above. Never
+ * inline the SuggestedPosts DB read in the static shell.
  */
 export default function NotFound() {
   return (
@@ -114,16 +173,31 @@ export default function NotFound() {
         />
 
         <p className="mt-10 mb-6 text-base text-gray-700 dark:text-gray-400 sm:text-lg">
-          We can’t seem to find the page you are looking for!
+          We can’t seem to find the page you are looking for.
         </p>
 
-        <Link
-          href="/"
-          className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-5 py-3.5 text-sm font-medium text-gray-700 shadow-theme-xs hover:bg-gray-50 hover:text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-white/[0.03] dark:hover:text-gray-200"
-        >
-          Back to Home Page
-        </Link>
+        <div className="flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
+          <Link
+            href="/"
+            className="inline-flex w-full items-center justify-center rounded-lg border border-gray-300 bg-white px-5 py-3.5 text-sm font-medium text-gray-700 shadow-theme-xs hover:bg-gray-50 hover:text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-white/[0.03] dark:hover:text-gray-200 sm:w-auto"
+          >
+            Back to Home Page
+          </Link>
+          <Link
+            href="/search"
+            className="inline-flex w-full items-center justify-center rounded-lg bg-gray-900 px-5 py-3.5 text-sm font-medium text-white shadow-theme-xs hover:bg-gray-800 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-200 sm:w-auto"
+          >
+            Search the site
+          </Link>
+        </div>
       </div>
+
+      {/* SuggestedPosts — SECOND <Suspense>, separate from RedirectChecker (Pitfall 6 / T-06-16).
+          Falls back to null so the static 404 shell renders immediately; the slot streams in. */}
+      <Suspense fallback={null}>
+        <SuggestedPosts />
+      </Suspense>
+
       {/* <!-- Footer --> */}
       <p className="absolute text-sm text-center text-gray-500 -translate-x-1/2 bottom-6 left-1/2 dark:text-gray-400">
         &copy; 2026 - Any Discussion
