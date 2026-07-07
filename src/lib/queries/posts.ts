@@ -73,6 +73,9 @@ export async function incrementViewCount(postId: number): Promise<number> {
  * Used by /blog, /archive, home grid. Ordered by publishedAt desc.
  * cacheLife("hours") + cacheTag("posts-list") keep the feed ISR-friendly;
  * publishPost's revalidateTag("posts-list", "max") refreshes on publish.
+ *
+ * Left-joins `user` so consuming PostCard instances can render the author
+ * byline (D-11 — byline links to /author/[username]).
  */
 export async function listPublished(opts: {
   page: number;
@@ -105,10 +108,15 @@ export async function listPublished(opts: {
           schema.postTags,
           eq(schema.postTags.postId, schema.posts.id),
         )
+        .leftJoin(schema.user, eq(schema.user.id, schema.posts.authorId))
         .where(
           and(...conditions, eq(schema.postTags.tagId, opts.tagId)),
         )
-    : db.select().from(schema.posts).where(and(...conditions));
+    : db
+        .select()
+        .from(schema.posts)
+        .leftJoin(schema.user, eq(schema.user.id, schema.posts.authorId))
+        .where(and(...conditions));
 
   return await baseQuery
     .orderBy(desc(schema.posts.publishedAt))
@@ -117,10 +125,57 @@ export async function listPublished(opts: {
 }
 
 /**
+ * countPublished — total count of published posts matching the given filters.
+ *
+ * Powers numbered pagination on /blog and the home grid (D-03 classic URL-based
+ * page numbers). Cached identically to listPublished so the count refreshes on
+ * publish. Uses count(distinct posts.id) for the tag-filter case to avoid the
+ * innerJoin to postTags double-counting.
+ */
+export async function countPublished(opts: {
+  categoryId?: number;
+  tagId?: number;
+  authorId?: string;
+} = {}): Promise<number> {
+  "use cache";
+  cacheLife("hours");
+  cacheTag("posts-list");
+  if (opts.categoryId) cacheTag(`category-${opts.categoryId}`);
+  if (opts.authorId) cacheTag(`author-${opts.authorId}`);
+
+  const conditions = [
+    eq(schema.posts.status, "published"),
+    isNull(schema.posts.deletedAt),
+  ];
+  if (opts.categoryId) conditions.push(eq(schema.posts.categoryId, opts.categoryId));
+  if (opts.authorId) conditions.push(eq(schema.posts.authorId, opts.authorId));
+
+  const baseQuery = opts.tagId
+    ? db
+        .select({ value: sql<number>`count(distinct ${schema.posts.id})` })
+        .from(schema.posts)
+        .innerJoin(
+          schema.postTags,
+          eq(schema.postTags.postId, schema.posts.id),
+        )
+        .where(
+          and(...conditions, eq(schema.postTags.tagId, opts.tagId)),
+        )
+    : db
+        .select({ value: sql<number>`count(*)` })
+        .from(schema.posts)
+        .where(and(...conditions));
+
+  const [row] = await baseQuery;
+  return Number(row?.value ?? 0);
+}
+
+/**
  * listFeatured — cached list of featured published posts (D-04).
  *
  * Home hero = most-recently-published featured post. Editors tick "Feature this"
- * in the post editor (the `featured` boolean flag).
+ * in the post editor (the `featured` boolean flag). Left-joins `user` so the hero
+ * can render the author byline (D-11).
  */
 export async function listFeatured(limit = 5) {
   "use cache";
@@ -130,6 +185,7 @@ export async function listFeatured(limit = 5) {
   return await db
     .select()
     .from(schema.posts)
+    .leftJoin(schema.user, eq(schema.user.id, schema.posts.authorId))
     .where(
       and(
         eq(schema.posts.featured, true),
