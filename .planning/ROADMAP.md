@@ -20,7 +20,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 3: Content Engine** - Posts CRUD + Tiptap JSON round-trip, double-sanitization, categories/tags, provider-based media (local default + R2), revalidation wired in (completed 2026-07-04)
 - [x] **Phase 4: Dashboard Chrome** - TailAdmin wired to real data (posts, taxonomy, media, users, pages) + Storage Settings (Cloudinary/push-CDN providers), RHF+Zod, TanStack Query, demo cleanup (completed 2026-07-05)
 - [x] **Phase 5: SEO Basics** - generateMetadata per route, dynamic sitemap + robots, JSON-LD, canonical, OG/Twitter cards, RSS (completed 2026-07-06)
-- [ ] **Phase 6: Public Frontend** - Home/blog/archive, category/tag/author archives, single post (Cache Components + Suspense), search, About/Contact/legal, dark mode
+- [x] **Phase 6: Public Frontend** - Home/blog/archive, category/tag/author archives, single post (Cache Components + Suspense), search, About/Contact/legal, dark mode (completed 2026-07-07)
 - [ ] **Phase 7: Performance & Deploy** - Lighthouse/CWV pass, bundle-budget audit, revalidation audit end-to-end, auth rate limiting, Coolify staging, Dokploy, self host
 - [ ] **Phase 8: Backup & Disaster Recovery** - Configurable multi-destination backups (local default/Google Drive/R2), schedule + retention, automated restore-drill with alerting, Backup Settings dashboard page
 
@@ -208,7 +208,7 @@ Plans:
   4. A reader can view the About page (hard-coded TSX/MDX), submit the Contact form (delivered via SMTP, honeypot + rate-limited, no paid API), read T&C/Privacy from the dashboard-managed `pages` table, and hit a proper 404 on an unmatched path; a draft preview link works for an unpublished post (gated by secret token, consuming CONT-10).
   5. Single posts expose derived reading time + a table of contents (from headings), social share buttons + a read-progress indicator, a working view count, and dark mode across the public site; the analytics script (default Umami, swappable) is injected from `settings`.
 
-**Plans**: 5/7 plans executed
+**Plans**: 7/7 plans complete
 
 Plans:
 
@@ -225,8 +225,8 @@ Plans:
 
 **Wave 3** *(parallel — blocked on Wave 1 + 06-03 for PostCard)*
 
-- [ ] 06-04-PLAN.md — Browse + taxonomy: Home magazine (featured hero + latest grid + category teasers, D-03/D-04) + /blog paginated feed + /archive filterable dense list (D-12) + /category/[slug] + /tag/[slug] (reuse ArchiveList + BreadcrumbList JSON-LD, D-14). Covers SITE-01, SITE-02, SITE-03, SITE-04, SITE-05.
-- [ ] 06-07-PLAN.md — Search + Author: /search (server GET form + Postgres FTS ranked results, 'simple' config, D-09) + /author/[username] (bio header + posts + Person JSON-LD, D-11). Covers SITE-06, SITE-08.
+- [x] 06-04-PLAN.md — Browse + taxonomy: Home magazine (featured hero + latest grid + category teasers, D-03/D-04) + /blog paginated feed + /archive filterable dense list (D-12) + /category/[slug] + /tag/[slug] (reuse ArchiveList + BreadcrumbList JSON-LD, D-14). Covers SITE-01, SITE-02, SITE-03, SITE-04, SITE-05.
+- [x] 06-07-PLAN.md — Search + Author: /search (server GET form + Postgres FTS ranked results, 'simple' config, D-09) + /author/[username] (bio header + posts + Person JSON-LD, D-11). Covers SITE-06, SITE-08.
 
 **Pitfalls owned:** #3 (publish→visible tested end-to-end on the real stack in Phase 7), #2 reinforced (re-sanitize at render before any `dangerouslySetInnerHTML`); cross-group leakage forbidden.
 **Research flag:** HIGHEST — Cache Components + `<Suspense>` boundary placement on the single-post page (`/[slug]`) is the single most likely place to need a spike; confirm `cacheLife`/`cacheTag` profile behavior and where to place Suspense boundaries for related-posts/view-count before building all archive routes.
