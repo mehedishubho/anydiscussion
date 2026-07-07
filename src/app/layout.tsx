@@ -13,8 +13,12 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // suppressHydrationWarning: the public site's no-flash dark-mode script (06-02)
+  // and the dashboard's ThemeProvider both mutate documentElement's class list
+  // before React hydrates. This attribute silences the expected SSR-vs-client
+  // mismatch on <html> (Next.js documented pattern for dark mode).
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body className={`${outfit.className} dark:bg-gray-900`}>
         <ThemeProvider>
           <SidebarProvider>{children}</SidebarProvider>
