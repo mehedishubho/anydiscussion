@@ -42,6 +42,9 @@ import { deriveReadingTime } from "@/lib/reading-time";
 import { buildToc, type TocItem } from "@/lib/toc";
 import ViewCount from "@/components/site/ViewCount";
 import RelatedPosts from "@/components/site/RelatedPosts";
+import Toc from "@/components/site/Toc";
+import ShareButtons from "@/components/site/ShareButtons";
+import ReadProgress from "@/components/site/ReadProgress";
 import {
   ViewCountSkeleton,
   RelatedPostsSkeleton,
@@ -151,6 +154,9 @@ export default async function PostPage({ params }: PostPageProps) {
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 lg:py-12">
+      {/* ReadProgress — client island (D-14). Thin fixed top bar; pure decoration.
+          Position: fixed so placement in the tree is irrelevant. */}
+      <ReadProgress />
       <div className="lg:grid lg:grid-cols-[1fr_220px] lg:gap-12">
         <article className="mx-auto w-full max-w-3xl">
           {/* BlogPosting JSON-LD — real <script> per Phase 5 Pitfall 2 (the
@@ -180,8 +186,8 @@ export default async function PostPage({ params }: PostPageProps) {
             {post.title}
           </h1>
 
-          {/* Meta row — author byline (→ /author/[username]), reading time, date */}
-          <div className="mb-8 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-gray-600 dark:text-gray-400">
+          {/* Meta row — author byline (→ /author/[username]), reading time, date, share */}
+          <div className="mb-8 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-gray-600 dark:text-gray-400">
             {author?.name ? (
               author?.username ? (
                 <Link
@@ -210,6 +216,9 @@ export default async function PostPage({ params }: PostPageProps) {
                 </time>
               </>
             ) : null}
+            {/* ShareButtons — client island (D-14). Plain anchors for X/FB/LinkedIn,
+                one copy-link button. SSR-safe (hrefs built after mount). */}
+            <ShareButtons slug={post.slug} title={post.title} />
           </div>
 
           {/* BODY — the LCP. Rendered SYNCHRONOUSLY from the cached fetch.
@@ -223,34 +232,10 @@ export default async function PostPage({ params }: PostPageProps) {
             dangerouslySetInnerHTML={{ __html: bodyHtml }}
           />
 
-          {/* Mobile TOC — inline "On this page" (D-05). Hidden on lg+ where the
-              sticky sidebar (sibling <aside>) takes over. Task 3 swaps both
-              renderings for the Toc client island with scroll-spy. */}
-          {toc.length > 0 ? (
-            <nav
-              aria-label="Table of contents"
-              className="mt-12 rounded-lg border border-gray-200 bg-gray-50 p-4 lg:hidden dark:border-gray-800 dark:bg-gray-900"
-            >
-              <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">
-                On this page
-              </h2>
-              <ul className="space-y-1 text-sm">
-                {toc.map((item) => (
-                  <li
-                    key={item.id}
-                    className={item.level === 3 ? "ml-4" : ""}
-                  >
-                    <a
-                      href={`#${item.id}`}
-                      className="text-gray-700 hover:text-gray-900 hover:underline dark:text-gray-300 dark:hover:text-white"
-                    >
-                      {item.text}
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            </nav>
-          ) : null}
+          {/* Mobile TOC — Toc client island (D-05 + D-15). Renders only when
+              items is non-empty; collapses to a "On this page" card on mobile.
+              Scroll-spy via IntersectionObserver highlights the active section. */}
+          <Toc items={toc} variant="mobile" />
 
           {/* STREAMING HOLE #1 — view count. Two SEPARATE Suspense boundaries
               (Pitfall 2 — don't combine with related-posts). ViewCount's FIRST
@@ -275,37 +260,11 @@ export default async function PostPage({ params }: PostPageProps) {
           </Suspense>
         </article>
 
-        {/* Desktop TOC — sticky sidebar (D-05). Hidden on mobile where the inline
-            nav above takes over. Task 3 replaces this with the Toc client island
-            that adds IntersectionObserver-based active-section highlighting. */}
-        {toc.length > 0 ? (
-          <aside className="hidden lg:block">
-            <nav
-              aria-label="Table of contents"
-              className="sticky top-8 max-h-[calc(100vh-4rem)] overflow-y-auto"
-            >
-              <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                On this page
-              </h2>
-              <ul className="space-y-2 border-l border-gray-200 text-sm dark:border-gray-800">
-                {toc.map((item) => (
-                  <li key={item.id}>
-                    <a
-                      href={`#${item.id}`}
-                      className={
-                        item.level === 3
-                          ? "-ml-2 block border-l-2 border-transparent pl-6 text-gray-600 hover:border-gray-300 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
-                          : "block border-l-2 border-transparent pl-4 text-gray-700 hover:border-gray-400 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
-                      }
-                    >
-                      {item.text}
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            </nav>
-          </aside>
-        ) : null}
+        {/* Desktop TOC — Toc client island (desktop variant). Sticky sidebar in
+            the grid's column 2 (lg:grid-cols-[1fr_220px]). Scroll-spy highlights
+            the active section. Renders nothing when items is empty (the grid then
+            collapses to a single column naturally). */}
+        <Toc items={toc} variant="desktop" />
       </div>
     </div>
   );
