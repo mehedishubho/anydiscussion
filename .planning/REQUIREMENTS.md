@@ -73,28 +73,28 @@ v1 = authoring + public-site MVP, extended with the full agreed feature set. Eac
 
 ### Public Frontend
 
-- [ ] **SITE-01**: Home page (featured / latest feed)
-- [ ] **SITE-02**: `/blog` feed (latest / featured)
-- [ ] **SITE-03**: Full blog archive (chronological + filterable)
-- [ ] **SITE-04**: `/category/[slug]` category archive
-- [ ] **SITE-05**: `/tag/[slug]` tag archive
-- [ ] **SITE-06**: `/author/[slug]` author profile + their posts (byline pages)
-- [ ] **SITE-07**: Single post page — Cache Components + `<Suspense>` (static Tiptap body + dynamic view count + related posts)
-- [ ] **SITE-08**: `/search` page (Postgres full-text search) with filters (category, tag, date, author)
-- [ ] **SITE-09**: About us (hard-coded TSX/MDX)
-- [ ] **SITE-10**: Contact us (dashboard-managed content + working form → SMTP email; honeypot + rate-limit)
-- [ ] **SITE-11**: T&C + Privacy (dashboard-managed `pages`)
-- [ ] **SITE-12**: `not-found.tsx` 404 page
-- [ ] **SITE-13**: Single-post extras — reading time (derived) + table of contents (from headings)
-- [ ] **SITE-14**: Single-post extras — social share buttons + read-progress indicator
-- [ ] **SITE-15**: Public draft preview route gated by preview token (consumes CONT-10)
-- [ ] **SITE-16**: Dark mode applied to the public site
-- [ ] **SITE-17**: View count display on posts (consumes a view-count write path)
+- [x] **SITE-01**: Home page (featured / latest feed)
+- [x] **SITE-02**: `/blog` feed (latest / featured)
+- [x] **SITE-03**: Full blog archive (chronological + filterable)
+- [x] **SITE-04**: `/category/[slug]` category archive
+- [x] **SITE-05**: `/tag/[slug]` tag archive
+- [x] **SITE-06**: `/author/[slug]` author profile + their posts (byline pages)
+- [x] **SITE-07**: Single post page — Cache Components + `<Suspense>` (static Tiptap body + dynamic view count + related posts)
+- [x] **SITE-08**: `/search` page (Postgres full-text search) with filters (category, tag, date, author)
+- [x] **SITE-09**: About us (hard-coded TSX/MDX)
+- [x] **SITE-10**: Contact us (dashboard-managed content + working form → SMTP email; honeypot + rate-limit)
+- [x] **SITE-11**: T&C + Privacy (dashboard-managed `pages`)
+- [x] **SITE-12**: `not-found.tsx` 404 page
+- [x] **SITE-13**: Single-post extras — reading time (derived) + table of contents (from headings)
+- [x] **SITE-14**: Single-post extras — social share buttons + read-progress indicator
+- [x] **SITE-15**: Public draft preview route gated by preview token (consumes CONT-10)
+- [x] **SITE-16**: Dark mode applied to the public site
+- [x] **SITE-17**: View count display on posts (consumes a view-count write path)
 
 ### Analytics
 
-- [ ] **ANAL-01**: Analytics integration via a `settings`-stored script/ID injected on the public site
-- [ ] **ANAL-02**: Default platform — self-hosted Umami (privacy-friendly, free, self-hosted via Coolify); GA4/Plausible are swappable alternatives decided at deploy
+- [x] **ANAL-01**: Analytics integration via a `settings`-stored script/ID injected on the public site
+- [x] **ANAL-02**: Default platform — self-hosted Umami (privacy-friendly, free, self-hosted via Coolify); GA4/Plausible are swappable alternatives decided at deploy
 
 ### Performance & Deploy
 
@@ -206,25 +206,25 @@ Which phases cover which requirements. Updated during roadmap creation (Step 8).
 | SEO-06 | Phase 5 — SEO Basics | Complete |
 | SEO-07 | Phase 5 — SEO Basics | Complete |
 | SEO-08 | Phase 5 — SEO Basics | Complete |
-| SITE-01 | Phase 6 — Public Frontend | Pending |
-| SITE-02 | Phase 6 — Public Frontend | Pending |
-| SITE-03 | Phase 6 — Public Frontend | Pending |
-| SITE-04 | Phase 6 — Public Frontend | Pending |
-| SITE-05 | Phase 6 — Public Frontend | Pending |
-| SITE-06 | Phase 6 — Public Frontend | Pending |
-| SITE-07 | Phase 6 — Public Frontend | Pending |
-| SITE-08 | Phase 6 — Public Frontend | Pending |
-| SITE-09 | Phase 6 — Public Frontend | Pending |
-| SITE-10 | Phase 6 — Public Frontend | Pending |
-| SITE-11 | Phase 6 — Public Frontend | Pending |
-| SITE-12 | Phase 6 — Public Frontend | Pending |
-| SITE-13 | Phase 6 — Public Frontend | Pending |
-| SITE-14 | Phase 6 — Public Frontend | Pending |
-| SITE-15 | Phase 6 — Public Frontend | Pending |
-| SITE-16 | Phase 6 — Public Frontend | Pending |
-| SITE-17 | Phase 6 — Public Frontend | Pending |
-| ANAL-01 | Phase 6 — Public Frontend | Pending |
-| ANAL-02 | Phase 6 — Public Frontend | Pending |
+| SITE-01 | Phase 6 — Public Frontend | Complete |
+| SITE-02 | Phase 6 — Public Frontend | Complete |
+| SITE-03 | Phase 6 — Public Frontend | Complete |
+| SITE-04 | Phase 6 — Public Frontend | Complete |
+| SITE-05 | Phase 6 — Public Frontend | Complete |
+| SITE-06 | Phase 6 — Public Frontend | Complete |
+| SITE-07 | Phase 6 — Public Frontend | Complete |
+| SITE-08 | Phase 6 — Public Frontend | Complete |
+| SITE-09 | Phase 6 — Public Frontend | Complete |
+| SITE-10 | Phase 6 — Public Frontend | Complete |
+| SITE-11 | Phase 6 — Public Frontend | Complete |
+| SITE-12 | Phase 6 — Public Frontend | Complete |
+| SITE-13 | Phase 6 — Public Frontend | Complete |
+| SITE-14 | Phase 6 — Public Frontend | Complete |
+| SITE-15 | Phase 6 — Public Frontend | Complete |
+| SITE-16 | Phase 6 — Public Frontend | Complete |
+| SITE-17 | Phase 6 — Public Frontend | Complete |
+| ANAL-01 | Phase 6 — Public Frontend | Complete |
+| ANAL-02 | Phase 6 — Public Frontend | Complete |
 | PERF-01 | Phase 7 — Performance & Deploy | Pending |
 | PERF-02 | Phase 7 — Performance & Deploy | Pending |
 | PERF-03 | Phase 7 — Performance & Deploy | Pending |

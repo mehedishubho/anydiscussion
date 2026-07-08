@@ -25,12 +25,13 @@ export default function AuthLayout({
                   <Image
                     width={231}
                     height={48}
-                    src="/images/logo/auth-logo.svg"
+                    src="/images/logo/sees-logo.png"
                     alt="Logo"
                   />
                 </Link>
                 <p className="text-center text-gray-400 dark:text-white/60">
-                  Free and Open-Source Tailwind CSS Admin Dashboard Template
+                  Sensory Everywhere Educational Services Limited (SEES) provides person-centred SEN education and disability support services, empowering individuals with disabilities through expert care, learning, and personalised support.
+
                 </p>
               </div>
             </div>
