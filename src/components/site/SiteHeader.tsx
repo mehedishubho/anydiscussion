@@ -32,7 +32,7 @@ export default async function SiteHeader() {
     listCategoriesWithCounts(),
   ]);
 
-  const logoUrl = null; // TODO v2: read site.logo from settings when the settings/general page ships.
+  const logoUrl = "/images/logo/sees-logo.png"; // TODO v2: read site.logo from settings when the settings/general page ships.
 
   return (
     <header className="sticky top-0 z-40 w-full border-b border-gray-200 bg-white/95 backdrop-blur dark:border-gray-800 dark:bg-gray-900/95">
@@ -46,13 +46,13 @@ export default async function SiteHeader() {
             <Image
               src={logoUrl}
               alt={seo.siteTitle}
-              width={32}
+              width={150}
               height={32}
-              className="h-8 w-8"
               priority
             />
-          ) : null}
-          <span>{seo.siteTitle}</span>
+          ) : (
+            <span>{seo.siteTitle}</span>
+          )}
         </Link>
 
         {/* Hard-coded nav (D-10 — menu builder is v2 SETT-01) */}

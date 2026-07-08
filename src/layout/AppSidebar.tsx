@@ -43,7 +43,6 @@ import {
   UserCircleIcon,
   UserIcon,
 } from "../icons/index";
-import SidebarWidget from "./SidebarWidget";
 
 type Role = "admin" | "editor" | "author";
 
@@ -351,22 +350,12 @@ const AppSidebar: React.FC<AppSidebarProps> = ({ role }) => {
       >
         <Link href="/dashboard">
           {isExpanded || isHovered || isMobileOpen ? (
-            <>
-              <Image
-                className="dark:hidden"
-                src="/images/logo/logo.svg"
-                alt="Logo"
-                width={150}
-                height={40}
-              />
-              <Image
-                className="hidden dark:block"
-                src="/images/logo/logo-dark.svg"
-                alt="Logo"
-                width={150}
-                height={40}
-              />
-            </>
+            <Image
+              src="/images/logo/sees-logo.png"
+              alt="SEES"
+              width={150}
+              height={32}
+            />
           ) : (
             <Image
               src="/images/logo/logo-icon.svg"
@@ -415,7 +404,6 @@ const AppSidebar: React.FC<AppSidebarProps> = ({ role }) => {
             </div>
           </div>
         </nav>
-        {isExpanded || isHovered || isMobileOpen ? <SidebarWidget /> : null}
       </div>
     </aside>
   );
