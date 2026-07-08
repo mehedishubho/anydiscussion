@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-07-01)
 Phase: 7 — Performance & Deploy
 Plan: Not started
 Status: Executing Phase 06
-Last activity: 2026-07-08 — Phase 06 complete, transitioned to Phase 7
+Last activity: 2026-07-08 — Completed quick task 260708-n9b (SEES logo swap + TailAdmin widget removal). Phase 06 complete, transitioned to Phase 7.
 
 Progress: [█░░░░░░░░░] 13%
 
@@ -123,6 +123,12 @@ Recent decisions affecting current work:
 - [Phase 6]: Cache Components + `<Suspense>` boundary placement on `/[slug]` is HIGHEST-confidence open question — plan a spike before building all archive routes.
 - [Phase 2 → UAT]: **Verification debt** — AUTH-06/07 real-inbox email delivery deferred to UAT (`.planning/phases/02-auth-rbac/02-UAT.md` UAT-02-01). Automated hook-firing tests pass (53 green); the manual round-trip requires operator `RESEND_API_KEY` + DNS deliverability (DKIM/SPF/DMARC — Phase 7 / D-04). Must close before production launch.
 - [Phase 2]: Better Auth `admin` vs `access` plugin split — confirm whether `access` plugin is needed for fine-grained permissions beyond the three roles.
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260708-n9b | Swap dashboard logo to SEES brand asset and remove TailAdmin promo widget | 2026-07-08 | 1ea60f6 | [260708-n9b-swap-dashboard-logo-to-sees-brand-asset-](./quick/260708-n9b-swap-dashboard-logo-to-sees-brand-asset-/) |
 
 ## Deferred Items
 
