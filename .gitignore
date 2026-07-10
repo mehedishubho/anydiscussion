@@ -45,3 +45,6 @@ next-env.d.ts
 .claude/worktrees/
 .codex/
 .agents/
+
+# local DB backups (may contain password hashes — never commit)
+.backups/
