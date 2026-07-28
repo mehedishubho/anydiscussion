@@ -1,0 +1,81 @@
+# .dockerignore (repo root — D-20)
+# [CITED: docs.docker.com/build/building/context/#dockerignore-file + RESEARCH.md Pattern 1 note]
+#
+# Excludes dev-only artifacts from the Docker build context. The build context
+# is what `docker build` uploads to the daemon — keeping it small speeds up
+# builds and avoids stale state leaking into the production image.
+#
+# Build-essential files kept INCLUDED:
+#   package.json, pnpm-lock.yaml, pnpm-workspace.yaml (deps stage)
+#   next.config.ts (build config)
+#   src/ (application code)
+#   public/ (static assets copied into the runtime image)
+#   scripts/check-bundle-size.mjs (the bundle-size gate runs in the builder stage)
+#   eslint.config.mjs (the lint gate runs in the builder stage)
+#   tsconfig.json (TypeScript compilation)
+#   postcss.config.* / tailwind.config.* (if present — CSS pipeline)
+
+# --- Node / pnpm state (re-installed fresh inside the image) ---
+node_modules
+**/node_modules
+
+# --- Next.js build output (re-built fresh inside the image) ---
+.next
+out
+build
+
+# --- Version control ---
+.git
+.gitignore
+.gitattributes
+
+# --- Environment files (secrets must NEVER enter the image — D-21) ---
+.env
+.env.local
+.env*.local
+.env.development
+.env.production
+
+# --- Test / coverage artifacts ---
+coverage
+.nyc_output
+.lighthouseci
+*.lcov
+
+# --- Docker / compose (the runtime image does not need these) ---
+docker-compose.yml
+docker-compose.*.yml
+Dockerfile
+.dockerignore
+.docker/
+
+# --- Planning artifacts (not part of the production app) ---
+.planning
+.claude
+
+# --- Editor / IDE / OS state ---
+.vscode
+.idea
+.DS_Store
+*.swp
+*.swo
+
+# --- Logs / runtime artifacts ---
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# --- Documentation (top-level — saved in repo, not in image) ---
+*.md
+docs/
+
+# --- Test config (the runtime image does not run tests) ---
+vitest.config.ts
+vitest.workspace.ts
+__tests__
+**/__tests__
+
+# --- Misc dev tooling (the lint/build do not consume these) ---
+.eslintcache
+.turbo
+.vercel
