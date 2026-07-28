@@ -245,17 +245,17 @@ Plans:
   4. Auth endpoints (sign-in, password reset) are rate-limited. (Backup scheduling moved to Phase 8.)
   5. The app deploys to staging on Coolify via git-push with managed SSL, build-vs-runtime env secrets correctly separated, and the single-instance ISR scaling cliff (multi-replica needs a shared Redis cache handler) documented for v2.
 
-**Plans**: 5/5 plans planned
+**Plans**: 2/5 plans executed
 
 Plans:
 
 **Wave 1** (load-bearing safety net — the sole pre-production gate per D-31/D-32)
 
-- [ ] 07-01-PLAN.md — Build pipeline slice: multi-stage Dockerfile (node:20-alpine, pnpm/corepack, standalone output, non-root user) + .dockerignore + scripts/check-bundle-size.mjs gzipped-chunk gate + package.json `check-bundle` script. Two build-step gates wired in the builder stage: `pnpm lint --max-warnings 0` (cross-group import catch) → `pnpm build` → `check-bundle-size.mjs --max-gz-kb=100` (catastrophic-leak catch). No runtime secret in any ARG/ENV (D-21). Covers PERF-02 + PERF-06 scaffolding.
+- [x] 07-01-PLAN.md — Build pipeline slice: multi-stage Dockerfile (node:20-alpine, pnpm/corepack, standalone output, non-root user) + .dockerignore + scripts/check-bundle-size.mjs gzipped-chunk gate + package.json `check-bundle` script. Two build-step gates wired in the builder stage: `pnpm lint --max-warnings 0` (cross-group import catch) → `pnpm build` → `check-bundle-size.mjs --max-gz-kb=100` (catastrophic-leak catch). No runtime secret in any ARG/ENV (D-21). Covers PERF-02 + PERF-06 scaffolding.
 
 **Wave 2** *(blocked on Wave 1 — both plans touch package.json)*
 
-- [ ] 07-02-PLAN.md — Rate-limiting slice: ioredis singleton (globalThis pattern) + docker-compose Redis service (256mb, allkeys-lru, no persistence, D-04) + Better Auth `rateLimit.customRules` 3/900s on the 4 auth endpoints + `customStorage` backed by ioredis + Contact form migrated to `@upstash/ratelimit` via ioredis adapter + `.env.example` REDIS_URL + scripts/test-auth-ratelimit.mjs. SUS-metadata checkpoint on `@upstash/ratelimit` install. Covers PERF-04 (honors D-01 literally).
+- [x] 07-02-PLAN.md — Rate-limiting slice: ioredis singleton (globalThis pattern) + docker-compose Redis service (256mb, allkeys-lru, no persistence, D-04) + Better Auth `rateLimit.customRules` 3/900s on the 4 auth endpoints + `customStorage` backed by ioredis + Contact form migrated to `@upstash/ratelimit` via ioredis adapter + `.env.example` REDIS_URL + scripts/test-auth-ratelimit.mjs. SUS-metadata checkpoint on `@upstash/ratelimit` install. Covers PERF-04 (honors D-01 literally).
 
 **Wave 3** *(blocked on Wave 2)*
 
