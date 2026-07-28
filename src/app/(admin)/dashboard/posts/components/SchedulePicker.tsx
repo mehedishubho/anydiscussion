@@ -41,7 +41,6 @@ export default function SchedulePicker({
   const inputRef = useRef<HTMLInputElement>(null);
   const fpRef = useRef<FlatpickrInstance | null>(null);
   const [timezone, setTimezone] = useState<string | null>(initialTimezone ?? null);
-  const [copied, setCopied] = useState(false);
 
   // D-14 — read the live timezone value from settings on mount (re-validates the
   // initialTimezone prop in case the admin changed it since page load).

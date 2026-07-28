@@ -75,7 +75,12 @@ export function configureCloudinary(creds: {
 export const cloudinaryProvider: StorageProvider = {
   name: "cloudinary",
 
-  async upload(buffer, baseKey, _mimeType) {
+  async upload(
+    buffer,
+    baseKey,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- StorageProvider interface requires mimeType; Cloudinary ignores it (D-22 edge transforms)
+    _mimeType,
+  ) {
     // D-22: Cloudinary owns transforms at delivery URL time. sharp is BYPASSED —
     // returning variants:[] (the local/r2 pipeline runs 3 sharp variants; Cloudinary
     // produces them on-demand at the CDN edge instead). Pitfall 3 — upload_stream

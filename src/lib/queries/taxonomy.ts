@@ -10,7 +10,7 @@
 
 import { cacheLife, cacheTag } from "next/cache";
 import { db, schema } from "@/lib/db";
-import { eq, isNull, asc, and, sql, count } from "drizzle-orm";
+import { eq, isNull, asc, and, count } from "drizzle-orm";
 
 /**
  * getCategoryBySlug — fetch a single category by slug (SITE-04).

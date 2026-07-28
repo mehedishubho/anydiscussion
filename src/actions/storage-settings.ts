@@ -43,7 +43,6 @@ import {
   hasNoSecrets,
   SECRET_FIELDS,
   type CloudinaryCreds,
-  type R2Creds,
   type PushCdnCreds,
   type StorageSettingsInput,
 } from "./storage-settings-schema";

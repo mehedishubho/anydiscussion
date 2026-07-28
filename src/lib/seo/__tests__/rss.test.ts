@@ -149,7 +149,6 @@ describe("T-05-04: XML escaping in RSS text fields", () => {
   it("escapes all 5 XML-special chars in title (no raw <>&'\" in output)", async () => {
     const body = await readBody(await GET());
     // The raw special chars must NOT appear inside the <title> text node.
-    const titleMatch = body.match(/<title>([^<]*)<\/title>/);
     // First <title> is the channel title (fakeSettings.siteTitle — no special chars here).
     // Find the item title instead.
     const itemTitleMatch = body.match(/<item>[\s\S]*?<title>([^<]*)<\/title>/);

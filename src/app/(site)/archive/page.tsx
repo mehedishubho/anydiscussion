@@ -66,9 +66,7 @@ interface ArchivePageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
-export async function generateMetadata({
-  searchParams,
-}: ArchivePageProps): Promise<Metadata> {
+export async function generateMetadata(): Promise<Metadata> {
   "use cache";
   const s = await getSeoSettings();
   return buildArchiveMetadata(

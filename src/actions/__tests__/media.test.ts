@@ -285,8 +285,6 @@ describe("MEDIA-02 / D-06: uploadMedia writes the correct media record (server-m
       expect.stringMatching(/^media\/\d{4}\/\d{2}\/[a-f0-9-]+$/), // baseKey = media/YYYY/MM/uuid
       "image/png",
     );
-    const insertValuesCall = (db.insert as ReturnType<typeof vi.fn>).mock.results[0]
-      ?.value?.values ?? (db.insert as ReturnType<typeof vi.fn>).mock.calls;
     // The db.insert(schema.media).values(...) was called once with the full record.
     expect(db.insert).toHaveBeenCalledTimes(1);
     // Verify the values() spy received the MEDIA-02 schema fields.

@@ -13,7 +13,7 @@
 //
 // Windows-safe: execFileSync with shell:true for pnpm. process.exitCode = 1 on
 // any failure (NOT process.exit(1) — allows summary to print).
-import { execFileSync, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
@@ -178,8 +178,6 @@ function checkEslintIsolation() {
   const name = "Check 4: ESLint route-group isolation (planted cross-group import)";
   console.log(`\n▶ ${name}`);
   const plantedDir = resolve(REPO_ROOT, ".eslint-planted-test");
-  const plantedBad = resolve(plantedDir, "site-imports-admin.ts");
-  const plantedGood = resolve(plantedDir, "site-imports-lib.ts");
 
   try {
     mkdirSync(plantedDir, { recursive: true });

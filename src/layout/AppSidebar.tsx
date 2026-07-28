@@ -311,6 +311,7 @@ const AppSidebar: React.FC<AppSidebarProps> = ({ role }) => {
       });
     });
     if (!submenuMatched) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- sync open submenu to the active route on client-side navigation
       setOpenSubmenu(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

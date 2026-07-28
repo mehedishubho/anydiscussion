@@ -13,7 +13,7 @@ import {
   personJsonLd,
   breadcrumbListJsonLd,
 } from "../jsonld";
-import { fakePost, fakePostSeo, fakeSettings } from "./shared-fixtures";
+import { fakePost, fakeSettings } from "./shared-fixtures";
 
 describe("SEO-03 / D-03: blogPostingJsonLd — schema.org BlogPosting shape", () => {
   const ld = blogPostingJsonLd({

@@ -23,6 +23,9 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({
     const savedTheme = localStorage.getItem("theme") as Theme | null;
     const initialTheme = savedTheme || "light"; // Default to light theme
 
+    // SSR-safe theme init: localStorage isn't readable during SSR, so this must
+    // run client-side in an effect. Cascading render is a one-time mount cost.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setTheme(initialTheme);
     setIsInitialized(true);
   }, []);

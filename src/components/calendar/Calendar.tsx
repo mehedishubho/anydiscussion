@@ -40,6 +40,7 @@ const Calendar: React.FC = () => {
 
   useEffect(() => {
     // Initialize with some events
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time seed; Calendar is a kept TailAdmin demo component, not a core surface
     setEvents([
       {
         id: "1",
@@ -99,6 +100,7 @@ const Calendar: React.FC = () => {
     } else {
       // Add new event
       const newEvent: CalendarEvent = {
+        // eslint-disable-next-line react-hooks/purity -- Date.now() runs inside the handleAddOrUpdateEvent onClick handler, not during render
         id: Date.now().toString(),
         title: eventTitle,
         start: eventStartDate,

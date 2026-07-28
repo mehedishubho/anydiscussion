@@ -83,6 +83,7 @@ export default function PostForm(props: PostFormProps) {
     },
   });
   const [mediaPickerOpen, setMediaPickerOpen] = useState(false);
+  // eslint-disable-next-line react-hooks/incompatible-library -- RHF watch() is the documented API; React Compiler safely skips memoizing it
   const featureImageValue = watch("featureImage");
 
   // D-26 + D-27 — savePost wrapped in useMutation; NOT optimistic on post save.

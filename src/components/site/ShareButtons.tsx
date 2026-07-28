@@ -41,6 +41,8 @@ export default function ShareButtons({ slug, title }: ShareButtonsProps) {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    // SSR-safe: window.location isn't available during SSR; derive the share URL after mount.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setShareUrl(`${window.location.origin}/blog/${slug}`);
   }, [slug]);
 

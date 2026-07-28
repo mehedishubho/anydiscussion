@@ -24,7 +24,6 @@ const {
   logErrorMock,
   transitionPostMock,
   cronScheduleMock,
-  startSchedulerMock,
 } = vi.hoisted(() => ({
   selectDueMock: vi.fn(),
   updateMock: vi.fn(),

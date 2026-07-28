@@ -34,7 +34,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { renderPostBody } from "@/lib/post-render";
-import { buildPostMetadata, type PostLike, type PostSeoLike } from "@/lib/seo/metadata";
+import { buildPostMetadata, type PostLike } from "@/lib/seo/metadata";
 import { blogPostingJsonLd } from "@/lib/seo/jsonld";
 import { getSeoSettings } from "@/lib/seo/settings";
 import { getPostForPublic } from "@/lib/queries/posts";

@@ -93,7 +93,6 @@ export default function MediaPicker({
     // e.g. next/image remotePatterns allows the hostname OR the URL is consumed
     // as-is in the editor body). T-04-07 disposition: accept (low severity).
     try {
-      // eslint-disable-next-line no-new
       new URL(trimmed);
     } catch {
       setExternalError("Enter a valid http(s):// URL");

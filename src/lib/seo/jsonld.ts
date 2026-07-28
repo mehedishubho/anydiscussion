@@ -13,8 +13,6 @@
 //
 // Server-only — NO "use client" directive.
 
-import type { SeoSettings } from "@/lib/seo/metadata";
-
 /** Input for the per-post BlogPosting builder. */
 export interface BlogPostingInput {
   title: string;

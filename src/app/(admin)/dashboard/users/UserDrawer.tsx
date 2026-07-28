@@ -77,6 +77,7 @@ export default function UserDrawer({
     },
   });
   const [avatarPickerOpen, setAvatarPickerOpen] = useState(false);
+  // eslint-disable-next-line react-hooks/incompatible-library -- RHF watch() is the documented API; React Compiler safely skips memoizing it
   const avatarValue = watch("avatar");
 
   // Reset form values whenever the drawer opens or the target user changes.

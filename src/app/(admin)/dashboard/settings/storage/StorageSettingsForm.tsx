@@ -60,9 +60,7 @@ export default function StorageSettingsForm({ initial }: StorageSettingsFormProp
     register,
     handleSubmit,
     watch,
-    setValue,
     getValues,
-    formState: { errors },
   } = useForm<StorageSettingsInput>({
     resolver: zodResolver(storageSettingsSchema),
     defaultValues: {

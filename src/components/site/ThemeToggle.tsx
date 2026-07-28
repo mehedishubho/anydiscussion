@@ -36,7 +36,10 @@ function useSiteTheme() {
 
   useEffect(() => {
     const stored = localStorage.getItem(SITE_THEME_KEY) as Theme | null;
+    // SSR-safe client init: localStorage / matchMedia aren't available during SSR,
+    // so theme detection must run in a mount effect (one-time cascading render).
     if (stored === "dark" || stored === "light") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setTheme(stored);
     } else if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
       setTheme("dark");

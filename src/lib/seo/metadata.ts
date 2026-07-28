@@ -148,6 +148,7 @@ export function buildPageMetadata(page: PageLike, s: SeoSettings): Metadata {
  */
 export function buildArchiveMetadata(
   opts: ArchiveMetadataInput,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- reserved for per-settings overrides; kept for caller-signature stability
   s: SeoSettings,
 ): Metadata {
   const title =

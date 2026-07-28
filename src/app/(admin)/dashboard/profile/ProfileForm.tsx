@@ -49,6 +49,7 @@ export default function ProfileForm({ initialUser }: { initialUser: ProfileUser 
     },
   });
   const [avatarPickerOpen, setAvatarPickerOpen] = useState(false);
+  // eslint-disable-next-line react-hooks/incompatible-library -- RHF watch() is the documented API; React Compiler safely skips memoizing it
   const avatarValue = watch("avatar");
 
   // D-27 NON-optimistic. Profile is the single-source user record; wait for the

@@ -100,38 +100,42 @@ async function RedirectChecker(): Promise<null> {
  * 404 bundle minimal — D-16 friendly 404, not a content surface).
  */
 async function SuggestedPosts(): Promise<React.ReactElement | null> {
+  // Fetch separately from the JSX render so a data-read error degrades gracefully
+  // WITHOUT constructing JSX inside try/catch (react-hooks/error-boundaries: only
+  // the await is wrapped; the JSX render is unconditional afterwards).
+  let posts: Awaited<ReturnType<typeof listPublished>>;
   try {
-    const posts = await listPublished({ page: 1, pageSize: 3 });
-    if (!posts || posts.length === 0) return null;
-
-    return (
-      <div className="mx-auto mt-10 w-full max-w-[472px] text-center">
-        <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-          Popular Posts
-        </h2>
-        <ul className="space-y-2">
-          {posts.map((row) => {
-            // listPublished returns a union: plain posts row (no tagId) or a joined
-            // { posts, postTags } row (with tagId). Normalize to the posts shape.
-            const post = "posts" in row ? row.posts : row;
-            return (
-              <li key={post.id}>
-                <Link
-                  href={`/blog/${post.slug}`}
-                  className="text-sm font-medium text-brand-500 hover:underline dark:text-brand-400"
-                >
-                  {post.title}
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
-      </div>
-    );
+    posts = await listPublished({ page: 1, pageSize: 3 });
   } catch {
     // Graceful degradation — never crash the 404 over a suggested-posts read.
     return null;
   }
+  if (!posts || posts.length === 0) return null;
+
+  return (
+    <div className="mx-auto mt-10 w-full max-w-[472px] text-center">
+      <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+        Popular Posts
+      </h2>
+      <ul className="space-y-2">
+        {posts.map((row) => {
+          // listPublished returns a union: plain posts row (no tagId) or a joined
+          // { posts, postTags } row (with tagId). Normalize to the posts shape.
+          const post = "posts" in row ? row.posts : row;
+          return (
+            <li key={post.id}>
+              <Link
+                href={`/blog/${post.slug}`}
+                className="text-sm font-medium text-brand-500 hover:underline dark:text-brand-400"
+              >
+                {post.title}
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
 }
 
 /**
