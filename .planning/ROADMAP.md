@@ -245,12 +245,29 @@ Plans:
   4. Auth endpoints (sign-in, password reset) are rate-limited. (Backup scheduling moved to Phase 8.)
   5. The app deploys to staging on Coolify via git-push with managed SSL, build-vs-runtime env secrets correctly separated, and the single-instance ISR scaling cliff (multi-replica needs a shared Redis cache handler) documented for v2.
 
-**Plans**: TBD
+**Plans**: 5/5 plans planned
 
 Plans:
 
-- [ ] 07-01: TBD (planning pending)
-- [ ] 07-02: TBD (planning pending)
+**Wave 1** (load-bearing safety net — the sole pre-production gate per D-31/D-32)
+
+- [ ] 07-01-PLAN.md — Build pipeline slice: multi-stage Dockerfile (node:20-alpine, pnpm/corepack, standalone output, non-root user) + .dockerignore + scripts/check-bundle-size.mjs gzipped-chunk gate + package.json `check-bundle` script. Two build-step gates wired in the builder stage: `pnpm lint --max-warnings 0` (cross-group import catch) → `pnpm build` → `check-bundle-size.mjs --max-gz-kb=100` (catastrophic-leak catch). No runtime secret in any ARG/ENV (D-21). Covers PERF-02 + PERF-06 scaffolding.
+
+**Wave 2** *(blocked on Wave 1 — both plans touch package.json)*
+
+- [ ] 07-02-PLAN.md — Rate-limiting slice: ioredis singleton (globalThis pattern) + docker-compose Redis service (256mb, allkeys-lru, no persistence, D-04) + Better Auth `rateLimit.customRules` 3/900s on the 4 auth endpoints + `customStorage` backed by ioredis + Contact form migrated to `@upstash/ratelimit` via ioredis adapter + `.env.example` REDIS_URL + scripts/test-auth-ratelimit.mjs. SUS-metadata checkpoint on `@upstash/ratelimit` install. Covers PERF-04 (honors D-01 literally).
+
+**Wave 3** *(blocked on Wave 2)*
+
+- [ ] 07-03-PLAN.md — Revalidation audit + fixes slice: 07-REVALIDATION-AUDIT.md classifying every mutating action HAS/MISSING/N/A (zero blank rows) + revalidation fixes applied to categories.ts, tags.ts, pages.ts, users.ts (matching each route's cache strategy per Pitfall #7; 2-arg revalidateTag; concrete literal paths) + scripts/test-publish-visible.mjs (30s deadline, polls PROD_URL). Covers PERF-03.
+
+**Wave 4** *(blocked on Waves 1-3 — needs Dockerfile + rate-limit code + revalidation fixes deployed together)*
+
+- [ ] 07-04-PLAN.md — Ops + deploy slice (autonomous: false): operator runbooks (docs/operations/umami-deploy.md + coolify-deploy.md + dns-email-deliverability.md) + Coolify production deploy with managed SSL (reframed from "staging" per D-32) + secret non-leakage verification (D-21) + Umami service deploy with mandatory default-password change (Pitfall 5) + publish→visible end-to-end on real stack (Pitfall #3 closure) + DKIM/SPF/DMARC DNS records + real-inbox test for password-reset AND email-verification (D-33 closes AUTH-06/07 debt). Covers PERF-06 deploy + ANAL-02 + D-33.
+
+**Wave 5** *(blocked on Wave 4 — needs live production URL to audit)*
+
+- [ ] 07-05-PLAN.md — Perf audit + ISR docs slice (autonomous: false): lighthouserc.json with the four INP-correct thresholds (Performance ≥ 0.9, LCP ≤ 2500, **INP ≤ 200** via `interaction-to-next-paint` NOT deprecated `max-potential-fid`, CLS ≤ 0.1) + `@lhci/cli` install + Lighthouse CI run against production + manual DevTools audit of every (site) route per D-08 + docs/adr/0001-isr-single-instance-scaling.md (cacheHandler singular, not deprecated name) + README.md ISR scaling section. Covers PERF-01 + D-28/D-29/D-30.
 
 **Pitfalls owned:** #3 (publish→visible verified on real stack), #6 (document single-replica ISR scaling cliff before adding a second Coolify replica), R2 op-count/sharp-CPU cost monitoring + billing alerts, Coolify build-vs-runtime env secret separation.
 **Research flag:** LOW — Coolify staging deploy + env-handling verification (backup/ops strategy moved to Phase 8).
