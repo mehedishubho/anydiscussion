@@ -764,27 +764,33 @@ ports:
 | A6 | D-21's runtime-secret list is complete (DATABASE_URL, BETTER_AUTH_SECRET, RESEND_API_KEY, S3 creds, SETTINGS_ENCRYPTION_KEY, REDIS_URL) — there is no other server-only secret the build would otherwise bake | User Constraints | If an undocumented secret exists in `.env.local` (e.g., a third-party API key), it would accidentally leak into the build. Planner should cross-check `.env.example` before finalizing the Dockerfile. |
 | A7 | The Contact form's existing in-memory limiter SHOULD be replaced with Redis in Phase 7 (vs. leaving it in-memory) | Summary / Pattern 3 | If the founder prefers two codepaths (in-memory for Contact, Redis for auth), the planner drops Pattern 3 and keeps the existing `src/lib/rate-limit/index.ts` untouched. Minor scope reduction. |
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+All four resolved during planning — the recommendations below were adopted in the PLAN.md files.
 
 1. **Should Phase 7 include automated publish→visible E2E (deferred per CONTEXT.md) or stay manual (D-17)?**
    - What we know: D-17 says manual script + visual check; automated E2E is a future fast-follow.
    - What's unclear: whether the manual script can fully replace E2E for confidence.
    - Recommendation: Stay manual for v1 (D-17 is locked); the script in Code Examples gives the planner a runnable starting point.
+   - RESOLVED: Stay manual per D-17 — Plan 07-03 Task 3 implements `scripts/test-publish-visible.mjs`.
 
 2. **Does the founder want the Contact form migrated to Redis (Pattern 3 / A7), or kept in-memory?**
    - What we know: In-memory works for single-instance v1; Redis is the v2 path (SCALE-01).
    - What's unclear: Whether doing it now (Phase 7) is worth the ioredis adapter work.
    - Recommendation: Discuss-phase decision. If the adapter (A3) proves complex, defer Contact-form migration and keep Redis only for auth endpoints.
+   - RESOLVED: Migrate to Redis — Plan 07-02 Task 3 migrates the Contact form to `@upstash/ratelimit` + ioredis via the adapter.
 
 3. **Lighthouse CI invocation target — local dev machine vs. Coolify post-deploy step?**
    - What we know: D-31 forbids GitHub Actions; D-07 says "Lighthouse CI + manual audit."
    - What's unclear: Whether to wire LHCI as a Coolify post-deploy step (requires LHCI in the runtime image, adds weight) or run it ad-hoc from the dev machine against the prod URL.
    - Recommendation: Ad-hoc from dev machine against prod URL. Simpler, doesn't bloat the runtime image, and matches the "manual audit on real stack" wording of D-07.
+   - RESOLVED: Ad-hoc from dev against the production URL — Plan 07-05 Task 2.
 
 4. **Where does the ISR scaling ADR live — `docs/adr/` (new) or `.planning/adr/`?**
    - What we know: No ADR directory exists yet.
    - What's unclear: Project convention (none established per .claude/CLAUDE.md "Conventions" section).
    - Recommendation: Create `docs/adr/0001-isr-single-instance-scaling.md` — ADRs are an industry-standard convention and discoverable in `docs/`.
+   - RESOLVED: `docs/adr/0001-isr-single-instance-scaling.md` — Plan 07-05 Task 3.
 
 ## Environment Availability
 
