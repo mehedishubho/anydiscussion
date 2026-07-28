@@ -408,3 +408,81 @@
 - Cloudflare Image Resizing → not needed
 - Custom bundle analyzer → not needed
 - Full scaling roadmap → premature
+
+---
+
+# Revision — 2026-07-28
+
+**Date:** 2026-07-28
+**Type:** Context update (existing CONTEXT.md was "Ready for planning" from 2026-07-14)
+**Areas revisited:** Rate-limit driver (implementation detail), CI host, Staging deploy readiness, Email deliverability debt
+**Codebase re-scouted:** confirmed `middleware.ts` (not `proxy.ts` — resolved in code), `next.config.ts` already production-shaped, `docker-compose.yml` is dev-only (Postgres 17 + MinIO, no Redis), no Dockerfile, no `.github/workflows`, no ratelimit/redis deps installed.
+
+> The original 2026-07-14 decisions (above) were reviewed; most still hold. The four areas below are where reality or the founder's posture moved since the original discussion. Each refined/superseded decision is mirrored in CONTEXT.md with a **(refined/superseded 2026-07-28)** marker.
+
+## Rate-limit driver (refines D-01)
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| @upstash/ratelimit + ioredis (Recommended) | MIT-licensed lib + ioredis client against self-hosted Redis. No Upstash cloud account, no paid API. Confirms what D-01 intended. | ✓ |
+| Hand-rolled INCR+EXPIRE | No rate-limit dependency. Lua/INCR+EXPIRE fixed window via ioredis. Minimal deps, more code to own. | |
+| @upstash/ratelimit + Upstash REST | Use Upstash's hosted REST store. Free tier but IS a cloud dependency — tensions with ethos. | |
+
+**User's choice:** @upstash/ratelimit + ioredis (Recommended)
+**Notes:** Claude corrected an earlier framing — `@upstash/ratelimit` is MIT and works with self-hosted Redis via ioredis; "Upstash" is just the company name. The 3-attempts/15-min window (D-02), all-endpoints coverage (D-03), and self-hosted Redis on Coolify (D-04) carry over unchanged. Rate limiting does NOT go in `middleware.ts` (UX-only, no persistent state).
+
+## CI host (refines D-12 / D-13; adds D-31)
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| GitHub Actions (Recommended at ask time) | Free for public repos; standard place for lint + bundle gates. | |
+| Coolify build step | Run `pnpm lint` + bundle-size inside the Docker build stage; fail aborts deploy. Keeps everything self-hosted. | ✓ |
+| Local pre-push hook only | Git hook runs eslint + bundle-size before push. Bypassable, no enforcement. | |
+
+**User's choice:** "self deploy so right now no CI/CD pipeline" → mapped to **Coolify build step**
+**Notes:** Founder rejected a separate CI/CD pipeline entirely — deploy model is git-push → Coolify, no GitHub Actions. PERF-02 bundle/lint gate therefore runs as a Coolify build-stage step (the only automated pre-production safety net, since there is also no staging). Planner must NOT create `.github/workflows/*.yml`. Refines D-12/D-13 from "CI lint step" to "Coolify build-stage step"; new D-31 records the no-CI decision.
+
+## Staging deploy readiness (supersedes D-22; refines D-23; adds D-32)
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| Infra is ready | VPS + Coolify + DNS + R2 + SMTP all provisioned; Phase 7 = pure verify. | |
+| Partially — needs setup | Some pieces exist; Phase 7 includes infra-setup tasks first. | |
+| Not started — full setup | Nothing provisioned; Phase 7 begins with provisioning. | |
+
+**Deploy flow follow-up (after "no staging"):**
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| Push main → prod (Recommended) | Every push to `main` → Coolify builds + deploys to production directly. Build-step gate is the safety net. | ✓ |
+| Manual prod promotion | `production` branch / manual button promotes; `main` non-deploying. Safer for a live blog. | |
+| Keep staging after all | Revert D-22/D-23; two environments. | |
+
+**User's choice:** "no need for staging" → then **Push main → prod**
+**Notes:** Founder rejected a staging environment entirely — single production env, push-to-main deploys to production (`anydiscussion.com`). D-22 SUPERSEDED by new D-32; D-23 refined (Coolify SSL on production domain, not staging subdomain). Planner flag: ROADMAP SC#5 + REQUIREMENT PERF-06 say "Staging deployment" — reframe to "Coolify git-push deploy + managed SSL to production"; do not drop the requirement. Lighthouse/CWV + publish→visible now verified against production.
+
+## Email deliverability debt (adds D-33; closes AUTH-06/07 verification debt)
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| Yes — close in Phase 7 (Recommended) | Set DKIM/SPF/DMARC DNS + one real inbox test. STATE.md parked this on "Phase 7 / D-04". | ✓ |
+| Split: DNS now, test later | Phase 7 sets DNS records; inbox-delivery test deferred to UAT/operator. | |
+| No — defer entirely | Keep as verification debt; operator closes later. | |
+
+**User's choice:** "confused, so do prefered" → **Yes — close in Phase 7 (Recommended)**
+**Notes:** Founder deferred to the recommended option after flagging confusion. Claude explained in plain terms: the automated tests prove the send-hook fires, but real inbox delivery + DNS anti-spam records are unverified; with no staging safety net, auth email must work at first launch. New D-33 makes it explicitly in-scope. The "DNS-only, test later" split was rejected (inbox test is cheap once DNS is set).
+
+## Items confirmed unchanged (not re-asked — locked 2026-07-14)
+
+- Lighthouse 90+ / Google 'Good' CWV / all `(site)` routes (D-05..D-11)
+- ESLint `no-restricted-imports` + 100KB gzipped public bundle threshold (D-14/D-15)
+- Action-by-action revalidation audit + manual publish→visible script (D-16..D-19)
+- Multi-stage Dockerfile, build-time NEXT_PUBLIC_* only (D-20/D-21)
+- Umami on Coolify, same Postgres/separate DB, `analytics.anydiscussion.com` (D-24..D-27)
+- ISR single-replica scaling cliff ADR (D-28..D-30)
+- **`middleware.ts` is correct, NOT `proxy.ts`** — resolved in code (cited comment: proxy.ts never registers in middleware-manifest on Next 16.2.9 + Turbopack). Not re-litigated.
+
+## Deferred Ideas (added 2026-07-28)
+
+- Staging environment → rejected (D-32); revisit via `production`-branch promotion flow if a safety net is ever needed.
+- GitHub Actions / separate CI layer → rejected (D-31); add as fast-follow if the team grows or pre-merge checks become necessary.
