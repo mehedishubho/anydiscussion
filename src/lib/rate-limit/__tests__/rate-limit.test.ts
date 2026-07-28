@@ -63,7 +63,6 @@ vi.mock("@/lib/redis", () => ({
 // back into the { keys, args } shape the slidingWindow algorithm expects.
 function splitIoredisArgs(allArgs: unknown[]): { keys: string[]; args: unknown[] } {
   // allArgs[0] is sha1/script; allArgs[1] is numkeys; then numkeys keys; then args.
-  const _shaOrScript = allArgs[0];
   const numkeys = Number(allArgs[1]);
   const keys = allArgs.slice(2, 2 + numkeys).map(String);
   const args = allArgs.slice(2 + numkeys);

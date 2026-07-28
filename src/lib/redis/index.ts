@@ -25,7 +25,6 @@ import Redis from "ioredis";
 // Next.js dev-mode HMR hot-reload-safe singleton. Without globalThis, every HMR
 // cycle would spawn a new Redis connection and leak sockets.
 declare global {
-  // eslint-disable-next-line no-var
   var __redisClient: Redis | undefined;
 }
 

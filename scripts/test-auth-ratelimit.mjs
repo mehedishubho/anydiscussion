@@ -1,6 +1,6 @@
 // scripts/test-auth-ratelimit.mjs
 // PERF-04 / D-02 / D-03 integration test (Plan 07-02 Task 2).
-// [CITED: better-auth.com/docs/concepts/rate-limit — RESEARCH.md Validation Architecture]
+// [CITED: better-auth.com/docs/concepts/rate-limit - RESEARCH.md Validation Architecture]
 //
 // Closes the brute-force blind spot: with the rateLimit block wired in
 // src/lib/auth/index.ts (customRules 3/900s on /sign-in/email backed by ioredis
@@ -10,17 +10,17 @@
 //
 // What this script does NOT verify: real attack traffic, distributed IPs, or
 // the post-15min-window reset (would require faking time progression against a
-// live Redis TTL — left to unit tests with mocked timers / manual operator UAT).
+// live Redis TTL - left to unit tests with mocked timers / manual operator UAT).
 // This is a synthetic logic test of the rate-limit wiring, not a pen-test.
 //
 // T-07-02-06 (failover): when Redis is unreachable, customStorage throws after
 // `maxRetriesPerRequest: 3` retries and Better Auth fails CLOSED (sign-in
-// blocked) — the safer brute-force default. If the server boots but the 4 POSTs
+// blocked) - the safer brute-force default. If the server boots but the 4 POSTs
 // all error with connection failures, the script reports the fail-closed
 // observation rather than silently passing.
 //
 // Graceful SKIP (not FAIL) when the server cannot boot (missing env, no Redis,
-// port conflict) — same shape as scripts/test-auth-gate.mjs:180-184. The
+// port conflict) - same shape as scripts/test-auth-gate.mjs:180-184. The
 // structural test (rateLimit block present in auth config) is the deterministic
 // gate; this HTTP script is the integration confirmation.
 import { execSync, spawn } from "node:child_process";
@@ -33,11 +33,11 @@ const BASE_URL = `http://${HOST}:${PORT}`;
 const NEXT_DIR = "./.next";
 // Synthetic test IP sent via X-Forwarded-For. Better Auth trusts this header
 // because advanced.ipAddress.ipAddressHeaders is set to ["x-forwarded-for"]
-// (Coolify's Caddy/Traefik overwrites it in prod — T-07-02-03).
-const TEST_IP = "203.0.113.42"; // RFC 5737 documentation range — never a real client
+// (Coolify's Caddy/Traefik overwrites it in prod - T-07-02-03).
+const TEST_IP = "203.0.113.42"; // RFC 5737 documentation range - never a real client
 const SIGN_IN_URL = `${BASE_URL}/api/auth/sign-in/email`;
 
-// ─── helpers ──────────────────────────────────────────────────────────────
+// --- helpers --------------------------------------------------------------
 
 function log(tag, msg) {
   console.log(`  [${tag}] ${msg}`);
@@ -45,15 +45,15 @@ function log(tag, msg) {
 
 function ensureBuild() {
   if (!fs.existsSync(NEXT_DIR) || !fs.existsSync(`${NEXT_DIR}/BUILD_ID`)) {
-    log("build", ".next not found — running pnpm build...");
+    log("build", ".next not found - running pnpm build...");
     try {
       execSync("pnpm build", { stdio: "inherit" });
     } catch {
-      console.error("  ✗ FAIL: build failed — run `pnpm build` manually to diagnose.");
+      console.error("  FAIL: build failed - run `pnpm build` manually to diagnose.");
       process.exit(1);
     }
   } else {
-    log("build", ".next found — skipping build (delete .next to force rebuild).");
+    log("build", ".next found - skipping build (delete .next to force rebuild).");
   }
 }
 
@@ -122,7 +122,7 @@ function waitForServer(maxWaitMs = 30000) {
 }
 
 async function postSignIn(attempt) {
-  // Same body every attempt — the rate limiter keys on IP+path, not credentials.
+  // Same body every attempt - the rate limiter keys on IP+path, not credentials.
   // Use a fake email so we never accidentally authenticate a real account.
   const body = JSON.stringify({
     email: "ratelimit-test@example.invalid",
@@ -163,20 +163,20 @@ async function httpCheck() {
     log("http", "Waiting for server to become reachable...");
     const reachable = await waitForServer(30000);
     if (!reachable) {
-      log("http", "Server did not become reachable within 30s — SKIP (likely missing env/Postgres/Redis)");
+      log("http", "Server did not become reachable within 30s - SKIP (likely missing env/Postgres/Redis)");
       if (serverStderr) log("http", `Server stderr (first 300 chars): ${serverStderr.substring(0, 300)}`);
       return { status: "skipped", reason: "server-unavailable" };
     }
-    log("http", "Server is reachable — issuing 4 sign-in attempts with the same synthetic IP...");
+    log("http", "Server is reachable - issuing 4 sign-in attempts with the same synthetic IP...");
 
     const results = [];
     for (let i = 1; i <= 4; i++) {
       // T-07-02-06: if Redis is unreachable, customStorage throws and we may get
-      // a 5xx or connection-reset. Capture and surface — do NOT silently pass.
+      // a 5xx or connection-reset. Capture and surface - do NOT silently pass.
       try {
         results.push(await postSignIn(i));
       } catch (err) {
-        log("http", `attempt ${i} threw: ${err.message} — likely Redis unreachable (fail-closed)`);
+        log("http", `attempt ${i} threw: ${err.message} - likely Redis unreachable (fail-closed)`);
         return {
           status: "skipped",
           reason: `redis-unreachable-fail-closed (${err.message})`,
@@ -189,20 +189,20 @@ async function httpCheck() {
     if (earlyFail.length > 0) {
       return {
         status: "failed",
-        reason: `attempt(s) ${earlyFail.map((_, i) => i + 1).join(",")} returned 429 before the 4th try — rate limiter is too strict or the IP was already budget-exhausted`,
+        reason: `attempt(s) ${earlyFail.map((_, i) => i + 1).join(",")} returned 429 before the 4th try - rate limiter is too strict or the IP was already budget-exhausted`,
       };
     }
     const fourth = results[3];
     if (fourth.status !== 429) {
       return {
         status: "failed",
-        reason: `expected 4th attempt to return 429, got ${fourth.status} — rate limiter is not enforced (Redis customStorage miswired?)`,
+        reason: `expected 4th attempt to return 429, got ${fourth.status} - rate limiter is not enforced (Redis customStorage miswired?)`,
       };
     }
     if (!fourth.retryAfter) {
       return {
         status: "failed",
-        reason: "4th attempt returned 429 but no X-Retry-After / Retry-After header — Better Auth version drift?",
+        reason: "4th attempt returned 429 but no X-Retry-After / Retry-After header - Better Auth version drift?",
       };
     }
 
@@ -221,49 +221,49 @@ async function httpCheck() {
   }
 }
 
-// ─── main ─────────────────────────────────────────────────────────────────
+// --- main -----------------------------------------------------------------
 
 async function main() {
-  console.log("\n═══════════════════════════════════════════════");
+  console.log("\n===============================================");
   console.log("  PERF-04 Auth Rate-Limit Integration Test (07-02)");
-  console.log("═══════════════════════════════════════════════\n");
+  console.log("===============================================\n");
 
   ensureBuild();
 
-  console.log("\n── Structural Check ──");
+  console.log("\n-- Structural Check --");
   const structural = structuralCheck();
   if (structural.passed) {
-    console.log("  ✓ STRUCTURAL CHECK PASSED\n");
+    console.log("  OK:STRUCTURAL CHECK PASSED\n");
   } else {
-    console.log(`  ✗ STRUCTURAL CHECK FAILED: ${structural.reason}\n`);
+    console.log(`  FAIL:STRUCTURAL CHECK FAILED: ${structural.reason}\n`);
     process.exitCode = 1;
   }
 
-  console.log("── HTTP Check ──");
+  console.log("-- HTTP Check --");
   const httpResult = await httpCheck();
   if (httpResult.status === "passed") {
-    console.log(`  ✓ HTTP CHECK PASSED (${httpResult.detail})\n`);
+    console.log(`  OK:HTTP CHECK PASSED (${httpResult.detail})\n`);
   } else if (httpResult.status === "skipped") {
-    console.log(`  ⊘ HTTP CHECK SKIPPED (${httpResult.reason})\n`);
+    console.log(`  SKIP:HTTP CHECK SKIPPED (${httpResult.reason})\n`);
     console.log("    To run manually:");
     console.log("      1. docker compose up -d redis");
     console.log("      2. pnpm build && PORT=3940 pnpm start");
     console.log(`      3. for i in 1 2 3 4; do curl -sI -X POST ${SIGN_IN_URL} \\`);
     console.log("           -H 'content-type: application/json' \\");
-    console.log(`           -H 'x-forwarded-for: ${TEST_IP}' \\");
+    console.log("           -H 'x-forwarded-for: " + TEST_IP + "' \\");
     console.log("           -d '{\"email\":\"a@b.invalid\",\"password\":\"x\"}' | head -1;");
     console.log("         done");
     console.log("      Expected: 4th response is HTTP/1.1 429 with a retry-after header\n");
   } else {
-    console.log(`  ✗ HTTP CHECK FAILED: ${httpResult.reason}\n`);
+    console.log(`  FAIL:HTTP CHECK FAILED: ${httpResult.reason}\n`);
     if (structural.passed) {
-      console.log("  NOTE: Structural check passed — HTTP failure may be env-specific.\n");
+      console.log("  NOTE: Structural check passed - HTTP failure may be env-specific.\n");
     } else {
       process.exitCode = 1;
     }
   }
 
-  console.log("── Summary ──");
+  console.log("-- Summary --");
   console.log(`  Structural: ${structural.passed ? "PASS" : "FAIL"}`);
   console.log(`  HTTP:       ${httpResult.status.toUpperCase()}`);
   console.log(`  Result:     ${process.exitCode ? "FAIL (exit 1)" : "PASS (exit 0)"}\n`);

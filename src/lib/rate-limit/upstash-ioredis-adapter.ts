@@ -52,13 +52,15 @@ class IoredisAdapter implements UpstashRatelimitRedis {
   private redis = redisClient;
 
   async evalsha(sha1: string, keys: string[], args: unknown[]): Promise<unknown> {
-    // ioredis: evalsha(sha1, numkeys, ...keys, ...args)
+    // ioredis: evalsha(sha1, numkeys, ...keys, ...args).
+    // @ts-expect-error -- ioredis evalsha expects RedisValue[] variadic; @upstash/ratelimit's Store interface types args as unknown[] (cross-library type boundary).
     return this.redis.evalsha(sha1, keys.length, ...keys, ...args);
   }
 
   async eval(script: string, keys: string[], args: unknown[]): Promise<unknown> {
     // NOSCRIPT fallback path (see @upstash/ratelimit safeEval). Same variadic
     // translation as evalsha.
+    // @ts-expect-error -- ioredis eval expects RedisValue[] variadic; @upstash/ratelimit's Store interface types args as unknown[] (cross-library type boundary).
     return this.redis.eval(script, keys.length, ...keys, ...args);
   }
 
@@ -94,7 +96,8 @@ class IoredisAdapter implements UpstashRatelimitRedis {
  * (which depends on @upstash/redis) is never invoked at runtime.
  */
 export const contactFormLimiter = new Ratelimit({
-  redis: new IoredisAdapter() as unknown as UpstashRatelimitRedis,
+  // @ts-expect-error -- @upstash/ratelimit's Ratelimit config.redis expects a generic Redis<TData>; IoredisAdapter implements the structural shape (evalsha/eval/get/set per @upstash/ratelimit@2.0.8 dist/index.d.ts line 573) but TS cannot reconcile the TData generic. Runtime-correct: the slidingWindow algorithm calls only evalsha/eval/get/set, all of which are implemented.
+  redis: new IoredisAdapter(),
   limiter: Ratelimit.slidingWindow(5, "1 h"),
   prefix: "ratelimit:contact",
   analytics: false,

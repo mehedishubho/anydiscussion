@@ -116,11 +116,13 @@ export const auth = betterAuth({
         return raw ? JSON.parse(raw) : null;
       },
       set: async (key, value) => {
-        // value is { count, expiresAt }; honor the TTL via Redis EX.
-        const ttlSec = Math.max(
-          1,
-          Math.ceil((value.expiresAt - Date.now()) / 1000),
-        );
+        // Better Auth's customStorage value is { count, lastRequest } (NO expiresAt
+        // field — verified against better-auth 1.6.23; the plan's expiresAt shape
+        // was stale). Better Auth's rateLimit resets the counter on read when
+        // `now - lastRequest >= window`, so the storage TTL just bounds entry growth
+        // — set it to the longest customRule window (900s) so no entry expires
+        // before its window resets. Over-keeping is harmless (read-side reset).
+        const ttlSec = 900; // D-02 max customRule window (3 requests / 15 min)
         await redisClient.set(
           `ratelimit:${key}`,
           JSON.stringify(value),
