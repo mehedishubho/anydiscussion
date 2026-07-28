@@ -8,6 +8,7 @@
 // SITE-11; content seeded in Phase 4 D-17).
 
 import Link from "next/link";
+import { cacheTag } from "next/cache";
 import { db, schema } from "@/lib/db";
 import { eq } from "drizzle-orm";
 import { getSeoSettings } from "@/lib/seo/settings";
@@ -22,15 +23,21 @@ const SOCIAL_KEYS = [
 /**
  * readSocialLinks — reads the optional footer social-link settings rows.
  * Returns only the non-empty ones (footer omits a social entry when unset).
- * Uncached DB read here is small and isolated; this runs inside the layout
- * which is already cached at the generateMetadata scope, so we accept the
- * read. (If this proves hot, add a 'use cache' + cacheTag later.)
+ *
+ * 'use cache' + cacheTag('seo-settings') REQUIRED under cacheComponents:true:
+ * SiteFooter renders inside the (site) layout, whose component body is NOT
+ * cached (only its generateMetadata is). Without 'use cache' here, every
+ * (site) route hits an uncached DB read at prerender -> "Uncached data outside
+ * <Suspense>" build error. The seo-settings tag lets saveSeoSettings invalidate
+ * social-link edits too (2-arg revalidateTag in src/actions/settings.ts).
  */
 async function readSocialLinks(): Promise<{
   twitter: string | null;
   facebook: string | null;
   linkedin: string | null;
 }> {
+  "use cache";
+  cacheTag("seo-settings");
   const rows = await db
     .select()
     .from(schema.settings)
@@ -64,6 +71,13 @@ async function readSocialLinks(): Promise<{
  * the corresponding settings key is non-empty).
  */
 export default async function SiteFooter() {
+  // Cache Component: the footer renders in the shared (site) layout, and
+  // `new Date()` (copyright year) is non-deterministic. Under cacheComponents a
+  // Server Component can't read the current time at prerender without a cache
+  // boundary — 'use cache' provides it (the year freezes at cache-write time and
+  // refreshes on seo-settings revalidation; acceptable for a copyright line).
+  "use cache";
+  cacheTag("seo-settings");
   const [seo, socials] = await Promise.all([
     getSeoSettings(),
     readSocialLinks(),

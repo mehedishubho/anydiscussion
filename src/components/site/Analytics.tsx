@@ -25,6 +25,7 @@
 //
 // Server-only — NO "use client" directive.
 
+import { cacheTag } from "next/cache";
 import { db, schema } from "@/lib/db";
 import { eq } from "drizzle-orm";
 
@@ -36,14 +37,20 @@ const ANALYTICS_KEYS = {
 
 /**
  * readAnalyticsSettings — reads the two analytics settings rows.
- * Returns null for missing/empty values. This read is small (2 rows by PK) and
- * runs in the layout scope; the layout's generateMetadata already establishes the
- * cached scope for the shell.
+ * Returns null for missing/empty values.
+ *
+ * 'use cache' + cacheTag('seo-settings') REQUIRED under cacheComponents:true:
+ * Analytics renders inside the (site) layout, whose component body is NOT cached
+ * (only its generateMetadata is). Without 'use cache' here, every (site) route
+ * hits an uncached DB read at prerender -> "Uncached data outside <Suspense>"
+ * build error.
  */
 async function readAnalyticsSettings(): Promise<{
   scriptUrl: string | null;
   websiteId: string | null;
 }> {
+  "use cache";
+  cacheTag("seo-settings");
   const [urlRow, idRow] = await Promise.all([
     db
       .select()
