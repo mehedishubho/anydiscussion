@@ -1,60 +1,20 @@
 // src/lib/rate-limit/index.ts
-// [CITED: 06-01-PLAN.md Task 3 <action> — D-07 in-memory per-IP rate limiting]
-// [CITED: 06-PATTERNS.md L366-370 — NO ANALOG: new pattern (Map-based cache)]
-// [CITED: 06-RESEARCH.md D-07 — single-instance v1; v2 swaps for Redis (SCALE-01)]
+// [CITED: 06-01-PLAN.md Task 3 <action> — original D-07 in-memory per-IP rate limiting]
+// [CITED: 07-02-PLAN.md Task 3 — migrated to Redis-backed @upstash/ratelimit via adapter]
+// [CITED: 07-RESEARCH.md Pattern 3 lines 414-447 — adapter sketch + Pitfall 1]
 //
-// Simple in-memory rate limiter. A module-level Map<ip, { count, resetAt }>
-// tracks per-IP request counts within a sliding window. Single-instance only
-// (v1 — the Coolify deploy is a single replica). v2 swaps for Redis (SCALE-01).
+// Contact form rate limiter. Originally (Plan 06-01) an in-memory Map; migrated
+// (Plan 07-02 / PERF-04 / D-01) to a Redis-backed `@upstash/ratelimit` instance
+// via the ioredis adapter in `./upstash-ioredis-adapter`. The in-memory Map is
+// GONE — Coolify redeploy would have reset it silently, defeating the limiter.
 //
-// The ONLY consumer this phase is src/actions/contact.ts (the Contact form).
+// Policy unchanged from Plan 06-01: 5 submissions per IP per 1 hour. The
+// migration is policy-neutral (only the storage substrate changed).
+//
+// The old `tryConsume(ip, limit, windowMs)` synchronous signature is REMOVED;
+// the new `contactFormLimiter.limit(ip)` is async. The single consumer
+// (`src/actions/contact.ts`) is migrated in the same plan.
 //
 // Server-only — NO "use client" directive.
 
-/** Per-IP rate-limit entry. */
-interface RateLimitEntry {
-  count: number;
-  resetAt: number;
-}
-
-/** Module-level store — single-instance (v1). */
-const store = new Map<string, RateLimitEntry>();
-
-/**
- * Try to consume one unit from the rate-limit allowance for the given IP.
- *
- * @param ip        The client IP (from x-forwarded-for or "unknown").
- * @param limit     Maximum requests allowed within the window.
- * @param windowMs  Window duration in milliseconds.
- * @returns         true if the request is allowed (under limit), false if exceeded.
- */
-export function tryConsume(
-  ip: string,
-  limit: number,
-  windowMs: number,
-): boolean {
-  const now = Date.now();
-  const entry = store.get(ip);
-
-  // No entry OR window expired → start a fresh window with count = 1.
-  if (!entry || now >= entry.resetAt) {
-    store.set(ip, { count: 1, resetAt: now + windowMs });
-    return true;
-  }
-
-  // Under the limit → increment and allow.
-  if (entry.count < limit) {
-    entry.count++;
-    return true;
-  }
-
-  // Over the limit within the window → deny.
-  return false;
-}
-
-/**
- * Clear all rate-limit entries. Exported for testing (so each test starts clean).
- */
-export function resetRateLimit(): void {
-  store.clear();
-}
+export { contactFormLimiter } from "./upstash-ioredis-adapter";

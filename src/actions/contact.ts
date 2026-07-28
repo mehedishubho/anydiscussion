@@ -3,8 +3,8 @@
 // [CITED: src/actions/pages.ts L23-29 — the "use server" + Zod parse pattern,
 //  adapted by DROPPING requireCan since contact is unauthenticated]
 // [CITED: src/lib/email/index.ts L40-72 — sendEmail signature; fire-and-forget; never throws (R8)]
-// [CITED: src/lib/rate-limit/index.ts — tryConsume(ip, limit, windowMs) from Plan 06-01]
-// [CITED: 06-CONTEXT.md D-07 — reuse lib/email; honeypot + in-memory per-IP rate-limit]
+// [CITED: src/lib/rate-limit/index.ts — contactFormLimiter.limit(ip) from Plan 07-02 (PERF-04)]
+// [CITED: 06-CONTEXT.md D-07 — reuse lib/email; honeypot + per-IP rate-limit]
 // [CITED: 06-CONTEXT.md D-08 — email-only, NO DB storage]
 // [CITED: 06-RESEARCH.md Pitfall 7 (L703-708) — do NOT add 'use cache' to the contact
 //  action; Server Actions are mutations, never cached (cached → only first submission
@@ -15,7 +15,7 @@
 // Action in the project WITHOUT a requireCan permission gate — contact is
 // unauthenticated by design (D-07: published-content ethos; the only public
 // write besides the view-count increment, and this one is email-only with no
-// DB footprint). The honeypot + per-IP in-memory rate-limit are the controls.
+// DB footprint). The honeypot + per-IP Redis-backed rate-limit are the controls.
 //
 // NO 'use cache' (Pitfall 7 — Server Actions are mutations, never cached).
 // NO requireCan (the form is public — the only controls are honeypot + rate-limit).
@@ -25,15 +25,8 @@
 import { headers } from "next/headers";
 import { contactSchema } from "./contact-schema";
 import { sendEmail } from "@/lib/email";
-import { tryConsume } from "@/lib/rate-limit";
+import { contactFormLimiter } from "@/lib/rate-limit";
 import { getSetting } from "@/actions/settings";
-
-// Per-IP rate-limit profile (CONTEXT.md discretion item — D-07).
-// 5 submissions per IP per hour. Generous enough for a real user who needs to
-// retry; tight enough to blunt scripted abuse. Single-instance in-memory only
-// (v1 — the Coolify deploy is a single replica; v2 swaps for Redis SCALE-01).
-const RATE_LIMIT_MAX = 5;
-const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 
 // Fallback recipient when the admin has not yet set contact.recipient_email
 // via the dashboard settings. The real address is admin-configurable so it can
@@ -73,13 +66,17 @@ export async function submitContact(
     return { ok: true };
   }
 
-  // 3. Rate-limit — per-IP, in-memory (D-07; tryConsume from Plan 06-01).
+  // 3. Rate-limit — per-IP, Redis-backed (Plan 07-02 / PERF-04 / D-01).
   //    x-forwarded-for is the standard proxy header (Coolify's Caddy/Traefik
   //    sets it). Fall back to "unknown" when no header is present (local dev).
+  //    Policy unchanged from Plan 06-01: 5 per IP per 1 hour (configured on the
+  //    `contactFormLimiter` instance, not here — single source of truth in
+  //    src/lib/rate-limit/upstash-ioredis-adapter.ts).
   const headerList = await headers();
   const forwardedFor = headerList.get("x-forwarded-for");
   const ip = forwardedFor?.split(",")[0]?.trim() || "unknown";
-  if (!tryConsume(ip, RATE_LIMIT_MAX, RATE_LIMIT_WINDOW_MS)) {
+  const { success } = await contactFormLimiter.limit(ip);
+  if (!success) {
     throw new Error("RATE_LIMITED");
   }
 
