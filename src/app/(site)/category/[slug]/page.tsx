@@ -18,6 +18,8 @@ import { z } from "zod";
 import { getSeoSettings } from "@/lib/seo/settings";
 import { buildArchiveMetadata } from "@/lib/seo/metadata";
 import { breadcrumbListJsonLd } from "@/lib/seo/jsonld";
+import { Suspense } from "react";
+import { PostCardGridSkeleton } from "@/components/site/skeletons";
 import { getCategoryBySlug } from "@/lib/queries/taxonomy";
 import {
   listArchive,
@@ -66,7 +68,6 @@ interface CategoryPageProps {
 export async function generateMetadata({
   params,
 }: CategoryPageProps): Promise<Metadata> {
-  "use cache";
   const { slug } = await params;
   const category = await getCategoryBySlug(slug);
   if (!category) {
@@ -91,7 +92,17 @@ function coerceParam(value: string | string[] | undefined): string | undefined {
   return value;
 }
 
-export default async function CategoryArchivePage({
+export default function CategoryArchivePage(props: CategoryPageProps) {
+  // PPR (cacheComponents): wrap the async, params/searchParams-reading content in
+  // <Suspense> so the layout shell prerenders and only the archive streams.
+  return (
+    <Suspense fallback={<PostCardGridSkeleton />}>
+      <CategoryArchiveContent {...props} />
+    </Suspense>
+  );
+}
+
+async function CategoryArchiveContent({
   params,
   searchParams,
 }: CategoryPageProps) {

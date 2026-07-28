@@ -27,6 +27,8 @@ import { buildArchiveMetadata } from "@/lib/seo/metadata";
 import { personJsonLd } from "@/lib/seo/jsonld";
 import { getUserByUsername, listAuthorPosts } from "@/lib/queries/users";
 import PostCard from "@/components/site/PostCard";
+import { PostCardGridSkeleton } from "@/components/site/skeletons";
+import { Suspense } from "react";
 
 /** AUTHOR_PAGE_SIZE mirrors listAuthorPosts (src/lib/queries/users.ts). */
 const AUTHOR_PAGE_SIZE = 10;
@@ -63,7 +65,6 @@ export async function generateMetadata({
 }: {
   params: Promise<{ username: string }>;
 }): Promise<Metadata> {
-  "use cache";
   const { username } = await params;
   const user = await getUserByUsername(username);
   if (!user) {
@@ -89,7 +90,17 @@ export async function generateMetadata({
  * 3. Render bio header + Person JSON-LD + the author's published posts.
  * 4. Prev/Next pagination preserving the /author/${username} base path.
  */
-export default async function AuthorPage({ params, searchParams }: AuthorPageProps) {
+export default function AuthorPage(props: AuthorPageProps) {
+  // PPR (cacheComponents): wrap the async, params/searchParams-reading content in
+  // <Suspense> so the layout shell prerenders and only this route's content streams.
+  return (
+    <Suspense fallback={<PostCardGridSkeleton />}>
+      <AuthorPageContent {...props} />
+    </Suspense>
+  );
+}
+
+async function AuthorPageContent({ params, searchParams }: AuthorPageProps) {
   const { username } = await params;
   const user = await getUserByUsername(username);
 

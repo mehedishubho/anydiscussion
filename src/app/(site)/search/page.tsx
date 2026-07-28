@@ -19,6 +19,7 @@
 // Server-only — NO "use client" directive.
 
 import { Suspense } from "react";
+import { PostCardGridSkeleton } from "@/components/site/skeletons";
 import type { Metadata } from "next";
 import { getSeoSettings } from "@/lib/seo/settings";
 import { buildArchiveMetadata } from "@/lib/seo/metadata";
@@ -103,7 +104,6 @@ export async function generateMetadata({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }): Promise<Metadata> {
-  "use cache";
   const awaited = await searchParams;
   const p = parseSearch(awaited);
   const s = await getSeoSettings();
@@ -130,7 +130,17 @@ interface SearchPageProps {
  *  - When query present → <Suspense> wrapping <SearchResults> (searchPosts is
  *    uncached DB access; under cacheComponents it MUST stream in <Suspense>).
  */
-export default async function SearchPage({ searchParams }: SearchPageProps) {
+export default function SearchPage(props: SearchPageProps) {
+  // PPR (cacheComponents): wrap the async, searchParams-reading content in
+  // <Suspense> so the layout shell prerenders and only the results stream.
+  return (
+    <Suspense fallback={<PostCardGridSkeleton />}>
+      <SearchPageContent {...props} />
+    </Suspense>
+  );
+}
+
+async function SearchPageContent({ searchParams }: SearchPageProps) {
   const awaited = await searchParams;
   const p = parseSearch(awaited);
 

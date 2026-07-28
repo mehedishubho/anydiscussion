@@ -18,6 +18,8 @@ import { z } from "zod";
 import { getSeoSettings } from "@/lib/seo/settings";
 import { buildArchiveMetadata } from "@/lib/seo/metadata";
 import { breadcrumbListJsonLd } from "@/lib/seo/jsonld";
+import { Suspense } from "react";
+import { PostCardGridSkeleton } from "@/components/site/skeletons";
 import {
   getTagBySlug,
   listCategoriesWithCounts,
@@ -69,7 +71,6 @@ interface TagPageProps {
 export async function generateMetadata({
   params,
 }: TagPageProps): Promise<Metadata> {
-  "use cache";
   const { slug } = await params;
   const tag = await getTagBySlug(slug);
   if (!tag) {
@@ -93,7 +94,17 @@ function coerceParam(value: string | string[] | undefined): string | undefined {
   return value;
 }
 
-export default async function TagArchivePage({
+export default function TagArchivePage(props: TagPageProps) {
+  // PPR (cacheComponents): wrap the async, params/searchParams-reading content in
+  // <Suspense> so the layout shell prerenders and only the archive streams.
+  return (
+    <Suspense fallback={<PostCardGridSkeleton />}>
+      <TagArchiveContent {...props} />
+    </Suspense>
+  );
+}
+
+async function TagArchiveContent({
   params,
   searchParams,
 }: TagPageProps) {

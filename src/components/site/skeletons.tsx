@@ -53,3 +53,62 @@ export function RelatedPostsSkeleton() {
     </section>
   );
 }
+
+/**
+ * PostCardGridSkeleton — pulsing placeholder for the post-list routes
+ * (/blog, /blog/page/[n], /category/[slug], /tag/[slug], /author/[username],
+ * /archive, /search). Page-level PPR Suspense fallback used while the async
+ * content component awaits cached params/searchParams + data under
+ * cacheComponents:true. `count` tunes the grid fullness (default 6).
+ */
+export function PostCardGridSkeleton({ count = 6 }: { count?: number }) {
+  return (
+    <div
+      className="mx-auto max-w-6xl px-4 py-10"
+      aria-hidden="true"
+      role="status"
+      aria-label="Loading"
+    >
+      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        {Array.from({ length: count }).map((_, i) => (
+          <div
+            key={i}
+            className="flex animate-pulse flex-col overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900"
+          >
+            <div className="aspect-[16/9] w-full bg-gray-200 dark:bg-gray-800" />
+            <div className="flex flex-1 flex-col p-5">
+              <div className="h-5 w-3/4 rounded bg-gray-200 dark:bg-gray-800" />
+              <div className="mt-3 h-3 w-full rounded bg-gray-200 dark:bg-gray-800" />
+              <div className="mt-2 h-3 w-5/6 rounded bg-gray-200 dark:bg-gray-800" />
+              <div className="mt-5 h-3 w-1/3 rounded bg-gray-200 dark:bg-gray-800" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * SinglePostSkeleton — pulsing placeholder for the single-post routes
+ * (/blog/[slug], /preview/[token]). Page-level PPR Suspense fallback.
+ */
+export function SinglePostSkeleton() {
+  return (
+    <article
+      className="mx-auto max-w-3xl px-4 py-12"
+      aria-hidden="true"
+      role="status"
+      aria-label="Loading"
+    >
+      <div className="mb-6 h-10 w-3/4 animate-pulse rounded bg-gray-200 dark:bg-gray-800" />
+      <div className="mb-8 h-4 w-1/2 animate-pulse rounded bg-gray-200 dark:bg-gray-800" />
+      <div className="aspect-[16/9] w-full animate-pulse rounded-xl bg-gray-200 dark:bg-gray-800" />
+      <div className="mt-8 space-y-4">
+        <div className="h-4 w-full animate-pulse rounded bg-gray-200 dark:bg-gray-800" />
+        <div className="h-4 w-full animate-pulse rounded bg-gray-200 dark:bg-gray-800" />
+        <div className="h-4 w-5/6 animate-pulse rounded bg-gray-200 dark:bg-gray-800" />
+      </div>
+    </article>
+  );
+}

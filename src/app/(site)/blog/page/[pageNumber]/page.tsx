@@ -16,6 +16,8 @@ import { listPublished, countPublished } from "@/lib/queries/posts";
 import PostCard from "@/components/site/PostCard";
 import Pagination from "@/components/site/Pagination";
 import { BLOG_PAGE_SIZE } from "@/app/(site)/blog/page";
+import { Suspense } from "react";
+import { PostCardGridSkeleton } from "@/components/site/skeletons";
 
 interface PageProps {
   params: Promise<{ pageNumber: string }>;
@@ -33,7 +35,6 @@ function parsePageNumber(raw: string): number {
 export async function generateMetadata({
   params,
 }: PageProps): Promise<Metadata> {
-  "use cache";
   const { pageNumber } = await params;
   const s = await getSeoSettings();
   return buildArchiveMetadata(
@@ -46,7 +47,16 @@ export async function generateMetadata({
   );
 }
 
-export default async function BlogPaginatedPage({ params }: PageProps) {
+export default function BlogPaginatedPage(props: PageProps) {
+  // PPR (cacheComponents): wrap the async, params-reading content in <Suspense>.
+  return (
+    <Suspense fallback={<PostCardGridSkeleton />}>
+      <BlogPaginatedPageContent {...props} />
+    </Suspense>
+  );
+}
+
+async function BlogPaginatedPageContent({ params }: PageProps) {
   const { pageNumber } = await params;
   const page = parsePageNumber(pageNumber);
 

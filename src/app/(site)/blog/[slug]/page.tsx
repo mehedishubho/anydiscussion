@@ -33,6 +33,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
+import { SinglePostSkeleton } from "@/components/site/skeletons";
 import { renderPostBody } from "@/lib/post-render";
 import { buildPostMetadata, type PostLike } from "@/lib/seo/metadata";
 import { blogPostingJsonLd } from "@/lib/seo/jsonld";
@@ -128,7 +129,17 @@ function injectHeadingIds(html: string, toc: TocItem[]): string {
  * islands are integrated in Task 3 (this Task renders the TOC inline as anchor
  * links so the route is complete and tsc-clean end-to-end).
  */
-export default async function PostPage({ params }: PostPageProps) {
+export default function PostPage(props: PostPageProps) {
+  // PPR (cacheComponents): wrap the async, params-reading content in <Suspense>
+  // so the layout shell prerenders and only the post body streams.
+  return (
+    <Suspense fallback={<SinglePostSkeleton />}>
+      <PostPageContent {...props} />
+    </Suspense>
+  );
+}
+
+async function PostPageContent({ params }: PostPageProps) {
   const { slug } = await params;
   const data = await getPostForPublic(slug);
   if (!data) {

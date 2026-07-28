@@ -16,6 +16,8 @@ import type { Metadata } from "next";
 import { z } from "zod";
 import { getSeoSettings } from "@/lib/seo/settings";
 import { buildArchiveMetadata } from "@/lib/seo/metadata";
+import { Suspense } from "react";
+import { PostCardGridSkeleton } from "@/components/site/skeletons";
 import {
   listArchive,
   countArchive,
@@ -108,7 +110,17 @@ function parseArchiveFilters(raw: Record<string, string | string[] | undefined>)
   return { filters, page: p.page ?? 1 };
 }
 
-export default async function ArchivePage({ searchParams }: ArchivePageProps) {
+export default function ArchivePage(props: ArchivePageProps) {
+  // PPR (cacheComponents): wrap the async, searchParams-reading content in
+  // <Suspense> so the layout shell prerenders and only the archive streams.
+  return (
+    <Suspense fallback={<PostCardGridSkeleton />}>
+      <ArchivePageContent {...props} />
+    </Suspense>
+  );
+}
+
+async function ArchivePageContent({ searchParams }: ArchivePageProps) {
   const rawSearchParams = await searchParams;
   const { filters, page } = parseArchiveFilters(rawSearchParams);
 
