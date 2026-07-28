@@ -15,6 +15,7 @@ import { headers } from "next/headers";
 import { db } from "@/lib/db";
 import { schema } from "@/lib/db"; // re-exported from src/db/schema
 import { sendEmail } from "@/lib/email";
+import { redisClient } from "@/lib/redis"; // ioredis singleton (Plan 07-02 / PERF-04)
 import { ac, adminRole, editorRole, authorRole } from "./permissions";
 
 export const auth = betterAuth({
@@ -85,6 +86,58 @@ export const auth = betterAuth({
     // D-18 — config-level 30-day session (remember-me UX lands in 02-02 Task 2).
     expiresIn: 60 * 60 * 24 * 30,
     updateAge: 60 * 60 * 24, // refresh once per day
+  },
+
+  // PERF-04 / D-01 / D-02 / D-03 — Redis-backed auth rate limiting.
+  // [CITED: better-auth.com/docs/concepts/rate-limit — RESEARCH.md Pattern 2 lines 359-412]
+  // The canonical integration point for auth endpoints: NOT middleware (UX-only,
+  // no persistent state — see middleware.ts:1-18), NOT a Server-Action wrapper.
+  // toNextJsHandler(auth) in src/app/api/auth/[...all]/route.ts surfaces the
+  // HTTP 429 + X-Retry-After automatically once this block is configured.
+  rateLimit: {
+    enabled: true,
+    window: 60, // default 60s for any uncategorized route
+    max: 100, // default max
+    // D-02 — strict 3/15min. D-03 — all four auth endpoints.
+    // 15 min = 900 s. IP-keyed (Better Auth default) per ASVS V2.
+    customRules: {
+      "/sign-in/email": { window: 900, max: 3 }, // D-03 sign-in
+      "/forget-password": { window: 900, max: 3 }, // D-03 password reset request
+      "/reset-password": { window: 900, max: 3 }, // D-03 password reset consume
+      "/verify-email": { window: 900, max: 3 }, // D-03 email verification
+    },
+    // D-01 — ioredis-backed customStorage so counters persist across container
+    // restarts (in-memory would reset on every Coolify redeploy). T-07-02-06:
+    // if Redis is unreachable, ioredis throws after maxRetriesPerRequest:3 and
+    // customStorage fails closed (sign-in blocked) — safer for brute-force.
+    customStorage: {
+      get: async (key) => {
+        const raw = await redisClient.get(`ratelimit:${key}`);
+        return raw ? JSON.parse(raw) : null;
+      },
+      set: async (key, value) => {
+        // value is { count, expiresAt }; honor the TTL via Redis EX.
+        const ttlSec = Math.max(
+          1,
+          Math.ceil((value.expiresAt - Date.now()) / 1000),
+        );
+        await redisClient.set(
+          `ratelimit:${key}`,
+          JSON.stringify(value),
+          "EX",
+          ttlSec,
+        );
+      },
+    },
+  },
+
+  // T-07-02-03 — key rate limits on the Coolify proxy's view of the client IP,
+  // not a user-spoofable value. Coolify's Caddy/Traefik overwrites
+  // X-Forwarded-For; an attacker cannot set this header from the client side.
+  advanced: {
+    ipAddress: {
+      ipAddressHeaders: ["x-forwarded-for"],
+    },
   },
 
   plugins: [

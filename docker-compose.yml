@@ -43,6 +43,28 @@ services:
     volumes:
       - miniodata:/data
 
+  # Redis — rate-limit counters (Plan 07-02 / PERF-04).
+  # D-04 — 256mb cap, allkeys-lru eviction, NO persistence (rate-limit data is
+  # ephemeral: a counter reset on restart just means a fresh 3/15min budget).
+  # Dev port-mapping is for local parity only; in Coolify prod, Redis binds to
+  # the internal network only (T-07-02-04 — NOT exposed publicly).
+  # [CITED: RESEARCH.md Example 4 lines 676-720]
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command:
+      - redis-server
+      - --maxmemory 256mb
+      - --maxmemory-policy allkeys-lru # D-04 — NOT noeviction
+      - --save "" # disable RDB persistence (ephemeral data, D-04)
+      - --appendonly no # disable AOF persistence
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
 volumes:
   pgdata:
   miniodata:
