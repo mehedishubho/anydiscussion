@@ -81,10 +81,12 @@ function defaultConfig(): BackupConfig {
 
 /**
  * Read a single settings row by key. Returns the value (string) or "" when missing.
- * Replicated from src/actions/storage-settings.ts:68-75 (kept private + db-direct so this
- * module mocks cleanly without pulling in a "use server" action).
+ * Replicated from src/actions/storage-settings.ts:68-75 (kept db-direct so this module mocks
+ * cleanly without pulling in a "use server" action). Exported so the destination modules
+ * (08-02 r2.ts, 08-03 google-drive.ts) can read their own encrypted creds blobs via the same
+ * canonical settings-read path the backup engine uses.
  */
-async function readSetting(key: string): Promise<string> {
+export async function readSetting(key: string): Promise<string> {
   const [row] = await db
     .select()
     .from(schema.settings)
