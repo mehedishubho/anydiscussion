@@ -54,3 +54,35 @@ GOOGLE_REDIRECT_URI=
 ```
 
 **Scope-boundary:** Out of scope for 08-03 code (permission guard, not a code defect).
+
+## `.env.example` backup-destination placeholders (permission-blocked, 08-05)
+
+**Found during:** Plan 08-05 Task 2. The plan body lists `.env.example` under `files_modified`
+and asks for the backup env var NAMES to be appended as empty placeholders (DOCUMENTATION ONLY —
+no real secrets). The harness permission guard DENIES all tool access (Read / Edit / Write) to any
+`.env*` path (the same secret-leak safeguard that blocked 08-03). The Google OAuth trio is
+already covered by the 08-03 entry above.
+
+**Status:** Not a code blocker — the backup modules read `process.env.*` at call time and work
+regardless of whether `.env.example` documents the keys. `BACKUP_LOCAL_ROOT` already has a module
+default (`storage/backups/` — `DEFAULT_BACKUP_LOCAL_ROOT` in config.ts). The backup R2 + Google
+Drive credentials are stored ENCRYPTED in the `settings` table (`backup.r2_creds` /
+`backup.gdrive_creds`), NOT as env vars, so the only new env var name this plan introduces is
+`BACKUP_LOCAL_ROOT` (a path, not a secret).
+
+**Action:** Operator (or a future session with `.env.example` write access) must append the
+following block to `.env.example`:
+
+```
+# === Backup engine (Phase 8 — in-app pg_dump + node-cron scheduler, D-04) ===
+# Local destination root for DB dumps (module default: storage/backups/). NOT a secret — a path.
+BACKUP_LOCAL_ROOT=
+# NOTE: SETTINGS_ENCRYPTION_KEY (Phase 4) + EMAIL_FROM / RESEND_API_KEY (Phase 2) are REUSED —
+# see their existing entries. SETTINGS_ENCRYPTION_KEY encrypts backup.r2_creds / backup.gdrive_creds
+# in the settings table; EMAIL_FROM is the default restore-drill alert recipient (D-07).
+# NOTE: Backup R2 + Google Drive credentials are NOT env vars — they are stored encrypted in the
+# `settings` table and entered via /dashboard/settings/backup. Google OAuth (GOOGLE_CLIENT_ID /
+# GOOGLE_CLIENT_SECRET / GOOGLE_REDIRECT_URI) is documented in the 08-03 entry above.
+```
+
+**Scope-boundary:** Out of scope for 08-05 code (permission guard, not a code defect).
