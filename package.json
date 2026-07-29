@@ -15,7 +15,8 @@
     "test:publish-visible": "node scripts/test-publish-visible.mjs",
     "setup": "node scripts/setup.mjs",
     "verify": "node scripts/verify.mjs",
-    "check-bundle": "node scripts/check-bundle-size.mjs --max-gz-kb=1000"
+    "check-bundle": "node scripts/check-bundle-size.mjs --max-gz-kb=1000",
+    "lighthouse": "lhci autorun --config=./lighthouserc.json"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1077.0",
@@ -67,6 +68,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.1",
+    "@lhci/cli": "^0.15.1",
     "@next/bundle-analyzer": "^16.2.12",
     "@svgr/webpack": "^8.1.0",
     "@tanstack/react-query-devtools": "^5.101.2",

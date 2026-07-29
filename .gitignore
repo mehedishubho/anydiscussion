@@ -48,3 +48,6 @@ next-env.d.ts
 
 # local DB backups (may contain password hashes — never commit)
 .backups/
+
+# Lighthouse CI output (PERF-01 / Plan 07-05 — generated reports, never committed)
+.lighthouseci/
