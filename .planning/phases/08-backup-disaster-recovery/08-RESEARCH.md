@@ -611,19 +611,19 @@ SELECT rolcreatedb FROM pg_roles WHERE rolname = 'anydiscussion';  -- expect 't'
 
 **Note:** Most external technical claims (OAuth flow, pg_dump flags, CREATE DATABASE constraints, Alpine package) are `[CITED]` from official documentation, not `[ASSUMED]`. The assumptions above are deploy-environment-specific facts that can only be confirmed against the live Coolify target at execution time (which is deferred per CONTEXT).
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Should the backup local destination use a `StorageProvider` or direct fs?**
    - What we know: the media local provider writes to `storage/local/`; backups should write to `storage/backups/` (separate root).
-   - Recommendation: direct `fs.writeFile` in a `LocalBackupDestination` (configurable `BACKUP_LOCAL_ROOT`) — simpler than parameterizing the media provider's root, and backups need `list`/`download` which `StorageProvider` lacks. (Captured in Pattern 1.)
+   - RESOLVED: direct `fs.writeFile` in a `LocalBackupDestination` (configurable `BACKUP_LOCAL_ROOT`) — simpler than parameterizing the media provider's root, and backups need `list`/`download` which `StorageProvider` lacks. (Captured in Pattern 1.)
 
 2. **Does the backup R2 destination share the media R2 bucket or use a separate bucket?**
    - What we know: D-06 says backups cover "R2 media objects" (the media IS backed up). But the dump itself is also stored TO R2 as a destination.
-   - Recommendation: separate backup bucket for dump files (different lifecycle/retention than media). The media *content* is synced from the media bucket during backup. The planner clarifies the two R2 roles: (a) media bucket = source-of-truth images; (b) backup bucket = where dumps land. Use distinct creds/buckets.
+   - RESOLVED: separate backup bucket for dump files (different lifecycle/retention than media). The media *content* is synced from the media bucket during backup. The planner clarifies the two R2 roles: (a) media bucket = source-of-truth images; (b) backup bucket = where dumps land. Use distinct creds/buckets.
 
 3. **Restore overwrites live data — what's the confirmation gate UX?**
    - What we know: D-05 requires a confirmation dialog. Restore via `pg_restore` against the MAIN db.
-   - Recommendation: two-step confirm (type-the-db-name to proceed), and restore to the scratch DB first as a pre-flight (proves the dump restores), THEN the admin confirms the live overwrite. Planner designs the exact UX.
+   - RESOLVED: two-step confirm (type-the-db-name to proceed), and restore to the scratch DB first as a pre-flight (proves the dump restores), THEN the admin confirms the live overwrite. Planner designs the exact UX.
 
 ## Environment Availability
 
