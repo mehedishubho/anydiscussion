@@ -26,3 +26,31 @@ and ROADMAP §Phase 8 pitfalls) — NOT attempted during 08-01:
 - Real `pg_dump -Fc` against managed Postgres producing a restorable `.sqlc`.
 - `runBackupJob` writing to `storage/backups/` on the VPS.
 - Real `pg_restore` round-trip.
+
+## `.env.example` Google OAuth placeholders (permission-blocked, 08-03)
+
+**Found during:** Plan 08-03 Task 1. The google-drive.ts module reads `GOOGLE_CLIENT_ID` /
+`GOOGLE_CLIENT_SECRET` / `GOOGLE_REDIRECT_URI` from `process.env`. The plan body calls for these
+to be documented as empty placeholders in `.env.example`, but the harness permission guard DENIES
+all tool access (Read / Edit / `cat` / `printf >>`) to any `.env*` path (a secret-leak safeguard).
+
+**Status:** Not a code blocker — `google-drive.ts` reads `process.env.*` at call time and works
+regardless of whether `.env.example` documents the keys. `.env.example` is operator-facing
+documentation only and is NOT in 08-03's `files_modified`. The OAuth client itself is a
+`user_setup` item the operator creates in Google Cloud Console.
+
+**Action:** Operator (or a future session with `.env.example` write access) must append the
+following block to `.env.example`:
+
+```
+# === Google Drive backup destination (Phase 8 — OAuth user-consent flow, D-02) ===
+# Operator creates this OAuth client in Google Cloud Console -> APIs & Services ->
+# Credentials -> Create OAuth client ID (Web application). USER-CONSENT flow (not a
+# service account). Authorized redirect URI: https://anydiscussion.com/api/auth/google/callback
+# Leave empty for local dev (Drive destination not connected until configured).
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+GOOGLE_REDIRECT_URI=
+```
+
+**Scope-boundary:** Out of scope for 08-03 code (permission guard, not a code defect).

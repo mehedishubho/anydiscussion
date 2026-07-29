@@ -108,7 +108,7 @@ v1 = authoring + public-site MVP, extended with the full agreed feature set. Eac
 ### Backup & Disaster Recovery
 
 - [x] **BACKUP-01**: Backup storage via the `lib/storage` abstraction; destinations local (default), Google Drive, Cloudflare R2 (multi-select, configurable in dashboard) — Cloudinary was considered and deliberately dropped (image-only, not suitable for DB dumps). **Status note:** 08-01 delivered the local destination + BackupDestination interface; R2 (08-02) + Google Drive (08-03) remain, so this requirement is In Progress, not yet complete.
-- [ ] **BACKUP-02**: Google Drive destination via Google OAuth / Drive API (research caveat: external dependency with mild tension vs the self-hosted / no-paid-API ethos — flag for Phase 8 research)
+- [x] **BACKUP-02**: Google Drive destination via Google OAuth / Drive API (research caveat: external dependency with mild tension vs the self-hosted / no-paid-API ethos — flag for Phase 8 research)
 - [ ] **BACKUP-03**: Configurable schedule (frequency / RPO) + retention (keep N days/weeks) — tooling selection left to Phase 8 research (pg_dump cron, WAL-G, Coolify built-in, etc.). **Status note:** 08-01 delivered the config I/O + retention cleanup primitive; the cron schedule that actually fires backups lands in 08-05, so this requirement is In Progress, not yet complete.
 - [ ] **BACKUP-04**: Automated restore-drill on a configurable cadence (restore to a throwaway DB, verify integrity, alert on failure) — closes the "backup-never-restored" gamble
 - [ ] **BACKUP-05**: Backup Settings dashboard page (admin-only) — destinations, schedule, retention, restore-drill cadence; server-side admin permission check
@@ -232,7 +232,7 @@ Which phases cover which requirements. Updated during roadmap creation (Step 8).
 | ~~PERF-05~~ | ~~Phase 7~~ — **SUPERSEDED**, moved to Phase 8 (BACKUP-01..05) | Superseded |
 | PERF-06 | Phase 7 — Performance & Deploy | Pending |
 | BACKUP-01 | Phase 8 — Backup & Disaster Recovery | In Progress (08-01 local done; R2 08-02 + Drive 08-03 pending) |
-| BACKUP-02 | Phase 8 — Backup & Disaster Recovery | Pending |
+| BACKUP-02 | Phase 8 — Backup & Disaster Recovery | Complete |
 | BACKUP-03 | Phase 8 — Backup & Disaster Recovery | In Progress (08-01 config + retention done; cron 08-05 pending) |
 | BACKUP-04 | Phase 8 — Backup & Disaster Recovery | Pending |
 | BACKUP-05 | Phase 8 — Backup & Disaster Recovery | Pending |

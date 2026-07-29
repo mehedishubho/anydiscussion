@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 08
 current_phase_name: Backup & Disaster Recovery
 status: executing
-stopped_at: Completed 08-02-PLAN.md (R2 destination + media sync, full DR)
-last_updated: "2026-07-29T16:43:59.303Z"
+stopped_at: Completed 08-03-PLAN.md (Google Drive destination + OAuth callback)
+last_updated: "2026-07-29T16:58:39.908Z"
 last_activity: 2026-07-29
 last_activity_desc: Phase 08 execution started
 progress:
   total_phases: 8
   completed_phases: 6
   total_plans: 38
-  completed_plans: 34
+  completed_plans: 35
   percent: 75
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-07-01)
 ## Current Position
 
 Phase: 08 (Backup & Disaster Recovery) — EXECUTING
-Plan: 3 of 5
+Plan: 4 of 5
 Status: Ready to execute
 Last activity: 2026-07-29 — Phase 08 execution started
 
@@ -81,6 +81,7 @@ Progress: [█░░░░░░░░░] 13%
 | Phase 05 P03 | 16min | 3 tasks | 12 files |
 | Phase 08 P01 | 13min | 2 tasks | 12 files |
 | Phase 08 P02 | 7min | 2 tasks | 6 files |
+| Phase 08 P03 | 8min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -116,6 +117,9 @@ Recent decisions affecting current work:
 - [Phase 08]: 08-02: R2 backup destination uses a DEDICATED S3Client + dedicated backup bucket from backup.r2_creds — never the media s3Client/getActiveProvider (RESEARCH Anti-Pattern / T-08-02)
 - [Phase 08]: 08-02: runBackupJob performs full DR (DB dump + R2 media sync via syncMediaBucket); media sync degrades to DB-only when media is not on R2 or when sync throws (ok stays true)
 - [Phase 08]: 08-02: media-source detection reads storage.active_provider via readSetting (not getActiveProvider) to decouple the backup engine from the storage registry
+- [Phase ?]: 08-03: Google Drive backup destination via googleapis OAuth2 user-consent flow (D-02) — buildConsentUrl/exchangeCode/revokeDriveToken + gdriveBackupDestination (drive.file scope); googleapis auto-refreshes access token
+- [Phase ?]: 08-03: OAuth callback is a standalone Route Handler (NOT Better-Auth-mounted); verifies CSRF state vs signed httpOnly gdrive_oauth_state cookie before token exchange (mismatch->400), encrypts refresh_token, stores backup.gdrive_creds
+- [Phase ?]: 08-03: access_type=offline + prompt=consent + drive.file scope are non-negotiable consent params (RESEARCH Pitfall 4)
 
 ### Pending Todos
 
@@ -151,6 +155,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-29T16:43:59.297Z
-Stopped at: Completed 08-02-PLAN.md (R2 destination + media sync, full DR)
-Resume file: .planning/phases/08-backup-disaster-recovery/08-02-SUMMARY.md
+Last session: 2026-07-29T16:58:39.903Z
+Stopped at: Completed 08-03-PLAN.md (Google Drive destination + OAuth callback)
+Resume file: .planning/phases/08-backup-disaster-recovery/08-03-SUMMARY.md
