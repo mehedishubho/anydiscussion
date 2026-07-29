@@ -14,7 +14,7 @@
 //
 // Mock strategy: `googleapis` is mocked so OAuth2 construction + drive.files.* inputs are observable.
 // ../config.readSetting returns an "encrypted" blob; @/lib/crypto.decrypt returns JSON creds. No network.
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -108,9 +108,19 @@ async function loadMod() {
 describe("08-03 Task 1: Google Drive destination + OAuth helpers", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // The OAuth2 client is constructed from these env vars at call time (lazy read inside
+    // buildOAuth2), so stubbing here is picked up by each call. Google client/redirect come
+    // from the operator's Google Cloud OAuth client (user_setup) — placeholders here only.
+    vi.stubEnv("GOOGLE_CLIENT_ID", "g-client-id");
+    vi.stubEnv("GOOGLE_CLIENT_SECRET", "g-client-secret");
+    vi.stubEnv("GOOGLE_REDIRECT_URI", "https://app.test/api/auth/google/callback");
     readSettingMock.mockResolvedValue("ENCRYPTED-BLOB");
     decryptMock.mockReturnValue(JSON.stringify(GDRIVE_CREDS));
     wireConsentUrl();
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   describe("buildConsentUrl(state)", () => {
@@ -288,18 +298,61 @@ describe("08-03 Task 1: Google Drive destination + OAuth helpers", () => {
 
 describe("08-03 Task 1 scope gate: least-privilege drive.file (T-08-03c)", () => {
   it("google-drive.ts uses the drive.file scope URL and NOT the over-privileged full 'drive' scope", async () => {
-    // Static source gate (T-08-03c): backups may only touch app-created files. The full
-    // https://www.googleapis.com/auth/drive scope would grant access to the user's entire
-    // Drive — reading the source from disk makes this a real structural assertion.
+    // Static source gate (T-08-03c): backups may only touch app-created files. The full drive
+    // scope would grant access to the user's entire Drive — reading the source from disk makes
+    // this a real structural assertion. The stripper is STRING-AWARE so the `//` inside the
+    // `https://` URL in the scope constant is not mistaken for a line comment.
     const src = await readFile(join(__dirname, "..", "destinations", "google-drive.ts"), "utf8");
-
-    // Strip comments so a doc comment explaining the anti-pattern does not false-positive.
-    const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+    const code = stripComments(src);
 
     // The drive.file scope URL MUST appear in the source.
     expect(code).toContain("https://www.googleapis.com/auth/drive.file");
-    // The over-privileged full-drive scope URL MUST NOT appear (boundary-aware: assert the
-    // trailing scope path, not the drive.file URL itself).
-    expect(code).not.toMatch(/https:\/\/www\.googleapis\.com\/auth\/drive(?!\.file)["' ]/);
+    // The over-privileged full-drive scope URL MUST NOT appear as an active literal (boundary
+    // check: match the scope path NOT followed by ".file").
+    expect(code).not.toMatch(/https:\/\/www\.googleapis\.com\/auth\/drive(?!\.file)/);
   });
 });
+
+/**
+ * String-aware comment stripper — removes `// line` and `/* block *\/` comments while preserving
+ * string literals (so the `//` inside an `https://` URL in a string is not treated as a comment).
+ */
+function stripComments(src: string): string {
+  let out = "";
+  let i = 0;
+  let str: string | null = null;
+  while (i < src.length) {
+    const c = src[i];
+    const next = src[i + 1];
+    if (str !== null) {
+      out += c;
+      if (c === "\\" && next !== undefined) {
+        out += next;
+        i += 2;
+        continue;
+      }
+      if (c === str) str = null;
+      i += 1;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === "`") {
+      str = c;
+      out += c;
+      i += 1;
+      continue;
+    }
+    if (c === "/" && next === "/") {
+      while (i < src.length && src[i] !== "\n") i += 1;
+      continue;
+    }
+    if (c === "/" && next === "*") {
+      i += 2;
+      while (i < src.length && !(src[i] === "*" && src[i + 1] === "/")) i += 1;
+      i += 2;
+      continue;
+    }
+    out += c;
+    i += 1;
+  }
+  return out;
+}
