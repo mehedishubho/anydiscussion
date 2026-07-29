@@ -21,6 +21,7 @@
 //
 // Server-only — top directive mandatory for Server Actions.
 "use server";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { db, schema } from "@/lib/db";
 import { asc, eq, isNull } from "drizzle-orm";
 import { log } from "@/lib/log";
@@ -108,6 +109,23 @@ export async function createPage(input: PageInput) {
       canonical: data.canonical || null,
     })
     .returning({ id: schema.pages.id });
+
+  // D-25 / Pitfall #3 / #7 — revalidate AFTER permission gate AND DB write.
+  // Public page routes are fixed (/contact, /privacy-policy, /terms-and-conditions)
+  // and each calls getPublishedPage(slug) which is `cacheTag("posts-list")` +
+  // `cacheLife("hours")`. The route file's generateMetadata is also cacheTag("posts-list").
+  // The slug stored maps 1:1 to the route URL (e.g. slug="contact" → /contact), so
+  // revalidatePath(`/${slug}`) resolves to the concrete public URL the editor just
+  // modified. Template: src/actions/posts.ts:325-375. Only published pages surface
+  // publicly (drafts don't), but the revalidation is harmless on a draft and ensures
+  // the publish→visible loop fires immediately if the admin flips status within the
+  // same update call.
+  if (data.slug) {
+    revalidatePath(`/${data.slug}`);
+    revalidatePath("/sitemap.xml");
+    revalidateTag("posts-list", "max");
+  }
+
   return { id: row?.id };
 }
 
@@ -126,6 +144,16 @@ export async function updatePage(id: number, input: Partial<PageInput>) {
   const sanitizedBody =
     data.body !== undefined ? sanitizeBodyHtml(data.body) : undefined;
 
+  // Fetch the current slug BEFORE the write so we can revalidate the OLD public URL
+  // when the slug changes. (Page routes are fixed, so a slug rename means the OLD
+  // route now serves the fallback while the NEW route does not exist — both must
+  // revalidate so the editor sees the change immediately.)
+  const [existing] = await db
+    .select({ slug: schema.pages.slug })
+    .from(schema.pages)
+    .where(eq(schema.pages.id, id))
+    .limit(1);
+
   await db
     .update(schema.pages)
     .set({
@@ -141,6 +169,15 @@ export async function updatePage(id: number, input: Partial<PageInput>) {
       updatedAt: new Date(),
     })
     .where(eq(schema.pages.id, id));
+
+  // D-25 / Pitfall #3 / #7 — revalidate AFTER permission gate AND DB write.
+  if (existing?.slug) revalidatePath(`/${existing.slug}`);
+  if (data.slug !== undefined && data.slug !== existing?.slug) {
+    revalidatePath(`/${data.slug}`);
+  }
+  revalidatePath("/sitemap.xml");
+  revalidateTag("posts-list", "max");
+
   return { id };
 }
 
@@ -186,10 +223,24 @@ export async function getPage(id: number) {
  */
 export async function softDeletePage(id: number) {
   await requireCan({ page: ["delete"] }); // FIRST (Pitfall #1)
+
+  // Fetch slug BEFORE soft-delete so we can revalidate the concrete public URL.
+  const [existing] = await db
+    .select({ slug: schema.pages.slug })
+    .from(schema.pages)
+    .where(eq(schema.pages.id, id))
+    .limit(1);
+
   await db
     .update(schema.pages)
     .set({ deletedAt: new Date() }) // D-08 soft-delete
     .where(eq(schema.pages.id, id));
+
+  // D-25 / Pitfall #3 / #7 — revalidate AFTER permission gate AND DB write.
+  if (existing?.slug) revalidatePath(`/${existing.slug}`);
+  revalidatePath("/sitemap.xml");
+  revalidateTag("posts-list", "max");
+
   log.info("page soft-deleted", { id });
   return { id };
 }

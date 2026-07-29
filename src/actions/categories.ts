@@ -13,6 +13,7 @@
 //
 // Server-only — top directive mandatory for Server Actions.
 "use server";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { db, schema } from "@/lib/db";
 import { asc, eq, isNull } from "drizzle-orm";
 import { log } from "@/lib/log";
@@ -39,7 +40,22 @@ export async function createCategory(input: CategoryInput) {
       slug: input.slug,
       description: input.description ?? null,
     })
-    .returning({ id: schema.categories.id });
+    .returning({ id: schema.categories.id, slug: schema.categories.slug });
+
+  // D-25 / Pitfall #3 / Pitfall #7 — revalidate AFTER permission gate AND DB write.
+  // `/category/[slug]` mixes path-cache (getCategoryBySlug has NO cacheTag — only
+  // revalidatePath can refresh it) AND cacheTag("posts-list") + cacheTag(`category-${id}`)
+  // (via listArchive({categoryId}) + listCategoriesWithCounts). Both mechanisms must fire.
+  // Template: src/actions/posts.ts:325-375 (publishPost). 2-arg revalidateTag, concrete
+  // literal paths (never "/category/[slug]" route-pattern strings).
+  revalidatePath(`/category/${row?.slug ?? input.slug}`);
+  revalidatePath("/blog");
+  revalidatePath("/");
+  revalidatePath("/archive");
+  revalidatePath("/sitemap.xml");
+  if (row?.id) revalidateTag(`category-${row.id}`, "max");
+  revalidateTag("posts-list", "max");
+
   return { id: row?.id };
 }
 
@@ -64,6 +80,16 @@ export async function updateCategory(id: number, input: Partial<CategoryInput>) 
     }
     await assertUniqueSlug(input.slug, "categories", id);
   }
+
+  // Fetch the current slug BEFORE the write so we can revalidate the OLD public URL
+  // when the slug changes (the old /category/${oldSlug} cache must refresh so it
+  // serves the new 404, not stale content). Single query; cheap.
+  const [existing] = await db
+    .select({ slug: schema.categories.slug })
+    .from(schema.categories)
+    .where(eq(schema.categories.id, id))
+    .limit(1);
+
   await db
     .update(schema.categories)
     .set({
@@ -72,15 +98,51 @@ export async function updateCategory(id: number, input: Partial<CategoryInput>) 
       ...(input.description !== undefined ? { description: input.description } : {}),
     })
     .where(eq(schema.categories.id, id));
+
+  // D-25 / Pitfall #3 / #7 — revalidate AFTER permission gate AND DB write.
+  // Revalidate BOTH the existing slug's URL AND the new slug's URL (if renamed):
+  // the existing URL must refresh (name/description change OR 404-on-rename), and
+  // the new URL must be primed for the next request. Template: src/actions/posts.ts:325-375.
+  if (existing?.slug) revalidatePath(`/category/${existing.slug}`);
+  if (input.slug && input.slug !== existing?.slug) {
+    revalidatePath(`/category/${input.slug}`);
+  }
+  revalidatePath("/blog");
+  revalidatePath("/");
+  revalidatePath("/archive");
+  revalidatePath("/sitemap.xml");
+  revalidateTag(`category-${id}`, "max");
+  revalidateTag("posts-list", "max");
+
   return { id };
 }
 
 export async function softDeleteCategory(id: number) {
   await requireCan({ taxonomy: ["delete"] }); // FIRST (Pitfall #1)
+
+  // Fetch the slug BEFORE the soft-delete so we can revalidate the concrete public URL.
+  // After soft-delete, the /category/${slug} route checks isNull(deletedAt) and 404s;
+  // the cached "200 with content" page MUST refresh so readers see the 404, not stale content.
+  const [existing] = await db
+    .select({ slug: schema.categories.slug })
+    .from(schema.categories)
+    .where(eq(schema.categories.id, id))
+    .limit(1);
+
   await db
     .update(schema.categories)
     .set({ deletedAt: new Date() }) // D-08 soft-delete
     .where(eq(schema.categories.id, id));
+
+  // D-25 / Pitfall #3 / #7 — revalidate AFTER permission gate AND DB write.
+  if (existing?.slug) revalidatePath(`/category/${existing.slug}`);
+  revalidatePath("/blog");
+  revalidatePath("/");
+  revalidatePath("/archive");
+  revalidatePath("/sitemap.xml");
+  revalidateTag(`category-${id}`, "max");
+  revalidateTag("posts-list", "max");
+
   log.info("category soft-deleted", { id });
   return { id };
 }

@@ -20,11 +20,23 @@ const {
   selectMock,
   insertMock,
   updateMock,
+  revalidatePathMock,
+  revalidateTagMock,
 } = vi.hoisted(() => ({
   requireCanMock: vi.fn(),
   selectMock: vi.fn(),
   insertMock: vi.fn(),
   updateMock: vi.fn(),
+  revalidatePathMock: vi.fn(),
+  revalidateTagMock: vi.fn(),
+}));
+
+// next/cache — Plan 07-03 Task 2 added revalidation calls to createPage /
+// updatePage / softDeletePage. Mock so the action bodies run in isolation
+// without Next's static-generation store.
+vi.mock("next/cache", () => ({
+  revalidatePath: (...a: unknown[]) => revalidatePathMock(...a),
+  revalidateTag: (...a: unknown[]) => revalidateTagMock(...a),
 }));
 
 vi.mock("@/lib/permissions", () => ({
@@ -113,6 +125,10 @@ describe("DASH-05 / T-04-16: pages actions enforce requireCan FIRST (Pitfall #1)
         canonical: null,
       },
     ]);
+    // Plan 07-03 Task 2 — revalidation mocks (createPage/updatePage/softDeletePage
+    // now call revalidatePath + revalidateTag after the DB write).
+    revalidatePathMock.mockReturnValue(undefined);
+    revalidateTagMock.mockReturnValue(undefined);
   });
 
   it("createPage calls requireCan({page:['create']}) FIRST — FORBIDDEN before db.insert", async () => {
@@ -224,6 +240,11 @@ describe("D-08: softDeletePage sets deletedAt (never hard-deletes)", () => {
       session: { id: "s1" },
     });
     updateMock.mockResolvedValue(undefined);
+    // Plan 07-03 Task 2 — softDeletePage now revalidates; seed a slug-bearing row
+    // for the pre-delete fetch AND the revalidation mocks.
+    selectMock.mockResolvedValue([{ slug: "terms-and-conditions" }]);
+    revalidatePathMock.mockReturnValue(undefined);
+    revalidateTagMock.mockReturnValue(undefined);
   });
 
   it("softDeletePage routes through db.update (sets deletedAt)", async () => {

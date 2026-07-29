@@ -17,6 +17,8 @@ const {
   selectMock,
   insertMock,
   updateMock,
+  revalidatePathMock,
+  revalidateTagMock,
 } = vi.hoisted(() => ({
   requireCanMock: vi.fn(),
   assertUniqueSlugMock: vi.fn(),
@@ -24,6 +26,16 @@ const {
   selectMock: vi.fn(),
   insertMock: vi.fn(),
   updateMock: vi.fn(),
+  revalidatePathMock: vi.fn(),
+  revalidateTagMock: vi.fn(),
+}));
+
+// next/cache — Plan 07-03 Task 2 added revalidation calls to createCategory /
+// updateCategory / softDeleteCategory / createTag / updateTag / softDeleteTag.
+// Mock so the action bodies run in isolation without Next's static-generation store.
+vi.mock("next/cache", () => ({
+  revalidatePath: (...a: unknown[]) => revalidatePathMock(...a),
+  revalidateTag: (...a: unknown[]) => revalidateTagMock(...a),
 }));
 
 vi.mock("@/lib/permissions", () => ({
@@ -45,13 +57,19 @@ vi.mock("@/lib/auth", () => ({
 
 vi.mock("@/lib/db", () => ({
   db: {
-    // Chainable: select().from().where().orderBy() AND select().from().where() both resolve.
+    // Chainable: select().from().where().{orderBy,limit}() — Plan 07-03 added a
+    // .where(...).limit(1) slug-fetch in updateCategory/softDeleteCategory/
+    // updateTag/softDeleteTag, so the chain must support both terminators.
     select: vi.fn(() => ({
       from: vi.fn(() => ({
-        where: (...a: unknown[]) => ({ orderBy: (...b: unknown[]) => selectMock(...a, ...b) }),
+        where: (...a: unknown[]) => ({
+          orderBy: (...b: unknown[]) => selectMock(...a, ...b),
+          limit: (...b: unknown[]) => selectMock(...a, ...b),
+        }),
       })),
     })),
-    // insert().values().returning() chain — actions use .returning({ id }) to get the PK.
+    // insert().values().returning() chain — actions use .returning({ id, slug }) to get
+    // the PK + slug for revalidation (Plan 07-03 Task 2).
     insert: vi.fn(() => ({
       values: vi.fn(() => ({ returning: (...a: unknown[]) => insertMock(...a) })),
     })),
@@ -75,9 +93,16 @@ describe("CONT-05/06 + T-03-01: taxonomy actions enforce requireCan + assertUniq
     validateSlugMock.mockReturnValue({ valid: true });
     assertUniqueSlugMock.mockResolvedValue(undefined);
     // .returning() resolves to an array; actions destructure `const [row] = ...`.
-    insertMock.mockResolvedValue([{ id: 1 }]);
+    // Plan 07-03 Task 2: row now carries slug so createCategory/createTag can build
+    // the concrete /category/${slug} path for revalidation.
+    insertMock.mockResolvedValue([{ id: 1, slug: "news" }]);
     updateMock.mockResolvedValue(undefined);
-    selectMock.mockResolvedValue([]);
+    // The pre-update/pre-delete slug-fetch (.where(...).limit(1)) resolves to a
+    // one-element array carrying the existing slug.
+    selectMock.mockResolvedValue([{ slug: "existing-slug" }]);
+    // next/cache mocks — no-op spies (assertions on call patterns where useful).
+    revalidatePathMock.mockReturnValue(undefined);
+    revalidateTagMock.mockReturnValue(undefined);
   });
 
   it("createCategory calls requireCan({taxonomy:['create']}) FIRST", async () => {

@@ -13,6 +13,7 @@
 //
 // Server-only — top directive mandatory for Server Actions.
 "use server";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { auth } from "@/lib/auth";
 import { db, schema } from "@/lib/db";
 import { eq, count } from "drizzle-orm";
@@ -85,6 +86,11 @@ export async function createUser(input: {
 }) {
   await requireCan({ user: ["create"] });
 
+  // N/A per 07-REVALIDATION-AUDIT.md — a brand-new user has zero published posts,
+  // and /author/[username] is gated by listAuthorPosts returning rows. No public
+  // surface exists yet; revalidation becomes relevant only when this user
+  // publishes, which routes through publishPost (the canonical revalidation path).
+
   return auth.api.createUser({
     body: {
       email: input.email,
@@ -107,6 +113,11 @@ export async function banUser(
 ) {
   await requireCan({ user: ["ban"] });
 
+  // N/A per 07-REVALIDATION-AUDIT.md — the `banned` flag is NOT currently rendered
+  // on /author/[username] (getUserByUsername's select list reads only id/name/username/
+  // bio/avatar). No public surface for ban state. If a future phase renders banned
+  // state on the author page, this becomes MISSING and needs revalidatePath("/author/${username}").
+
   return auth.api.banUser({
     body: {
       userId,
@@ -124,6 +135,9 @@ export async function banUser(
 export async function unbanUser(userId: string) {
   await requireCan({ user: ["ban"] });
 
+  // N/A per 07-REVALIDATION-AUDIT.md — same rationale as banUser: `banned` flag is
+  // not rendered on /author/[username]. No public surface.
+
   return auth.api.unbanUser({
     body: { userId },
   });
@@ -140,6 +154,9 @@ export async function unbanUser(userId: string) {
  */
 export async function revokeSessions(input: { userId: string }) {
   await requireCan({ user: ["revoke-session"] });
+
+  // N/A per 07-REVALIDATION-AUDIT.md — affects server-side sessions only; no public
+  // surface (no route renders session state).
 
   return auth.api.revokeUserSessions({
     body: { userId: input.userId },
@@ -257,6 +274,37 @@ export async function updateUser(
 
   if (Object.keys(patch).length > 0) {
     await db.update(schema.user).set(patch).where(eq(schema.user.id, userId));
+  }
+
+  // D-25 / Pitfall #3 / #7 — revalidate the author page when profile fields that
+  // the public /author/[username] route renders have changed. The route reads
+  // name/bio/avatar via getUserByUsername (path-cache — NO cacheTag, only
+  // revalidatePath can refresh it) and post lists via listAuthorPosts +
+  // listAuthors (both cacheTag("posts-list")). role changes do NOT need
+  // revalidation (no public surface for role on the author page).
+  // Template: src/actions/posts.ts:325-375.
+  if (
+    safeInput.name !== undefined ||
+    safeInput.bio !== undefined ||
+    safeInput.avatar !== undefined
+  ) {
+    // Fetch the target user's username AFTER the write so we have the concrete
+    // path. Username is not in the input type and cannot be mutated by updateUser;
+    // this read returns the stable public slug.
+    const rows = await db
+      .select({ username: schema.user.username })
+      .from(schema.user)
+      .where(eq(schema.user.id, userId));
+    const username = rows[0]?.username;
+    if (username) {
+      revalidatePath(`/author/${username}`);
+      revalidatePath("/sitemap.xml");
+      revalidateTag("posts-list", "max");
+    } else {
+      // No username set → user has no public author page (D-11 — username gates the
+      // route). Only the tag-axis invalidation is needed (listAuthors cache).
+      revalidateTag("posts-list", "max");
+    }
   }
 
   log.info("user updated", { userId, isSelf });

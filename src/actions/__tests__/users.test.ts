@@ -29,6 +29,8 @@ const {
   updateSetWhere,
   requireCanMock,
   getSessionOrThrowMock,
+  revalidatePathMock,
+  revalidateTagMock,
 } = vi.hoisted(() => ({
   createUserMock: vi.fn(),
   banUserMock: vi.fn(),
@@ -40,6 +42,15 @@ const {
   updateSetWhere: vi.fn(),
   requireCanMock: vi.fn(),
   getSessionOrThrowMock: vi.fn(),
+  revalidatePathMock: vi.fn(),
+  revalidateTagMock: vi.fn(),
+}));
+
+// next/cache — Plan 07-03 Task 2 added revalidation calls to updateUser (profile
+// fields name/bio/avatar now revalidate /author/${username} + posts-list tag).
+vi.mock("next/cache", () => ({
+  revalidatePath: (...a: unknown[]) => revalidatePathMock(...a),
+  revalidateTag: (...a: unknown[]) => revalidateTagMock(...a),
 }));
 
 // auth.api — the Better Auth admin endpoints, exposed FLAT (no `admin` namespace at
@@ -348,6 +359,13 @@ describe("DASH-04 / D-09 / D-11: updateUser — self-edit + admin cross-user edi
     });
     updateSetWhere.mockResolvedValue(undefined);
     updateUserMock.mockResolvedValue({ user: { id: "target-1" } });
+    // Plan 07-03 Task 2 — updateUser now fetches the target's username (for the
+    // /author/${username} revalidation) via db.select(...).from(user).where(...).
+    // That chain resolves to countResult(); seed a username-bearing row so the
+    // revalidatePath branch fires. Revalidation mocks are no-op spies.
+    countResult.mockResolvedValue([{ username: "target-user" }]);
+    revalidatePathMock.mockReturnValue(undefined);
+    revalidateTagMock.mockReturnValue(undefined);
   });
 
   it("admin updates ANOTHER user's role: requireCan({user:['update']}) passes, role persists (D-11)", async () => {
