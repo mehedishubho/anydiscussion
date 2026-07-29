@@ -78,6 +78,9 @@ const navItems: NavItem[] = [
     subItems: [
       // Plan 04-05 ships the Storage route; the link is admin-gated here.
       { name: "Storage", path: "/dashboard/settings/storage" },
+      // Plan 08-04 ships the Backup route; admin-only (BACKUP-05). UX-only gate — the Server
+      // Actions re-check requireRole('admin') FIRST (CLAUDE.md "never rely on UI hiding alone").
+      { name: "Backup", path: "/dashboard/settings/backup" },
     ],
   },
   { icon: <UserIcon />, name: "Profile", path: "/dashboard/profile" },

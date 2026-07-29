@@ -79,7 +79,6 @@ const initialRedacted: BackupSettingsFormProps["initial"] = {
 
 const defaultProps: BackupSettingsFormProps = {
   initial: initialRedacted,
-  gdriveConsentUrl: "https://consent.example.com/oauth?state=abc",
   backups: [{ destination: "local", key: "anydiscussion-20260729-0300.sqlc" }],
   confirmationPhrase: "testdb",
 };
@@ -106,9 +105,10 @@ describe("D-01: destination multi-select — three checkboxes all toggleable sim
 
   it("renders all three destination checkboxes (Local / R2 / Google Drive)", () => {
     renderForm();
-    expect(screen.getByLabelText("Local filesystem")).toBeInTheDocument();
-    expect(screen.getByLabelText("Cloudflare R2")).toBeInTheDocument();
-    expect(screen.getByLabelText("Google Drive")).toBeInTheDocument();
+    // getByLabelText throws if absent — explicit null check documents the expectation.
+    expect(screen.getByLabelText("Local filesystem")).not.toBeNull();
+    expect(screen.getByLabelText("Cloudflare R2")).not.toBeNull();
+    expect(screen.getByLabelText("Google Drive")).not.toBeNull();
   });
 
   it("all three destination checkboxes can be CHECKED at the same time (multi-select delta)", () => {
@@ -157,18 +157,18 @@ describe("D-05: Restore is gated behind type-the-DB-name confirmation", () => {
   it("Restore button is DISABLED until the typed confirmation matches the DB name", () => {
     renderForm();
     const confirmInput = screen.getByLabelText("Type the database name to confirm restore");
-    const restoreBtn = screen.getByRole("button", { name: /restore latest/i });
+    const restoreBtn = screen.getByRole("button", { name: /restore latest/i }) as HTMLButtonElement;
 
     // Initially disabled — the destructive gate is not yet satisfied.
-    expect(restoreBtn).toBeDisabled();
+    expect(restoreBtn.disabled).toBe(true);
 
     // Wrong text → still disabled.
     fireEvent.change(confirmInput, { target: { value: "wrong-name" } });
-    expect(restoreBtn).toBeDisabled();
+    expect(restoreBtn.disabled).toBe(true);
 
     // Correct phrase → enabled.
     fireEvent.change(confirmInput, { target: { value: "testdb" } });
-    expect(restoreBtn).not.toBeDisabled();
+    expect(restoreBtn.disabled).toBe(false);
   });
 
   it("clicking an enabled Restore calls restoreBackup (latest, no key)", async () => {
@@ -176,8 +176,8 @@ describe("D-05: Restore is gated behind type-the-DB-name confirmation", () => {
     const confirmInput = screen.getByLabelText("Type the database name to confirm restore");
     fireEvent.change(confirmInput, { target: { value: "testdb" } });
 
-    const restoreBtn = screen.getByRole("button", { name: /restore latest/i });
-    expect(restoreBtn).not.toBeDisabled();
+    const restoreBtn = screen.getByRole("button", { name: /restore latest/i }) as HTMLButtonElement;
+    expect(restoreBtn.disabled).toBe(false);
     fireEvent.click(restoreBtn);
 
     await waitFor(() => {
