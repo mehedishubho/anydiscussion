@@ -33,8 +33,24 @@ globalThis.__redisClient ??= new Redis(
   {
     maxRetriesPerRequest: 3, // fail-closed after 3 retries (T-07-02-06)
     enableReadyCheck: true,
-    lazyConnect: false,
+    // lazyConnect: do NOT open the TCP connection at module load. The auth/rate-limit
+    // module graph is imported during `pnpm build`; with lazyConnect:false ioredis
+    // tried to reach Redis at build time and emitted unhandled error events that
+    // crashed the build worker. The first command (first rate-limit check, at request
+    // time) opens the connection — fail-closed still holds via maxRetriesPerRequest.
+    lazyConnect: true,
   },
 );
+// Attach an error listener so a Redis outage emits a warning instead of an unhandled
+// "error" event (which crashes the Node process). Rate-limiting still fails closed on
+// the command path; this listener only prevents the crash.
+globalThis.__redisClient.on("error", (err) => {
+  if (process.env.NODE_ENV !== "production") {
+    console.warn(
+      "[redis] connection error — rate-limiting will fail closed:",
+      err?.message ?? err,
+    );
+  }
+});
 
 export const redisClient = globalThis.__redisClient;
