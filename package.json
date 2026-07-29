@@ -12,6 +12,7 @@
     "test:migrations": "node scripts/test-migrations.mjs",
     "test:auth-gate": "node scripts/test-auth-gate.mjs",
     "test:auth-ratelimit": "node scripts/test-auth-ratelimit.mjs",
+    "test:publish-visible": "node scripts/test-publish-visible.mjs",
     "setup": "node scripts/setup.mjs",
     "verify": "node scripts/verify.mjs",
     "check-bundle": "node scripts/check-bundle-size.mjs --max-gz-kb=100"
