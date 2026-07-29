@@ -2,18 +2,18 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 07
-current_phase_name: performance-deploy
+current_phase: 08
+current_phase_name: Backup & Disaster Recovery
 status: executing
 stopped_at: Phase 8 context gathered
-last_updated: "2026-07-29T15:48:32.028Z"
-last_activity: 2026-07-28
-last_activity_desc: Phase 07 execution started
+last_updated: "2026-07-29T16:11:46.635Z"
+last_activity: 2026-07-29
+last_activity_desc: Phase 08 execution started
 progress:
   total_phases: 8
   completed_phases: 6
-  total_plans: 33
-  completed_plans: 32
+  total_plans: 38
+  completed_plans: 33
   percent: 75
 ---
 
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-01)
 
 **Core value:** Editors/authors can publish well-optimized blog posts and readers can consume them at maximum speed — fast/SEO-sound public blog + a dashboard that lets a small team manage the full content lifecycle (draft → review → publish) without touching code.
-**Current focus:** Phase 07 — performance-deploy
+**Current focus:** Phase 08 — Backup & Disaster Recovery
 
 ## Current Position
 
-Phase: 07 (performance-deploy) — EXECUTING
-Plan: 1 of 5
+Phase: 08 (Backup & Disaster Recovery) — EXECUTING
+Plan: 2 of 5
 Status: Ready to execute
-Last activity: 2026-07-28 — Phase 07 execution started
+Last activity: 2026-07-29 — Phase 08 execution started
 
 Progress: [█░░░░░░░░░] 13%
 
@@ -79,6 +79,7 @@ Progress: [█░░░░░░░░░] 13%
 | Phase 05 P01 | 17min | 3 tasks | 14 files |
 | Phase 05 P02 | 9min | 2 tasks | 7 files |
 | Phase 05 P03 | 16min | 3 tasks | 12 files |
+| Phase 08 P01 | 13min | 2 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -108,6 +109,9 @@ Recent decisions affecting current work:
 - [Phase ?]: SeoPanel extracted as standalone component receiving RHF register/errors via props (D-08 gap closure)
 - [Phase ?]: seoSettingsSchema split into separate module — use-server files can only export async functions
 - [Phase ?]: not-found.tsx redirects check isolated in Suspense for Cache Components compliance (D-12)
+- [Phase ?]: 08-01: Separate BackupDestination interface (not StorageProvider overload) — backups need list/download, no CDN URL or sharp variants
+- [Phase ?]: 08-01: Lazy dynamic-import registry with non-literal module paths keeps googleapis bundle-excluded and lets r2/gdrive destinations (08-02/03) land without breaking compilation
+- [Phase ?]: 08-01: runBackupJob never throws to the caller (records ok:false + logs); destructive-restore confirmation gate deferred to the 08-04 Server Action per D-05
 
 ### Pending Todos
 
@@ -143,6 +147,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-29T11:11:22.314Z
+Last session: 2026-07-29T16:11:38.342Z
 Stopped at: Phase 8 context gathered
 Resume file: .planning/phases/08-backup-disaster-recovery/08-CONTEXT.md

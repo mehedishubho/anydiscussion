@@ -285,13 +285,13 @@ Plans:
   3. An automated restore-drill runs on a configurable cadence: it restores the latest backup to a throwaway DB, verifies integrity, and alerts on failure — closing the "backup-never-restored" gamble.
   4. Provider credentials for each destination (Google OAuth tokens, R2 keys, local paths) are stored securely as runtime secrets / encrypted `settings` values — never exposed in client-visible state or shipped into the build bundle.
 
-**Plans**: 5 plans
+**Plans**: 1/5 plans executed
 
 Plans:
 
 **Wave 1** (load-bearing foundation — defines the BackupDestination contract + pg_dump wrapper everything composes)
 
-- [ ] 08-01-PLAN.md — Backup engine + local destination slice: BackupDestination interface (types.ts) + lazy registry + settings config I/O (backup.config) + pg_dump/pg_restore execFile wrappers (dump.ts) + local default-on destination + runBackupJob orchestrator + retention + restore primitive. Covers BACKUP-01 (local), BACKUP-03 (config/dump/job/retention), D-01/D-03/D-04/D-05/D-09.
+- [x] 08-01-PLAN.md — Backup engine + local destination slice: BackupDestination interface (types.ts) + lazy registry + settings config I/O (backup.config) + pg_dump/pg_restore execFile wrappers (dump.ts) + local default-on destination + runBackupJob orchestrator + retention + restore primitive. Covers BACKUP-01 (local), BACKUP-03 (config/dump/job/retention), D-01/D-03/D-04/D-05/D-09.
 
 **Wave 2** *(parallel — blocked on Wave 1; no file overlaps between these three)*
 
