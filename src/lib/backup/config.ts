@@ -115,6 +115,17 @@ export async function upsertSetting(key: string, value: string): Promise<void> {
 }
 
 /**
+ * Delete a single settings row by key (idempotent — deleting a missing row is a no-op). Completes
+ * the read (readSetting) / write (upsertSetting) / delete trio in this canonical settings-I/O module.
+ * Consumed by the 08-04 disconnectGoogleDrive action to remove the encrypted gdrive creds row after
+ * revoking its refresh token. Replicated-free: same db.delete shape the rest of this module uses.
+ */
+export async function deleteSetting(key: string): Promise<void> {
+  const { eq } = await import("drizzle-orm");
+  await db.delete(schema.settings).where(eq(schema.settings.key, key));
+}
+
+/**
  * readBackupConfig (D-03/D-09) — read + parse the `backup.config` settings row.
  *
  * Resolution order:

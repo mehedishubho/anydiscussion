@@ -294,10 +294,12 @@ describe("T-08-04b / Pitfall 7: getBackupSettings — redacts secret fields on r
 
     expect(result.destinations).toEqual({ local: true, r2: true, gdrive: false });
     expect(result.scheduleCron).toBe("0 3 * * *");
+    // r2 section present (blob was non-empty).
+    expect(result.r2).toBeDefined();
     // Redacted: secretAccessKey empty (Pitfall 7); non-secret fields preserved.
-    expect(result.r2.secretAccessKey).toBe("");
-    expect(result.r2.bucket).toBe("backups");
-    expect(result.r2.accessKeyId).toBe("AKIAEXAMPLE");
+    expect(result.r2!.secretAccessKey).toBe("");
+    expect(result.r2!.bucket).toBe("backups");
+    expect(result.r2!.accessKeyId).toBe("AKIAEXAMPLE");
     // gdrive blob empty → not connected.
     expect(result.gdriveConnected).toBe(false);
   });
@@ -465,7 +467,8 @@ describe("T-08-04 / D-05: listBackups — merge + sort + never throws", () => {
     const r2Entry = result.backups.find(
       (b: { key: string }) => b.key === "anydiscussion-20260729-1500.sqlc",
     );
-    expect(r2Entry.destination).toBe("r2");
+    expect(r2Entry).toBeDefined();
+    expect(r2Entry!.destination).toBe("r2");
   });
 
   it("admin → never throws when a destination's list() rejects; other dests still return", async () => {
