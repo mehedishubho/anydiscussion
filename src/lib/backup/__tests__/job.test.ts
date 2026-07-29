@@ -16,15 +16,23 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import type { BackupDestination } from "../types";
 
-const { pgDumpMock, pgRestoreMock, getEnabledMock, readConfigMock, upsertSettingMock } = vi.hoisted(
-  () => ({
-    pgDumpMock: vi.fn(),
-    pgRestoreMock: vi.fn(),
-    getEnabledMock: vi.fn(),
-    readConfigMock: vi.fn(),
-    upsertSettingMock: vi.fn(),
-  }),
-);
+const {
+  pgDumpMock,
+  pgRestoreMock,
+  getEnabledMock,
+  readConfigMock,
+  upsertSettingMock,
+  readSettingMock,
+  syncMediaBucketMock,
+} = vi.hoisted(() => ({
+  pgDumpMock: vi.fn(),
+  pgRestoreMock: vi.fn(),
+  getEnabledMock: vi.fn(),
+  readConfigMock: vi.fn(),
+  upsertSettingMock: vi.fn(),
+  readSettingMock: vi.fn(),
+  syncMediaBucketMock: vi.fn(),
+}));
 
 vi.mock("../dump", async () => {
   // Spread the real module so formatBackupTimestamp (used by job.ts to build the backup
@@ -42,12 +50,26 @@ vi.mock("../registry", () => ({
 vi.mock("../config", () => ({
   readBackupConfig: (...a: unknown[]) => readConfigMock(...a),
   upsertSetting: (...a: unknown[]) => upsertSettingMock(...a),
+  readSetting: (...a: unknown[]) => readSettingMock(...a),
   BACKUP_LAST_RUN_KEY: "backup.last_run",
   BACKUP_CONFIG_KEY: "backup.config",
   BACKUP_LOCAL_PATH_KEY: "backup.local_path",
   BACKUP_R2_CREDS_KEY: "backup.r2_creds",
   BACKUP_GDRIVE_CREDS_KEY: "backup.gdrive_creds",
 }));
+
+// 08-02 Task 2: media-sync is mocked so job-test observes the ORCHESTRATION (whether
+// runBackupJob invokes syncMediaBucket with the right source/prefix/callback) without
+// running the real pagination loop (that is unit-tested in media-sync.test.ts).
+vi.mock("../media-sync", () => ({
+  syncMediaBucket: (...a: unknown[]) => syncMediaBucketMock(...a),
+}));
+
+// The media R2 client is the SYNC SOURCE (read-only List/Get). Mocked to a bare object so
+// importing job.ts never constructs a real S3Client against MinIO in tests. Separation
+// invariant (T-08-02): this is the MEDIA client — distinct from the backup-bucket client
+// built inside r2.ts from backup creds.
+vi.mock("@/lib/r2", () => ({ s3Client: { send: vi.fn() } }));
 
 const DUMP = Buffer.from("PGDUMP-CUSTOM-FORMAT");
 
@@ -110,6 +132,10 @@ describe("D-04: runBackupJob dumps + uploads to every enabled destination + reco
       alertEmail: "",
     });
     upsertSettingMock.mockResolvedValue(undefined);
+    // 08-02 Task 2: media not on R2 here → runBackupJob skips media sync (DB-only). Keeps
+    // the existing dump-upload assertions (one upload per dest) unaffected by the new path.
+    readSettingMock.mockResolvedValue("local");
+    syncMediaBucketMock.mockResolvedValue(0);
   });
 
   it("calls pgDump once + uploads the dump to EVERY enabled destination", async () => {
@@ -209,6 +235,9 @@ describe("D-04 resilience: runBackupJob never throws to the caller", () => {
     });
     getEnabledMock.mockResolvedValue([makeFakeDest("local")]);
     upsertSettingMock.mockResolvedValue(undefined);
+    // 08-02 Task 2: media not on R2 → skip media sync in these resilience tests.
+    readSettingMock.mockResolvedValue("local");
+    syncMediaBucketMock.mockResolvedValue(0);
   });
 
   it("returns ok:false (and records a failure status) when pgDump throws", async () => {
@@ -280,5 +309,86 @@ describe("D-05: restoreKey / restoreLatest wrap pgRestore against DATABASE_URL",
     getEnabledMock.mockResolvedValue([makeFakeDest("local")]); // empty
     const { restoreLatest } = await import("../restore");
     await expect(restoreLatest()).rejects.toThrow();
+  });
+});
+
+describe("D-06: runBackupJob syncs media R2 objects to every enabled destination (full DR)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.stubEnv("DATABASE_URL", "postgresql://u:pw@localhost:5432/anydiscussion");
+    pgDumpMock.mockResolvedValue(DUMP);
+    readConfigMock.mockResolvedValue({
+      enabled: true,
+      destinations: { local: true, r2: true, gdrive: false },
+      scheduleCron: "0 3 * * *",
+      retentionDays: 30,
+      drillEnabled: true,
+      drillCron: "0 4 * * 0",
+      alertEmail: "",
+    });
+    upsertSettingMock.mockResolvedValue(undefined);
+    syncMediaBucketMock.mockResolvedValue(7);
+  });
+
+  it("calls syncMediaBucket with the MEDIA R2 source + a dated prefix when active_provider is r2", async () => {
+    readSettingMock.mockResolvedValue("r2"); // media lives on the R2 bucket
+    const dest = makeFakeDest("r2");
+    getEnabledMock.mockResolvedValue([dest]);
+
+    const { runBackupJob } = await import("../job");
+    await runBackupJob();
+
+    expect(syncMediaBucketMock).toHaveBeenCalledTimes(1);
+    const arg = syncMediaBucketMock.mock.calls[0][0] as {
+      source: { client: unknown; bucket: string };
+      destKeyPrefix: string;
+      uploadObject: (key: string, buf: Buffer) => Promise<void>;
+    };
+    // The source is the MEDIA R2 client + the media bucket name (NOT the backup bucket).
+    expect(arg.source.bucket).toBe(
+      process.env.S3_BUCKET || "anydiscussion-media",
+    );
+    expect(arg.source.client).toBeDefined(); // the media s3Client from @/lib/r2
+    // Dated prefix of the form media-YYYYMMDD/.
+    expect(arg.destKeyPrefix).toMatch(/^media-\d{8}\/$/);
+    // The dump upload happened before media sync (one upload so far).
+    expect(dest.uploaded).toHaveLength(1);
+
+    // The uploadObject callback fans out to EVERY enabled destination.
+    const before = dest.uploaded.length;
+    await arg.uploadObject("media-20260729/img/a.webp", Buffer.from([1, 2]));
+    expect(dest.uploaded.length).toBe(before + 1);
+    expect(dest.uploaded).toContain("media-20260729/img/a.webp");
+    expect(dest.store.get("media-20260729/img/a.webp")!.equals(Buffer.from([1, 2]))).toBe(true);
+  });
+
+  it("skips media sync when active_provider is local (media NOT on R2) — degrades to DB-only", async () => {
+    readSettingMock.mockResolvedValue("local");
+    const dest = makeFakeDest("local");
+    getEnabledMock.mockResolvedValue([dest]);
+
+    const { runBackupJob } = await import("../job");
+    const result = await runBackupJob();
+
+    expect(syncMediaBucketMock).not.toHaveBeenCalled();
+    expect(result.ok).toBe(true);
+    // Only the dump was uploaded — no media objects.
+    expect(dest.uploaded).toHaveLength(1);
+  });
+
+  it("still completes the DB dump (ok:true) when media sync throws — degraded, not failed", async () => {
+    readSettingMock.mockResolvedValue("r2");
+    syncMediaBucketMock.mockRejectedValue(new Error("R2 list failed"));
+    const dest = makeFakeDest("r2");
+    getEnabledMock.mockResolvedValue([dest]);
+
+    const { runBackupJob } = await import("../job");
+    const result = await runBackupJob();
+
+    // DB dump succeeded despite media-sync failure (D-06 degrades to DB-only on sync error).
+    expect(result.ok).toBe(true);
+    expect(result.destinations).toEqual(["r2"]);
+    expect(dest.uploaded).toHaveLength(1); // the dump
+    expect(syncMediaBucketMock).toHaveBeenCalled();
   });
 });
