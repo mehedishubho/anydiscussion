@@ -26,10 +26,16 @@ const { pgDumpMock, pgRestoreMock, getEnabledMock, readConfigMock, upsertSetting
   }),
 );
 
-vi.mock("../dump", () => ({
-  pgDump: (...a: unknown[]) => pgDumpMock(...a),
-  pgRestore: (...a: unknown[]) => pgRestoreMock(...a),
-}));
+vi.mock("../dump", async () => {
+  // Spread the real module so formatBackupTimestamp (used by job.ts to build the backup
+  // key) stays the genuine implementation — only pgDump/pgRestore are overridden.
+  const actual = await vi.importActual<typeof import("../dump")>("../dump");
+  return {
+    ...actual,
+    pgDump: (...a: unknown[]) => pgDumpMock(...a),
+    pgRestore: (...a: unknown[]) => pgRestoreMock(...a),
+  };
+});
 vi.mock("../registry", () => ({
   getEnabledDestinations: (...a: unknown[]) => getEnabledMock(...a),
 }));
