@@ -245,7 +245,7 @@ Plans:
   4. Auth endpoints (sign-in, password reset) are rate-limited. (Backup scheduling moved to Phase 8.)
   5. The app deploys to staging on Coolify via git-push with managed SSL, build-vs-runtime env secrets correctly separated, and the single-instance ISR scaling cliff (multi-replica needs a shared Redis cache handler) documented for v2.
 
-**Plans**: 2/5 plans executed
+**Plans**: 3/5 plans executed
 
 Plans:
 
@@ -259,7 +259,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2)*
 
-- [ ] 07-03-PLAN.md — Revalidation audit + fixes slice: 07-REVALIDATION-AUDIT.md classifying every mutating action HAS/MISSING/N/A (zero blank rows) + revalidation fixes applied to categories.ts, tags.ts, pages.ts, users.ts (matching each route's cache strategy per Pitfall #7; 2-arg revalidateTag; concrete literal paths) + scripts/test-publish-visible.mjs (30s deadline, polls PROD_URL). Covers PERF-03.
+- [x] 07-03-PLAN.md — Revalidation audit + fixes slice: 07-REVALIDATION-AUDIT.md classifying every mutating action HAS/MISSING/N/A (zero blank rows) + revalidation fixes applied to categories.ts, tags.ts, pages.ts, users.ts (matching each route's cache strategy per Pitfall #7; 2-arg revalidateTag; concrete literal paths) + scripts/test-publish-visible.mjs (30s deadline, polls PROD_URL). Covers PERF-03.
 
 **Wave 4** *(blocked on Waves 1-3 — needs Dockerfile + rate-limit code + revalidation fixes deployed together)*
 
