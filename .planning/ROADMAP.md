@@ -285,11 +285,23 @@ Plans:
   3. An automated restore-drill runs on a configurable cadence: it restores the latest backup to a throwaway DB, verifies integrity, and alerts on failure — closing the "backup-never-restored" gamble.
   4. Provider credentials for each destination (Google OAuth tokens, R2 keys, local paths) are stored securely as runtime secrets / encrypted `settings` values — never exposed in client-visible state or shipped into the build bundle.
 
-**Plans**: TBD
+**Plans**: 5 plans
 
 Plans:
 
-- [ ] 08-01: TBD (planning pending)
+**Wave 1** (load-bearing foundation — defines the BackupDestination contract + pg_dump wrapper everything composes)
+
+- [ ] 08-01-PLAN.md — Backup engine + local destination slice: BackupDestination interface (types.ts) + lazy registry + settings config I/O (backup.config) + pg_dump/pg_restore execFile wrappers (dump.ts) + local default-on destination + runBackupJob orchestrator + retention + restore primitive. Covers BACKUP-01 (local), BACKUP-03 (config/dump/job/retention), D-01/D-03/D-04/D-05/D-09.
+
+**Wave 2** *(parallel — blocked on Wave 1; no file overlaps between these three)*
+
+- [ ] 08-02-PLAN.md — R2 destination + R2 media sync slice (D-06 full DR): dedicated-backup-bucket S3Client R2 destination (NOT the media client) + syncMediaBucket (paginated ListObjectsV2 → per-object copy) wired into runBackupJob so a restored site has its images. Covers BACKUP-01 (R2), D-06.
+- [ ] 08-03-PLAN.md — Google Drive destination + OAuth consent slice: googleapis install + gdrive BackupDestination (buildConsentUrl/exchangeCode/upload/list/download/delete) + OAuth callback Route Handler (/api/auth/google/callback) with CSRF state verify + encrypted refresh-token storage. Covers BACKUP-01 (gdrive), BACKUP-02, D-02/D-03.
+- [ ] 08-05-PLAN.md — Restore-drill + cron + Dockerfile slice: runRestoreDrill (scratch-DB CREATE/restore/verify/DROP via raw autocommit pg.Client — no transaction, terminate-before-DROP) + backup/drill cron entries in startScheduler + drill-failure email + postgresql17-client in runner stage + secret-leak grep gate + ADR. Covers BACKUP-04, BACKUP-03 (cron), D-07/D-08, RESEARCH Pitfalls 1/2/5/6.
+
+**Wave 3** *(blocked on Waves 1-2 — needs all destinations for the multi-select UI + Test connection)*
+
+- [ ] 08-04-PLAN.md — Backup Settings dashboard UI slice (verbatim sibling of DASH-09 Storage Settings): Zod schema + 5 admin-gated Server Actions (requireRole('admin') FIRST) + /dashboard/settings/backup page + BackupSettingsForm (multi-select destination checkboxes, Test connection, Backup now, Restore w/ type-the-DB-name confirmation gate). Covers BACKUP-05, BACKUP-01 (multi-select UI), BACKUP-03 (schedule/retention UI), D-05.
 
 **Pitfalls owned:** backup-never-restored gamble (closed by restore-drill BACKUP-04); Google Drive OAuth external-dependency caveat (mild tension vs self-hosted / no-paid-API ethos — research before committing); build-vs-runtime secret separation for provider credentials (must not leak into the standalone build output).
 **Research flag:** MEDIUM — backup tooling selection (pg_dump cron vs WAL-G vs Coolify built-in vs pg_backrest, chosen against the configurable multi-destination requirement) + Google Drive OAuth / Drive API integration specifics.
