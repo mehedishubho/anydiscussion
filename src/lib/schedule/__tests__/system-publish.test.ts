@@ -226,7 +226,10 @@ describe("D-11: startScheduler — node-cron registration (every minute, v1 sing
 
   it("calls cron.schedule with '* * * * *' (every minute)", () => {
     startScheduler();
-    expect(cronScheduleMock).toHaveBeenCalledTimes(1);
+    // startScheduler now registers THREE ticks (publish + backup + drill — Phase 8 / 08-05).
+    // The publish tick is the FIRST registration, so mock.calls[0] is still it. The backup +
+    // drill ticks are covered by src/lib/backup/__tests__/schedule.test.ts.
+    expect(cronScheduleMock).toHaveBeenCalledTimes(3);
     const [expression] = cronScheduleMock.mock.calls[0];
     expect(expression).toBe("* * * * *");
   });

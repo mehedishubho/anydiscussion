@@ -102,6 +102,16 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
+# postgresql17-client — pg_dump / pg_restore at runtime (Phase 8 backup engine, D-04).
+# [CITED: 08-RESEARCH.md Pitfall 1 — pg_dump client major MUST be >= server major (PG17);
+#  pkgs.alpinelinux.org/package/edge/main/x86/postgresql17-client — 17.10-r0]
+# Pinned major 17 to match the Coolify managed Postgres 17 server — the generic
+# `postgresql-client` Alpine package may lag and trigger "server version mismatch".
+# Installed from the Alpine edge/main repository (BEFORE the USER drop so apk runs as root).
+# NO backup secret is added here — see D-21 boundary header above + scripts/check-backup-secrets.mjs
+# (all backup creds are RUNTIME env injected by Coolify, never build-time ARG/ENV — RESEARCH Pitfall 6).
+RUN apk add --no-cache --repository http://dl-cdn.alpinelinux.org/alpine/edge/main postgresql17-client
+
 # Non-root user (ASVS V5 default-deny). UID/GID 1001 to match the standalone
 # output's expected ownership.
 RUN addgroup -g 1001 -S nodejs && adduser -S nextjs -u 1001
