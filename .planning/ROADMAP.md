@@ -285,7 +285,7 @@ Plans:
   3. An automated restore-drill runs on a configurable cadence: it restores the latest backup to a throwaway DB, verifies integrity, and alerts on failure — closing the "backup-never-restored" gamble.
   4. Provider credentials for each destination (Google OAuth tokens, R2 keys, local paths) are stored securely as runtime secrets / encrypted `settings` values — never exposed in client-visible state or shipped into the build bundle.
 
-**Plans**: 1/5 plans executed
+**Plans**: 2/5 plans executed
 
 Plans:
 
@@ -295,7 +295,7 @@ Plans:
 
 **Wave 2** *(parallel — blocked on Wave 1; no file overlaps between these three)*
 
-- [ ] 08-02-PLAN.md — R2 destination + R2 media sync slice (D-06 full DR): dedicated-backup-bucket S3Client R2 destination (NOT the media client) + syncMediaBucket (paginated ListObjectsV2 → per-object copy) wired into runBackupJob so a restored site has its images. Covers BACKUP-01 (R2), D-06.
+- [x] 08-02-PLAN.md — R2 destination + R2 media sync slice (D-06 full DR): dedicated-backup-bucket S3Client R2 destination (NOT the media client) + syncMediaBucket (paginated ListObjectsV2 → per-object copy) wired into runBackupJob so a restored site has its images. Covers BACKUP-01 (R2), D-06.
 - [ ] 08-03-PLAN.md — Google Drive destination + OAuth consent slice: googleapis install + gdrive BackupDestination (buildConsentUrl/exchangeCode/upload/list/download/delete) + OAuth callback Route Handler (/api/auth/google/callback) with CSRF state verify + encrypted refresh-token storage. Covers BACKUP-01 (gdrive), BACKUP-02, D-02/D-03.
 - [ ] 08-05-PLAN.md — Restore-drill + cron + Dockerfile slice: runRestoreDrill (scratch-DB CREATE/restore/verify/DROP via raw autocommit pg.Client — no transaction, terminate-before-DROP) + backup/drill cron entries in startScheduler + drill-failure email + postgresql17-client in runner stage + secret-leak grep gate + ADR. Covers BACKUP-04, BACKUP-03 (cron), D-07/D-08, RESEARCH Pitfalls 1/2/5/6.
 

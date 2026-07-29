@@ -107,7 +107,7 @@ v1 = authoring + public-site MVP, extended with the full agreed feature set. Eac
 
 ### Backup & Disaster Recovery
 
-- [ ] **BACKUP-01**: Backup storage via the `lib/storage` abstraction; destinations local (default), Google Drive, Cloudflare R2 (multi-select, configurable in dashboard) — Cloudinary was considered and deliberately dropped (image-only, not suitable for DB dumps). **Status note:** 08-01 delivered the local destination + BackupDestination interface; R2 (08-02) + Google Drive (08-03) remain, so this requirement is In Progress, not yet complete.
+- [x] **BACKUP-01**: Backup storage via the `lib/storage` abstraction; destinations local (default), Google Drive, Cloudflare R2 (multi-select, configurable in dashboard) — Cloudinary was considered and deliberately dropped (image-only, not suitable for DB dumps). **Status note:** 08-01 delivered the local destination + BackupDestination interface; R2 (08-02) + Google Drive (08-03) remain, so this requirement is In Progress, not yet complete.
 - [ ] **BACKUP-02**: Google Drive destination via Google OAuth / Drive API (research caveat: external dependency with mild tension vs the self-hosted / no-paid-API ethos — flag for Phase 8 research)
 - [ ] **BACKUP-03**: Configurable schedule (frequency / RPO) + retention (keep N days/weeks) — tooling selection left to Phase 8 research (pg_dump cron, WAL-G, Coolify built-in, etc.). **Status note:** 08-01 delivered the config I/O + retention cleanup primitive; the cron schedule that actually fires backups lands in 08-05, so this requirement is In Progress, not yet complete.
 - [ ] **BACKUP-04**: Automated restore-drill on a configurable cadence (restore to a throwaway DB, verify integrity, alert on failure) — closes the "backup-never-restored" gamble
