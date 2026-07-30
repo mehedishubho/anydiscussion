@@ -22,7 +22,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 5: SEO Basics** - generateMetadata per route, dynamic sitemap + robots, JSON-LD, canonical, OG/Twitter cards, RSS (completed 2026-07-06)
 - [x] **Phase 6: Public Frontend** - Home/blog/archive, category/tag/author archives, single post (Cache Components + Suspense), search, About/Contact/legal, dark mode (completed 2026-07-07)
 - [ ] **Phase 7: Performance & Deploy** - Lighthouse/CWV pass, bundle-budget audit, revalidation audit end-to-end, auth rate limiting, Coolify staging, Dokploy, self host
-- [ ] **Phase 8: Backup & Disaster Recovery** - Configurable multi-destination backups (local default/Google Drive/R2), schedule + retention, automated restore-drill with alerting, Backup Settings dashboard page
+- [x] **Phase 8: Backup & Disaster Recovery** - Configurable multi-destination backups (local default/Google Drive/R2), schedule + retention, automated restore-drill with alerting, Backup Settings dashboard page (completed 2026-07-30)
 
 ## Phase Details
 
@@ -285,7 +285,7 @@ Plans:
   3. An automated restore-drill runs on a configurable cadence: it restores the latest backup to a throwaway DB, verifies integrity, and alerts on failure — closing the "backup-never-restored" gamble.
   4. Provider credentials for each destination (Google OAuth tokens, R2 keys, local paths) are stored securely as runtime secrets / encrypted `settings` values — never exposed in client-visible state or shipped into the build bundle.
 
-**Plans**: 4/5 plans executed
+**Plans**: 5/5 plans complete
 
 Plans:
 
@@ -301,7 +301,7 @@ Plans:
 
 **Wave 3** *(blocked on Waves 1-2 — needs all destinations for the multi-select UI + Test connection)*
 
-- [ ] 08-04-PLAN.md — Backup Settings dashboard UI slice (verbatim sibling of DASH-09 Storage Settings): Zod schema + 5 admin-gated Server Actions (requireRole('admin') FIRST) + /dashboard/settings/backup page + BackupSettingsForm (multi-select destination checkboxes, Test connection, Backup now, Restore w/ type-the-DB-name confirmation gate). Covers BACKUP-05, BACKUP-01 (multi-select UI), BACKUP-03 (schedule/retention UI), D-05.
+- [x] 08-04-PLAN.md — Backup Settings dashboard UI slice (verbatim sibling of DASH-09 Storage Settings): Zod schema + 5 admin-gated Server Actions (requireRole('admin') FIRST) + /dashboard/settings/backup page + BackupSettingsForm (multi-select destination checkboxes, Test connection, Backup now, Restore w/ type-the-DB-name confirmation gate). Covers BACKUP-05, BACKUP-01 (multi-select UI), BACKUP-03 (schedule/retention UI), D-05.
 
 **Pitfalls owned:** backup-never-restored gamble (closed by restore-drill BACKUP-04); Google Drive OAuth external-dependency caveat (mild tension vs self-hosted / no-paid-API ethos — research before committing); build-vs-runtime secret separation for provider credentials (must not leak into the standalone build output).
 **Research flag:** MEDIUM — backup tooling selection (pg_dump cron vs WAL-G vs Coolify built-in vs pg_backrest, chosen against the configurable multi-destination requirement) + Google Drive OAuth / Drive API integration specifics.

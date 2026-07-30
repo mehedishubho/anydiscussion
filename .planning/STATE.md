@@ -4,17 +4,17 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 08
 current_phase_name: Backup & Disaster Recovery
-status: executing
+status: verifying
 stopped_at: Completed 08-03-PLAN.md (Google Drive destination + OAuth callback)
-last_updated: "2026-07-29T20:56:45.081Z"
+last_updated: "2026-07-30T02:47:37.265Z"
 last_activity: 2026-07-29
 last_activity_desc: Phase 08 execution started
 progress:
   total_phases: 8
-  completed_phases: 6
+  completed_phases: 7
   total_plans: 38
-  completed_plans: 36
-  percent: 75
+  completed_plans: 37
+  percent: 88
 ---
 
 # Project State
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-07-01)
 
 Phase: 08 (Backup & Disaster Recovery) — EXECUTING
 Plan: 5 of 5
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-07-29 — Phase 08 execution started
 
 Progress: [█░░░░░░░░░] 13%
@@ -124,6 +124,7 @@ Recent decisions affecting current work:
 - [Phase ?]: 08-05: Scratch DB backup_verify on existing Postgres (D-08) via raw autocommit pg.Client (SQLSTATE 25001 guard) + terminate-before-DROP no-linger finally
 - [Phase ?]: 08-05: Hourly-poll + isDue(cronExpr) cadence so admin schedule changes take effect without a restart
 - [Phase ?]: 08-05: Multi-instance cron double-fire cliff documented not solved in v1; v2 = Redis SET NX lease (ADR 0002)
+- [Phase ?]: 08-04: Backup Settings dashboard = verbatim Storage Settings sibling + D-01 multi-select delta (3 destination checkboxes) + 8 admin-gated Server Actions (requireRole FIRST proven by MUST_NOT_BE_REACHED) + CSRF-bound OAuth consent + revoke-before-delete Drive disconnect + type-the-DB-name Restore gate
 
 ### Pending Todos
 
@@ -159,6 +160,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-29T20:56:33.814Z
+Last session: 2026-07-30T02:47:24.901Z
 Stopped at: Completed 08-03-PLAN.md (Google Drive destination + OAuth callback)
 Resume file: .planning/phases/08-backup-disaster-recovery/08-03-SUMMARY.md

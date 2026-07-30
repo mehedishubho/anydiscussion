@@ -111,7 +111,7 @@ v1 = authoring + public-site MVP, extended with the full agreed feature set. Eac
 - [x] **BACKUP-02**: Google Drive destination via Google OAuth / Drive API (research caveat: external dependency with mild tension vs the self-hosted / no-paid-API ethos — flag for Phase 8 research)
 - [x] **BACKUP-03**: Configurable schedule (frequency / RPO) + retention (keep N days/weeks) — tooling selection left to Phase 8 research (pg_dump cron, WAL-G, Coolify built-in, etc.). **Status note:** 08-01 delivered the config I/O + retention cleanup primitive; the cron schedule that actually fires backups lands in 08-05, so this requirement is In Progress, not yet complete.
 - [x] **BACKUP-04**: Automated restore-drill on a configurable cadence (restore to a throwaway DB, verify integrity, alert on failure) — closes the "backup-never-restored" gamble
-- [ ] **BACKUP-05**: Backup Settings dashboard page (admin-only) — destinations, schedule, retention, restore-drill cadence; server-side admin permission check
+- [x] **BACKUP-05**: Backup Settings dashboard page (admin-only) — destinations, schedule, retention, restore-drill cadence; server-side admin permission check
 
 ## v2 Requirements
 
@@ -235,7 +235,7 @@ Which phases cover which requirements. Updated during roadmap creation (Step 8).
 | BACKUP-02 | Phase 8 — Backup & Disaster Recovery | Complete |
 | BACKUP-03 | Phase 8 — Backup & Disaster Recovery | In Progress (08-01 config + retention done; cron 08-05 pending) |
 | BACKUP-04 | Phase 8 — Backup & Disaster Recovery | Complete |
-| BACKUP-05 | Phase 8 — Backup & Disaster Recovery | Pending |
+| BACKUP-05 | Phase 8 — Backup & Disaster Recovery | Complete |
 
 **Coverage:**
 
