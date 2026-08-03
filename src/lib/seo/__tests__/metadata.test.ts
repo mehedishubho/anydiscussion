@@ -194,10 +194,12 @@ describe("SEO-01: buildPageMetadata — pages carry their OWN SEO columns (D-06)
 });
 
 describe("SEO-01: buildSiteMetadata — metadataBase + title template", () => {
-  it("returns metadataBase as a URL(canonicalBaseUrl)", () => {
+  it("returns metadataBase as the canonicalBaseUrl string (cache-serializable, not a URL instance)", () => {
     const m = buildSiteMetadata(fakeSettings);
-    expect(m.metadataBase).toBeInstanceOf(URL);
-    expect((m.metadataBase as URL).href).toBe("https://anydiscussion.com/");
+    // String (not `new URL(...)`) so it serializes through the `'use cache'` RSC flight
+    // path under cacheComponents:true — see .planning/debug/metadatabase-url-cache-serial.md.
+    expect(typeof m.metadataBase).toBe("string");
+    expect(m.metadataBase).toBe(fakeSettings.canonicalBaseUrl);
   });
 
   it("returns title as {default, template} pair", () => {

@@ -19,11 +19,14 @@
 //      inline). Mismatched state is the ONLY path that returns a bare 400 (no redirect) — because a
 //      mismatched state is an attack signal, not a user-visible flow.
 //
-// runtime = "nodejs": googleapis MUST NOT land in the Edge bundle. The 08-01 lazy registry already
-// keeps googleapis bundle-excluded unless Drive is enabled; this route runs server-side only.
+// NOTE: `export const runtime = "nodejs"` is intentionally ABSENT. It is incompatible with
+// `nextConfig.cacheComponents` (Next.js 16 errors at build: "Route segment config 'runtime' is
+// not compatible with nextConfig.cacheComponents"). It was also redundant: Node.js is the DEFAULT
+// runtime for Route Handlers (the Edge runtime is opt-in via `runtime = "edge"`), so googleapis
+// (Node-only) stays server-side regardless. The 08-01 lazy registry also keeps googleapis
+// bundle-excluded unless Drive is enabled.
 //
 // Server-only Route Handler — NO "use client" directive.
-export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
@@ -40,21 +43,17 @@ const GDRIVE_OAUTH_STATE_COOKIE = "gdrive_oauth_state";
 /**
  * GET /api/auth/google/callback — Google OAuth consent redirect target.
  *
- * Next.js 16: `searchParams` is a Promise and MUST be awaited (mirrors the media route's async
- * params signature). Google passes `?code=...&state=...`; the state is the CSRF token we generated
- * + cookie-bound at consent-URL build time.
+ * Next.js 16 Route Handlers do NOT receive query params in the context — the second arg is
+ * `params` (DYNAMIC ROUTE SEGMENTS) only. `?code=...&state=...` are QUERY params, so they MUST
+ * be read from `request.url` via `new URL(request.url).searchParams`. (An earlier draft used a
+ * `{ searchParams }` context property, which Next.js never populates — `state` was always
+ * undefined and the route always returned 400, breaking the entire Drive OAuth flow.)
+ * `state` is the CSRF token generated + cookie-bound at consent-URL build time.
  */
-export async function GET(
-  request: Request,
-  {
-    searchParams,
-  }: {
-    searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
-  },
-): Promise<Response> {
-  const params = await searchParams;
-  const state = typeof params.state === "string" ? params.state : undefined;
-  const code = typeof params.code === "string" ? params.code : undefined;
+export async function GET(request: Request): Promise<Response> {
+  const url = new URL(request.url);
+  const state = url.searchParams.get("state") ?? undefined;
+  const code = url.searchParams.get("code") ?? undefined;
 
   // 1. CSRF state verification (T-08-03) BEFORE any token exchange. The signed httpOnly cookie was
   //    set by getGoogleConsentUrl(); Next verifies the signature on read. A mismatched or missing

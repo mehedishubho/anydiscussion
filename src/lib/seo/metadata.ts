@@ -173,12 +173,21 @@ export function buildArchiveMetadata(
 
 /**
  * Build site-wide metadata (home route + (site)/layout.tsx base).
- * Returns `metadataBase` as a URL, a title `{default, template}` pair, and
- * `openGraph.type "website"`. The layout caller augments with twitter defaults.
+ * Returns `metadataBase` as a STRING (not `new URL(...)`), a title `{default, template}`
+ * pair, and `openGraph.type "website"`. The layout caller augments with twitter defaults.
+ *
+ * `metadataBase` is a STRING deliberately. Next.js types allow `string | URL`, but the
+ * `(site)` `generateMetadata` callers are annotated `"use cache"` (REQUIRED under
+ * cacheComponents:true). A `'use cache'` return is serialized through the RSC flight
+ * serializer, which rejects `URL` instances — emitting
+ * "[ Cache ] Only plain objects can be passed to Client Components ... URL objects are
+ * not supported". The plain string is cache-serializable AND functionally identical:
+ * Next.js coerces it to a URL when resolving relative canonical/OG URLs (see
+ * .planning/debug/metadatabase-url-cache-serial.md).
  */
 export function buildSiteMetadata(s: SeoSettings): Metadata {
   return {
-    metadataBase: new URL(s.canonicalBaseUrl),
+    metadataBase: s.canonicalBaseUrl,
     title: {
       default: s.siteTitle,
       template: `%s | ${s.siteTitle}`,

@@ -6,8 +6,9 @@
 // [CITED: D-02 (OAuth callback), D-03 (encrypted refresh token), T-08-03 (CSRF state gate)]
 //
 // Wave-0 OAuth callback Route Handler tests. Asserts the handler:
-//   - runtime = "nodejs" (googleapis must not land in Edge).
-//   - GET signature uses the Next 16 async searchParams (Promise awaited).
+//   - No `runtime` segment config (incompatible with cacheComponents; Node.js is the default).
+//   - GET reads `code`/`state` QUERY params from request.url (Route Handlers don't receive
+//     searchParams in the context — only dynamic-segment `params`).
 //   - Valid state + code → exchangeCode called, encrypt called with the refresh_token,
 //     upsertSetting("backup.gdrive_creds"), 302 redirect to the Backup Settings page.
 //   - Mismatched/missing state → 400 + NO token exchange + NO upsert (CSRF defense, T-08-03).
@@ -57,13 +58,12 @@ async function loadRoute() {
 }
 
 function callGet(state: string, code: string, requestUrl = "https://app.test/api/auth/google/callback") {
-  // Dynamic import after the route module is implemented.
-  return loadRoute().then((mod) =>
-    mod.GET(new Request(requestUrl), {
-      // Next 16: searchParams is a Promise.
-      searchParams: Promise.resolve({ state, code }),
-    }),
-  );
+  // Next 16 Route Handlers: `code`/`state` are QUERY params, read from request.url — NOT a
+  // `searchParams` context property (Route Handler context only carries dynamic-segment `params`).
+  const url = new URL(requestUrl);
+  url.searchParams.set("state", state);
+  url.searchParams.set("code", code);
+  return loadRoute().then((mod) => mod.GET(new Request(url.toString())));
 }
 
 describe("08-03 Task 2: Google OAuth callback Route Handler", () => {
@@ -73,9 +73,12 @@ describe("08-03 Task 2: Google OAuth callback Route Handler", () => {
     upsertSettingMock.mockResolvedValue(undefined);
   });
 
-  it('exports runtime = "nodejs"', async () => {
+  it("does NOT export a `runtime` segment config (incompatible with cacheComponents)", async () => {
     const mod = await loadRoute();
-    expect(mod.runtime).toBe("nodejs");
+    // `export const runtime = "nodejs"` breaks `next build` under cacheComponents:true.
+    // Node.js is the default Route Handler runtime anyway (Edge is opt-in), so the export is
+    // both forbidden and redundant — guard against it being re-added.
+    expect((mod as { runtime?: unknown }).runtime).toBeUndefined();
   });
 
   it("valid state + code: exchangeCode → encrypt(refreshToken) → upsert backup.gdrive_creds → 302 redirect", async () => {
