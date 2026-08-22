@@ -2,9 +2,14 @@
 // [CITED: 06-02-PLAN.md Task 1 — public site header]
 // [CITED: 06-CONTEXT.md D-10 — standard chrome: logo/title + nav + Categories dropdown + search icon + dark toggle]
 // [CITED: 06-CONTEXT.md D-13 — dark mode route-isolated; ThemeToggle is a separate client component]
+// [CITED: 260823-6je-PLAN.md locked decision 1 — all 5 nav entries survive the restyle (Blog stays one click away)]
+// [CITED: 260823-6je-PLAN.md locked decision 4 — speech-bubble SVG + lowercase "anydiscussion" wordmark replace the image logo (site header only; the dashboard header keeps its own logo)]
+// [CITED: 260823-6je-PLAN.md locked decision 5 — circular outlined search button beside the ThemeToggle; sticky + backdrop-blur kept]
 //
 // Public site header. Server component (no "use client") — reads cached SEO settings
-// for the site title/logo and the cached categories list for the dropdown (D-10).
+// and the cached categories list for the dropdown (D-10). The brand block is a fixed
+// literal (inline speech-bubble icon + wordmark) per 260823-6je decision 4 — never
+// sourced from settings or an image asset.
 //
 // Nav is HARD-CODED for v1 (Home, Blog, About, Contact) — the menu builder is v2
 // SETT-01 per D-10. The Categories dropdown is a cached server fetch via
@@ -14,7 +19,6 @@
 // The ThemeToggle is a small client island (the only interactive piece here).
 
 import Link from "next/link";
-import Image from "next/image";
 import { getSeoSettings } from "@/lib/seo/settings";
 import { listCategoriesWithCounts } from "@/lib/queries/taxonomy";
 import ThemeToggle from "./ThemeToggle";
@@ -22,8 +26,9 @@ import ThemeToggle from "./ThemeToggle";
 /**
  * SiteHeader — public site chrome top bar.
  *
- * Renders: logo/site-title (links to /), hard-coded nav (D-10), Categories dropdown
- * (cached server fetch), search icon (links to /search), and the ThemeToggle.
+ * Renders: brand block (speech-bubble icon + lowercase "anydiscussion" wordmark,
+ * links to /), hard-coded nav (D-10) with the Categories dropdown (cached server
+ * fetch), the circular outlined search link (to /search), and the ThemeToggle.
  */
 export default async function SiteHeader() {
   // Both reads are cached ('use cache' inside each) so this stays ISR-friendly.
@@ -32,38 +37,45 @@ export default async function SiteHeader() {
     listCategoriesWithCounts(),
   ]);
 
-  const logoUrl = "/images/logo/sees-logo.png"; // TODO v2: read site.logo from settings when the settings/general page ships.
-
   return (
     <header className="sticky top-0 z-40 w-full border-b border-gray-200 bg-white/95 backdrop-blur dark:border-gray-800 dark:bg-gray-900/95">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4">
-        {/* Logo / site title */}
-        <Link
-          href="/"
-          className="flex items-center gap-2 text-lg font-bold text-gray-900 dark:text-white"
-        >
-          {logoUrl ? (
-            <Image
-              src={logoUrl}
-              alt={seo.siteTitle}
-              width={150}
-              height={32}
-              priority
-            />
-          ) : (
-            <span>{seo.siteTitle}</span>
-          )}
+        {/* Brand block: speech-bubble icon + wordmark (260823-6je decision 4) */}
+        <Link href="/" title={seo.siteTitle} className="flex items-center gap-2">
+          <span className="text-brand-500 dark:text-brand-400">
+            <svg
+              className="h-8 w-8"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              aria-hidden="true"
+            >
+              <path
+                fillRule="evenodd"
+                clipRule="evenodd"
+                d="M6 4H18A3 3 0 0 1 21 7V14A3 3 0 0 1 18 17H11.5L8 20.3V17H6A3 3 0 0 1 3 14V7A3 3 0 0 1 6 4ZM7.5 9.1A1.4 1.4 0 1 0 7.5 11.9A1.4 1.4 0 1 0 7.5 9.1ZM12 9.1A1.4 1.4 0 1 0 12 11.9A1.4 1.4 0 1 0 12 9.1ZM16.5 9.1A1.4 1.4 0 1 0 16.5 11.9A1.4 1.4 0 1 0 16.5 9.1Z"
+              />
+            </svg>
+          </span>
+          <span className="text-xl font-bold tracking-tight text-gray-900 dark:text-white">
+            anydiscussion
+          </span>
         </Link>
 
-        {/* Hard-coded nav (D-10 — menu builder is v2 SETT-01) */}
+        {/* Hard-coded nav (D-10 — menu builder is v2 SETT-01; 260823-6je decision 1 keeps all five entries) */}
         <nav
           className="hidden items-center gap-6 text-sm font-medium text-gray-600 md:flex dark:text-gray-300"
           aria-label="Main navigation"
         >
-          <Link href="/" className="hover:text-gray-900 dark:hover:text-white">
+          <Link
+            href="/"
+            className="transition-colors hover:text-gray-900 dark:hover:text-white"
+          >
             Home
           </Link>
-          <Link href="/blog" className="hover:text-gray-900 dark:hover:text-white">
+          <Link
+            href="/blog"
+            className="transition-colors hover:text-gray-900 dark:hover:text-white"
+          >
             Blog
           </Link>
 
@@ -72,7 +84,7 @@ export default async function SiteHeader() {
             <div className="group relative">
               <button
                 type="button"
-                className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white"
+                className="flex items-center gap-1 transition-colors hover:text-gray-900 dark:hover:text-white"
                 aria-haspopup="true"
               >
                 Categories
@@ -110,24 +122,24 @@ export default async function SiteHeader() {
 
           <Link
             href="/about"
-            className="hover:text-gray-900 dark:hover:text-white"
+            className="transition-colors hover:text-gray-900 dark:hover:text-white"
           >
             About
           </Link>
           <Link
             href="/contact"
-            className="hover:text-gray-900 dark:hover:text-white"
+            className="transition-colors hover:text-gray-900 dark:hover:text-white"
           >
             Contact
           </Link>
         </nav>
 
-        {/* Right cluster: search icon + dark-mode toggle */}
+        {/* Right cluster: circular outlined search link + dark-mode toggle (260823-6je decision 5) */}
         <div className="flex items-center gap-2">
           <Link
             href="/search"
             aria-label="Search"
-            className="flex items-center justify-center h-9 w-9 rounded-full text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white"
+            className="flex h-9 w-9 items-center justify-center rounded-full border border-gray-300 text-gray-600 transition-colors hover:border-brand-500 hover:text-brand-600 dark:border-gray-600 dark:text-gray-400 dark:hover:border-brand-400 dark:hover:text-brand-400"
           >
             <svg
               className="h-5 w-5"
