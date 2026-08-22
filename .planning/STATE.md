@@ -6,8 +6,8 @@ current_phase: 08
 status: verifying
 stopped_at: Completed 08-03-PLAN.md (Google Drive destination + OAuth callback)
 last_updated: "2026-07-30T02:56:20.394Z"
-last_activity: 2026-07-30
-last_activity_desc: Phase 08 complete
+last_activity: 2026-08-22
+last_activity_desc: Quick task 260823-4yc — frontpage design homepage + PostCard site-wide upgrade
 progress:
   total_phases: 8
   completed_phases: 7
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-07-01)
 Phase: 08
 Plan: Not started
 Status: Phase complete — ready for verification
-Last activity: 2026-07-30 — Phase 08 complete
+Last activity: 2026-08-22 — Completed quick task 260823-4yc: frontpage design homepage + PostCard site-wide upgrade
 
 Progress: [█░░░░░░░░░] 13%
 
@@ -147,6 +147,7 @@ Recent decisions affecting current work:
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 260708-n9b | Swap dashboard logo to SEES brand asset and remove TailAdmin promo widget | 2026-07-08 | 1ea60f6 | [260708-n9b-swap-dashboard-logo-to-sees-brand-asset-](./quick/260708-n9b-swap-dashboard-logo-to-sees-brand-asset-/) |
+| 260823-4yc | Frontpage design homepage (Featured card + Latest 3×4 grid + /page/N pagination) + site-wide PostCard upgrade (category tag, avatar, read time) | 2026-08-22 | 2b46f15 | [260823-4yc-implement-frontpage-design-homepage-site](./quick/260823-4yc-implement-frontpage-design-homepage-site/) |
 
 ## Deferred Items
 
