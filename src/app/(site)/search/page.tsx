@@ -219,9 +219,10 @@ async function SearchResults({
             publishedAt={post.publishedAt}
             // searchPosts does not join user (the FTS query targets posts.searchVector
             // built from title+excerpt — author info is not part of the search signal).
-            // Mirrors the RelatedPosts pattern: pass null rather than extending the
-            // FTS query with a user join (kept lean for v1). Bylines are omitted on
-            // search cards; the result's title/excerpt/rank carry the relevance signal.
+            // Bylines are omitted on search cards (kept lean for v1); the result's
+            // title/excerpt/rank carry the relevance signal. The 260823-4yc PostCard
+            // props (category tag/avatar/read time) are OPTIONAL, so this renders
+            // exactly as before without supplying them.
             authorName={null}
             authorUsername={null}
           />

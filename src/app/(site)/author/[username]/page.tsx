@@ -5,6 +5,7 @@
 // [CITED: src/lib/queries/users.ts — getUserByUsername + listAuthorPosts (Plan 06-01)]
 // [CITED: src/lib/seo/jsonld.ts personJsonLd — closes Phase 5 D-03 deferral]
 // [CITED: CLAUDE.md — next/image only (NEVER raw <img> for content images)]
+// [CITED: 260823-4yc-PLAN.md Task 3 — cards mapped via the shared toPostCardProps]
 //
 // The public author profile page (SITE-06). Renders:
 //   1. A bio header (name + avatar via next/image + bio from AUTH-08).
@@ -26,6 +27,7 @@ import { getSeoSettings } from "@/lib/seo/settings";
 import { buildArchiveMetadata } from "@/lib/seo/metadata";
 import { personJsonLd } from "@/lib/seo/jsonld";
 import { getUserByUsername, listAuthorPosts } from "@/lib/queries/users";
+import { toPostCardProps, type PostCardJoinedRow } from "@/lib/post-card";
 import PostCard from "@/components/site/PostCard";
 import { PostCardGridSkeleton } from "@/components/site/skeletons";
 import { Suspense } from "react";
@@ -182,20 +184,13 @@ async function AuthorPageContent({ params, searchParams }: AuthorPageProps) {
         ) : (
           <>
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              {posts.map((row) => (
-                <PostCard
-                  key={row.posts.id}
-                  id={row.posts.id}
-                  title={row.posts.title}
-                  slug={row.posts.slug}
-                  excerpt={row.posts.excerpt}
-                  featureImage={row.posts.featureImage}
-                  publishedAt={row.posts.publishedAt}
-                  // listAuthorPosts joins user — the byline links to this same page.
-                  authorName={row.user.name}
-                  authorUsername={row.user.username ?? null}
-                />
-              ))}
+              {posts.map((row) => {
+                // listAuthorPosts joins user (byline links to this same page) +
+                // categories (260823-4yc decision 3) — shared mapper derives all
+                // card props including avatar and read time.
+                const card = toPostCardProps(row as PostCardJoinedRow);
+                return <PostCard key={card.id} {...card} />;
+              })}
             </div>
 
             <AuthorPagination

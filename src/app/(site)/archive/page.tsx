@@ -4,6 +4,7 @@
 // [CITED: 06-CONTEXT.md D-12 — top filter bar + numbered pagination]
 // [CITED: 06-CONTEXT.md D-16 — friendly empty states]
 // [CITED: threat_model T-06-10 — filter values parsed via Zod (no raw SQL concat)]
+// [CITED: 260823-4yc-PLAN.md Task 3 — cards mapped via the shared toPostCardProps]
 //
 // /archive — the dense filterable archive. Filters (category/tag/author/date-range)
 // are applied via URL searchParams; numbered pagination is URL-based. Uses the
@@ -27,6 +28,7 @@ import {
 import { listCategoriesWithCounts, listTags } from "@/lib/queries/taxonomy";
 import { listAuthors } from "@/lib/queries/users";
 import ArchiveList from "@/components/site/ArchiveList";
+import { toPostCardProps, type PostCardJoinedRow } from "@/lib/post-card";
 import type { PostCardProps } from "@/components/site/PostCard";
 
 /**
@@ -134,29 +136,9 @@ async function ArchivePageContent({ searchParams }: ArchivePageProps) {
   ]);
 
   const totalPages = Math.max(1, Math.ceil(total / ARCHIVE_PAGE_SIZE));
-  const cards: PostCardProps[] = rows.map((r) => {
-    const row = r as {
-      posts: {
-        id: number;
-        title: string;
-        slug: string;
-        excerpt: string | null;
-        featureImage: string | null;
-        publishedAt: Date | null;
-      };
-      user: { name: string | null; username: string | null } | null;
-    };
-    return {
-      id: row.posts.id,
-      title: row.posts.title,
-      slug: row.posts.slug,
-      excerpt: row.posts.excerpt,
-      featureImage: row.posts.featureImage,
-      publishedAt: row.posts.publishedAt,
-      authorName: row.user?.name ?? null,
-      authorUsername: row.user?.username ?? null,
-    };
-  });
+  const cards: PostCardProps[] = rows.map((r) =>
+    toPostCardProps(r as PostCardJoinedRow),
+  );
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
