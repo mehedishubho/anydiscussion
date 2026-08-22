@@ -1,6 +1,7 @@
 // src/app/(site)/blog/page/[pageNumber]/page.tsx
 // [CITED: 06-04-PLAN.md Task 1 — /blog paginated feed page N (SITE-02 / D-03)]
 // [CITED: CLAUDE.md — Next 16 async params (await params.pageNumber)]
+// [CITED: 260823-4yc-PLAN.md Task 3 — cards mapped via the shared toPostCardProps]
 //
 // /blog/page/N — the paginated feed for page N > 1 (page 1 lives at /blog). D-03
 // classic URL-based numbered pagination (ISR/SEO-friendly, no client fetching).
@@ -13,6 +14,7 @@ import { notFound, redirect } from "next/navigation";
 import { getSeoSettings } from "@/lib/seo/settings";
 import { buildArchiveMetadata } from "@/lib/seo/metadata";
 import { listPublished, countPublished } from "@/lib/queries/posts";
+import { toPostCardProps, type PostCardJoinedRow } from "@/lib/post-card";
 import PostCard from "@/components/site/PostCard";
 import Pagination from "@/components/site/Pagination";
 import { BLOG_PAGE_SIZE } from "@/app/(site)/blog/page";
@@ -76,29 +78,7 @@ async function BlogPaginatedPageContent({ params }: PageProps) {
     notFound();
   }
 
-  const cards = rows.map((r) => {
-    const row = r as {
-      posts: {
-        id: number;
-        title: string;
-        slug: string;
-        excerpt: string | null;
-        featureImage: string | null;
-        publishedAt: Date | null;
-      };
-      user: { name: string | null; username: string | null } | null;
-    };
-    return {
-      id: row.posts.id,
-      title: row.posts.title,
-      slug: row.posts.slug,
-      excerpt: row.posts.excerpt,
-      featureImage: row.posts.featureImage,
-      publishedAt: row.posts.publishedAt,
-      authorName: row.user?.name ?? null,
-      authorUsername: row.user?.username ?? null,
-    };
-  });
+  const cards = rows.map((r) => toPostCardProps(r as PostCardJoinedRow));
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">

@@ -2,6 +2,7 @@
 // [CITED: 06-04-PLAN.md Task 1 — /blog full reverse-chronological paginated feed (SITE-02)]
 // [CITED: 06-CONTEXT.md D-03 — three distinct routes; pagination = classic URL-based]
 // [CITED: 06-CONTEXT.md D-16 — friendly empty states]
+// [CITED: 260823-4yc-PLAN.md Task 3 — cards mapped via the shared toPostCardProps]
 //
 // /blog — the full reverse-chronological feed (page 1). SITE-02. Coexists with
 // /blog/[slug] (single post, Plan 06-03) — different route segments, no conflict.
@@ -13,6 +14,7 @@ import type { Metadata } from "next";
 import { getSeoSettings } from "@/lib/seo/settings";
 import { buildArchiveMetadata } from "@/lib/seo/metadata";
 import { listPublished, countPublished } from "@/lib/queries/posts";
+import { toPostCardProps, type PostCardJoinedRow } from "@/lib/post-card";
 import PostCard from "@/components/site/PostCard";
 import Pagination from "@/components/site/Pagination";
 
@@ -34,29 +36,7 @@ export default async function BlogIndexPage() {
     countPublished(),
   ]);
   const totalPages = Math.max(1, Math.ceil(total / BLOG_PAGE_SIZE));
-  const cards = rows.map((r) => {
-    const row = r as {
-      posts: {
-        id: number;
-        title: string;
-        slug: string;
-        excerpt: string | null;
-        featureImage: string | null;
-        publishedAt: Date | null;
-      };
-      user: { name: string | null; username: string | null } | null;
-    };
-    return {
-      id: row.posts.id,
-      title: row.posts.title,
-      slug: row.posts.slug,
-      excerpt: row.posts.excerpt,
-      featureImage: row.posts.featureImage,
-      publishedAt: row.posts.publishedAt,
-      authorName: row.user?.name ?? null,
-      authorUsername: row.user?.username ?? null,
-    };
-  });
+  const cards = rows.map((r) => toPostCardProps(r as PostCardJoinedRow));
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">

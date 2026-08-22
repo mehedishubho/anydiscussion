@@ -1,27 +1,34 @@
 // src/components/site/Pagination.tsx
 // [CITED: 06-04-PLAN.md Task 1 — "Pagination component: a simple numbered nav"]
 // [CITED: 06-CONTEXT.md D-03 — classic URL-based page numbers, server-rendered]
+// [CITED: 260823-4yc-PLAN.md Task 2 — buildPageHref root-basePath normalization + named export]
 //
-// Shared numbered pagination for list routes (/blog, /blog/page/N, and the
-// ArchiveList component for /archive, /category/[slug], /tag/[slug]). Classic
-// URL-based page numbers (D-03) — ISR/SEO-friendly, no client fetching. All
-// links are plain <Link> anchors so search engines can crawl every page.
+// Shared numbered pagination for list routes (/blog, /blog/page/N, the ArchiveList
+// component for /archive, /category/[slug], /tag/[slug], and the homepage "/").
+// Classic URL-based page numbers (D-03) — ISR/SEO-friendly, no client fetching.
+// All links are plain <Link> anchors so search engines can crawl every page.
 //
 // `basePath` examples:
+//   - "/"                    → page N link = /page/${n} (N > 1), / (N = 1)
 //   - "/blog"                → page N link = /blog/page/${n} (N > 1), /blog (N = 1)
 //   - "/archive"             → page N link = /archive?page=${n} (searchParams-based)
 //   - "/category/tech"       → page N link = /category/tech?page=${n}
 //
 // When `searchParams` is provided, the page number is appended as `?page=${n}`
 // (preserving the other filter params). When omitted, the /page/${n} URL form
-// is used (the /blog convention).
+// is used (the /blog + homepage convention). The base is normalized by stripping
+// trailing slashes so a root basePath of "/" yields "/" and "/page/N" — never a
+// protocol-relative "//page/N" URL.
 //
 // Server-only — NO "use client" directive.
 
 import Link from "next/link";
 
-/** Build the href for a page number under the given base path. */
-function buildPageHref(
+/**
+ * Build the href for a page number under the given base path. Exported for
+ * unit testing (src/components/site/__tests__/pagination.test.ts).
+ */
+export function buildPageHref(
   n: number,
   basePath: string,
   searchParams?: Record<string, string | string[] | undefined>,
@@ -41,8 +48,11 @@ function buildPageHref(
     const qs = params.toString();
     return qs ? `${basePath}?${qs}` : basePath;
   }
-  // URL-segment routes (/blog): /blog/page/${n} for N > 1, basePath for N = 1.
-  return n <= 1 ? basePath : `${basePath}/page/${n}`;
+  // URL-segment routes (/blog, homepage "/"): strip trailing slashes so a root
+  // base normalizes to "" → page 1 resolves to "/", page N to "/page/${n}".
+  const normalizedBase = basePath.replace(/\/+$/, "");
+  if (n <= 1) return normalizedBase || "/";
+  return `${normalizedBase}/page/${n}`;
 }
 
 export interface PaginationProps {

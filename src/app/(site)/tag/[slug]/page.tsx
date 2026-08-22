@@ -3,6 +3,7 @@
 // [CITED: CLAUDE.md — Next 16 async params + searchParams]
 // [CITED: 06-CONTEXT.md D-14 — reuse archive template + BreadcrumbList JSON-LD]
 // [CITED: src/lib/seo/jsonld.ts — breadcrumbListJsonLd closes Phase 5 D-03]
+// [CITED: 260823-4yc-PLAN.md Task 3 — cards mapped via the shared toPostCardProps]
 //
 // /tag/[slug] — the tag archive. Reuses ArchiveList pre-filtered to the one tag
 // (D-14). The tag filter input is hidden (the route IS the scope); category/
@@ -33,6 +34,7 @@ import {
 } from "@/lib/queries/archive";
 import { listAuthors } from "@/lib/queries/users";
 import ArchiveList from "@/components/site/ArchiveList";
+import { toPostCardProps, type PostCardJoinedRow } from "@/lib/post-card";
 import type { PostCardProps } from "@/components/site/PostCard";
 
 /**
@@ -143,29 +145,10 @@ async function TagArchiveContent({
   ]);
 
   const totalPages = Math.max(1, Math.ceil(total / ARCHIVE_PAGE_SIZE));
-  const cards: PostCardProps[] = rows.map((r) => {
-    const row = r as {
-      posts: {
-        id: number;
-        title: string;
-        slug: string;
-        excerpt: string | null;
-        featureImage: string | null;
-        publishedAt: Date | null;
-      };
-      user: { name: string | null; username: string | null } | null;
-    };
-    return {
-      id: row.posts.id,
-      title: row.posts.title,
-      slug: row.posts.slug,
-      excerpt: row.posts.excerpt,
-      featureImage: row.posts.featureImage,
-      publishedAt: row.posts.publishedAt,
-      authorName: row.user?.name ?? null,
-      authorUsername: row.user?.username ?? null,
-    };
-  });
+  // listArchive now joins categories — cards show their own category tag.
+  const cards: PostCardProps[] = rows.map((r) =>
+    toPostCardProps(r as PostCardJoinedRow),
+  );
 
   // BreadcrumbList JSON-LD (Home › Tag) — closes Phase 5 D-03 (D-14).
   const tagPath = `/tag/${tag.slug}`;

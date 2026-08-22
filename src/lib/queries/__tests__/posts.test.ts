@@ -2,6 +2,7 @@
 // [CITED: 06-VALIDATION.md Wave 0 row "posts.test.ts — incrementViewCount, published-only, cacheTag"]
 // [CITED: 06-01-PLAN.md Task 2 <behavior> — the published-only + atomic increment invariants]
 // [CITED: 06-RESEARCH.md Pattern 1 (L495-538) — getPostForPublic + incrementViewCount shapes]
+// [CITED: 260823-4yc-PLAN.md Task 1 — listPublished/countPublished excludeIds (homepage hero exclusion)]
 //
 // Wave-0 tests for the public read-query module. These tests verify:
 //   - T-06-02: Every read function filters status='published' AND deletedAt IS NULL
@@ -35,6 +36,8 @@ vi.mock("next/cache", () => ({
 vi.mock("@/lib/db", () => {
   // Chainable Drizzle builder: select().from().leftJoin().leftJoin().where().limit()
   // resolves to selectMock; orderBy/limit terminators also resolve to selectMock.
+  // `then` makes the builder itself awaitable (countPublished awaits the builder
+  // directly instead of calling .limit) — resolves to selectMock's value.
   const chainableSelect = () => {
     const self: Record<string, unknown> = {};
     self.leftJoin = vi.fn(() => self);
@@ -43,6 +46,10 @@ vi.mock("@/lib/db", () => {
     self.orderBy = vi.fn(() => self);
     self.limit = vi.fn(() => selectMock());
     self.offset = vi.fn(() => self);
+    self.then = (
+      resolve: (v: unknown) => unknown,
+      reject: (e: unknown) => unknown,
+    ) => Promise.resolve(selectMock()).then(resolve, reject);
     return self;
   };
   return {
@@ -106,6 +113,7 @@ import {
   incrementViewCount,
   listPublished,
   listFeatured,
+  countPublished,
 } from "../posts";
 
 describe("T-06-02 / published-only: getPostForPublic", () => {
@@ -188,6 +196,32 @@ describe("published-only list: listPublished", () => {
     selectMock.mockResolvedValue(mockPosts);
     const result = await listPublished({ page: 1 });
     expect(result).toEqual(mockPosts);
+  });
+
+  // [CITED: 260823-4yc-PLAN.md Task 1 — excludeIds powers consistent hero exclusion
+  // across homepage pages (locked decision 2)]
+  it("still cacheTags posts-list and returns rows when excludeIds is passed", async () => {
+    const mockPosts = [{ id: 1, title: "A" }, { id: 2, title: "B" }];
+    selectMock.mockResolvedValue(mockPosts);
+    const result = await listPublished({ page: 1, excludeIds: [7] });
+    expect(cacheTagMock).toHaveBeenCalledWith("posts-list");
+    expect(result).toEqual(mockPosts);
+  });
+});
+
+describe("countPublished — homepage total with excludeIds", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("returns Number(value) from the count row when excludeIds is passed", async () => {
+    selectMock.mockResolvedValue([{ value: 41 }]);
+    const result = await countPublished({ excludeIds: [7] });
+    expect(result).toBe(41);
+  });
+
+  it("returns 0 when the count row is missing", async () => {
+    selectMock.mockResolvedValue([]);
+    const result = await countPublished({ excludeIds: [7] });
+    expect(result).toBe(0);
   });
 });
 

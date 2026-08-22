@@ -1,6 +1,7 @@
 // src/lib/queries/archive.ts
 // [CITED: 06-01-PLAN.md Task 2 — filterable archive list (D-12)]
 // [CITED: 06-PATTERNS.md — where-clause accumulation from src/actions/media.ts listMedia]
+// [CITED: 260823-4yc-PLAN.md Task 1 — categories leftJoin (PostCard category tag, decision 3)]
 //
 // Public filterable archive list. Where-clause accumulation pattern: build an
 // array of conditions from the optional filters, then pass to `.where(and(...))`.
@@ -30,7 +31,8 @@ export const ARCHIVE_PAGE_SIZE = 20;
  * Where-clause accumulation: optional filters are pushed onto a conditions array
  * and combined via `and(...)`. Only published, non-deleted posts (T-06-02).
  * Numbered pagination (ISR/SEO-friendly per D-03). Left-joins `user` so the
- * consuming PostCard instances render author bylines (D-11).
+ * consuming PostCard instances render author bylines (D-11), and `categories`
+ * so the upgraded PostCard renders its category tag (260823-4yc decision 3).
  *
  * Cached via 'use cache' + cacheLife("hours") + cacheTag("posts-list").
  */
@@ -70,6 +72,10 @@ export async function listArchive(filters: ArchiveFilters, page: number) {
         eq(schema.postTags.postId, schema.posts.id),
       )
       .leftJoin(schema.user, eq(schema.user.id, schema.posts.authorId))
+      .leftJoin(
+        schema.categories,
+        eq(schema.categories.id, schema.posts.categoryId),
+      )
       .where(and(...conditions, eq(schema.postTags.tagId, filters.tagId)))
       .orderBy(desc(schema.posts.publishedAt))
       .offset(offset)
@@ -80,6 +86,10 @@ export async function listArchive(filters: ArchiveFilters, page: number) {
     .select()
     .from(schema.posts)
     .leftJoin(schema.user, eq(schema.user.id, schema.posts.authorId))
+    .leftJoin(
+      schema.categories,
+      eq(schema.categories.id, schema.posts.categoryId),
+    )
     .where(and(...conditions))
     .orderBy(desc(schema.posts.publishedAt))
     .offset(offset)

@@ -3,6 +3,8 @@
 // [CITED: 06-RESEARCH.md Pattern 1 L485-490 + L524-538 — cacheLife('hours') + cacheTag]
 // [CITED: src/lib/queries/posts.ts listRelated — D-06 same-category → tags fallback]
 // [CITED: src/actions/posts.ts L363-368 — publishPost revalidateTag tags matched here]
+// [CITED: 260823-4yc-PLAN.md Task 3 — listRelated now joins user + categories; rows
+//         feed straight through the shared toPostCardProps (decision 3 landed)]
 //
 // The related-posts streaming slot. Cached via 'use cache' so the join + tag
 // fallback doesn't run per request. cacheLife('hours') makes it ISR-friendly;
@@ -18,6 +20,7 @@
 import { cacheLife, cacheTag } from "next/cache";
 import PostCard from "@/components/site/PostCard";
 import { listRelated } from "@/lib/queries/posts";
+import { toPostCardProps, type PostCardJoinedRow } from "@/lib/post-card";
 
 interface RelatedPostsProps {
   postId: number;
@@ -29,6 +32,9 @@ interface RelatedPostsProps {
  *
  * Calls listRelated(postId, categoryId) which does same-category first, then
  * fills with tag-sharing posts (D-06). Excludes the current post; cap 3.
+ * Every row carries posts + user + categories keys (260823-4yc Task 1), so rows
+ * map directly through the shared toPostCardProps — the cards render the author
+ * byline + avatar and category tag + read time like every other consumer.
  * Renders PostCards in a responsive grid; renders nothing when empty.
  *
  * @param postId     - the current post's id (excluded from results)
@@ -43,10 +49,10 @@ export default async function RelatedPosts({ postId, categoryId }: RelatedPostsP
 
   const rows = await listRelated(postId, categoryId, 3);
 
-  // listRelated returns a union: bare posts (same-category branch) or
-  // { posts, postTags } (tag-fallback join branch). Normalize to posts[] for
-  // uniform rendering — every consumer needs the post fields, not the join.
-  const related = rows.map((row) => ("posts" in row ? row.posts : row));
+  // Both listRelated branches return { posts, user, categories, ... } rows —
+  // no union normalization needed anymore (the tag branch also keeps postTags,
+  // which the mapper ignores).
+  const related = rows.map((row) => toPostCardProps(row as PostCardJoinedRow));
 
   if (related.length === 0) {
     // Minimal empty state — D-16 friendly empties over plain text.
@@ -62,21 +68,8 @@ export default async function RelatedPosts({ postId, categoryId }: RelatedPostsP
         Related posts
       </h2>
       <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-        {related.map((post) => (
-          <PostCard
-            key={post.id}
-            id={post.id}
-            title={post.title}
-            slug={post.slug}
-            excerpt={post.excerpt}
-            featureImage={post.featureImage}
-            publishedAt={post.publishedAt}
-            // listRelated returns posts from this query module — no author join,
-            // so authorName/authorUsername are null here. Future enhancement:
-            // extend listRelated to leftJoin user when bylines are needed in cards.
-            authorName={null}
-            authorUsername={null}
-          />
+        {related.map((card) => (
+          <PostCard key={card.id} {...card} />
         ))}
       </div>
     </section>
