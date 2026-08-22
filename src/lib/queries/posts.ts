@@ -4,6 +4,7 @@
 // [CITED: 06-RESEARCH.md Pattern 3 (L566-596) — searchPosts FTS shape]
 // [CITED: 06-PATTERNS.md — 'use cache' + cacheTag profile from lib/seo/settings.ts]
 // [CITED: src/actions/posts.ts L363-368 — the EXACT revalidateTag tags these cacheTags match]
+// [CITED: 260823-4yc-PLAN.md Task 1 — categories leftJoin + excludeIds + user join on listRelated]
 //
 // The public read-query module for published posts. These functions are READ-ONLY
 // for published content with NO permission checks (published content is public per
@@ -75,7 +76,12 @@ export async function incrementViewCount(postId: number): Promise<number> {
  * publishPost's revalidateTag("posts-list", "max") refreshes on publish.
  *
  * Left-joins `user` so consuming PostCard instances can render the author
- * byline (D-11 — byline links to /author/[username]).
+ * byline (D-11 — byline links to /author/[username]) and `categories` so the
+ * upgraded PostCard can render its category tag (260823-4yc decision 3).
+ *
+ * excludeIds (260823-4yc decision 2): when set, the listed ids are filtered out
+ * — the homepage excludes its hero post from the paginated feed on EVERY page so
+ * the featured post never appears twice across homepage pages.
  */
 export async function listPublished(opts: {
   page: number;
@@ -83,6 +89,7 @@ export async function listPublished(opts: {
   categoryId?: number;
   tagId?: number;
   authorId?: string;
+  excludeIds?: number[];
 }) {
   "use cache";
   cacheLife("hours");
@@ -99,6 +106,9 @@ export async function listPublished(opts: {
   ];
   if (opts.categoryId) conditions.push(eq(schema.posts.categoryId, opts.categoryId));
   if (opts.authorId) conditions.push(eq(schema.posts.authorId, opts.authorId));
+  if (opts.excludeIds && opts.excludeIds.length > 0) {
+    conditions.push(not(inArray(schema.posts.id, opts.excludeIds)));
+  }
 
   const baseQuery = opts.tagId
     ? db
@@ -109,6 +119,10 @@ export async function listPublished(opts: {
           eq(schema.postTags.postId, schema.posts.id),
         )
         .leftJoin(schema.user, eq(schema.user.id, schema.posts.authorId))
+        .leftJoin(
+          schema.categories,
+          eq(schema.categories.id, schema.posts.categoryId),
+        )
         .where(
           and(...conditions, eq(schema.postTags.tagId, opts.tagId)),
         )
@@ -116,6 +130,10 @@ export async function listPublished(opts: {
         .select()
         .from(schema.posts)
         .leftJoin(schema.user, eq(schema.user.id, schema.posts.authorId))
+        .leftJoin(
+          schema.categories,
+          eq(schema.categories.id, schema.posts.categoryId),
+        )
         .where(and(...conditions));
 
   return await baseQuery
@@ -131,11 +149,15 @@ export async function listPublished(opts: {
  * page numbers). Cached identically to listPublished so the count refreshes on
  * publish. Uses count(distinct posts.id) for the tag-filter case to avoid the
  * innerJoin to postTags double-counting.
+ *
+ * excludeIds (260823-4yc decision 2): mirrors listPublished so the homepage
+ * totalPages match the hero-excluded feed.
  */
 export async function countPublished(opts: {
   categoryId?: number;
   tagId?: number;
   authorId?: string;
+  excludeIds?: number[];
 } = {}): Promise<number> {
   "use cache";
   cacheLife("hours");
@@ -149,6 +171,9 @@ export async function countPublished(opts: {
   ];
   if (opts.categoryId) conditions.push(eq(schema.posts.categoryId, opts.categoryId));
   if (opts.authorId) conditions.push(eq(schema.posts.authorId, opts.authorId));
+  if (opts.excludeIds && opts.excludeIds.length > 0) {
+    conditions.push(not(inArray(schema.posts.id, opts.excludeIds)));
+  }
 
   const baseQuery = opts.tagId
     ? db
@@ -175,7 +200,8 @@ export async function countPublished(opts: {
  *
  * Home hero = most-recently-published featured post. Editors tick "Feature this"
  * in the post editor (the `featured` boolean flag). Left-joins `user` so the hero
- * can render the author byline (D-11).
+ * can render the author byline (D-11) and `categories` so the featured card can
+ * render its category tag (260823-4yc decision 3).
  */
 export async function listFeatured(limit = 5) {
   "use cache";
@@ -186,6 +212,10 @@ export async function listFeatured(limit = 5) {
     .select()
     .from(schema.posts)
     .leftJoin(schema.user, eq(schema.user.id, schema.posts.authorId))
+    .leftJoin(
+      schema.categories,
+      eq(schema.categories.id, schema.posts.categoryId),
+    )
     .where(
       and(
         eq(schema.posts.featured, true),
@@ -203,6 +233,10 @@ export async function listFeatured(limit = 5) {
  * Primary: posts in the same category (latest-published first), excluding current.
  * If fewer than `limit`, fills with posts sharing tags via postTags join.
  * Cap 3–4 (default 3). Excludes the current post by id.
+ *
+ * Every returned row carries posts + user + categories keys (260823-4yc decision 3)
+ * — the tag branch also keeps postTags — so RelatedPosts can feed rows straight
+ * through the shared toPostCardProps mapper (category tag, avatar, read time).
  */
 export async function listRelated(
   postId: number,
@@ -227,6 +261,11 @@ export async function listRelated(
   const sameCategory = await db
     .select()
     .from(schema.posts)
+    .leftJoin(schema.user, eq(schema.user.id, schema.posts.authorId))
+    .leftJoin(
+      schema.categories,
+      eq(schema.categories.id, schema.posts.categoryId),
+    )
     .where(and(...categoryConditions))
     .orderBy(desc(schema.posts.publishedAt))
     .limit(limit);
@@ -234,7 +273,7 @@ export async function listRelated(
   if (sameCategory.length >= limit) return sameCategory;
 
   // Step 2: fill with tag-sharing posts.
-  const excludeIds = [postId, ...sameCategory.map((p) => p.id)];
+  const excludeIds = [postId, ...sameCategory.map((r) => r.posts.id)];
   const needed = limit - sameCategory.length;
 
   const tagMatches = await db
@@ -243,6 +282,11 @@ export async function listRelated(
     .innerJoin(
       schema.postTags,
       eq(schema.postTags.postId, schema.posts.id),
+    )
+    .leftJoin(schema.user, eq(schema.user.id, schema.posts.authorId))
+    .leftJoin(
+      schema.categories,
+      eq(schema.categories.id, schema.posts.categoryId),
     )
     .where(
       and(
@@ -255,15 +299,11 @@ export async function listRelated(
     .limit(needed);
 
   // Deduplicate tag matches (a post may share multiple tags) and return combined.
-  const seen = new Set(sameCategory.map((p) => p.id));
+  // Both branches return { posts, ... } rows now, so the check is uniform.
+  const seen = new Set(sameCategory.map((r) => r.posts.id));
   const uniqueTagMatches = tagMatches.filter((r) => {
-    if ("posts" in r) {
-      if (seen.has((r as { posts: { id: number } }).posts.id)) return false;
-      seen.add((r as { posts: { id: number } }).posts.id);
-      return true;
-    }
-    if (seen.has((r as { id: number }).id)) return false;
-    seen.add((r as { id: number }).id);
+    if (seen.has(r.posts.id)) return false;
+    seen.add(r.posts.id);
     return true;
   });
 

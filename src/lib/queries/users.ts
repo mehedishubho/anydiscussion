@@ -1,6 +1,7 @@
 // src/lib/queries/users.ts
 // [CITED: 06-01-PLAN.md Task 2 — public author reads (D-11)]
 // [CITED: 06-PATTERNS.md — adapt src/actions/posts.ts listPosts author scoping]
+// [CITED: 260823-4yc-PLAN.md Task 1 — categories leftJoin on listAuthorPosts (decision 3)]
 //
 // Public read queries for author pages (/author/[username]). Published content
 // is public — NO permission checks (T-06-02). The author is identified by the
@@ -40,6 +41,8 @@ export async function getUserByUsername(username: string) {
  *
  * Paginated. Only published, non-deleted posts (T-06-02). Ordered by
  * publishedAt desc. Cached via 'use cache' + cacheTag("posts-list").
+ * Left-joins `categories` (after the user innerJoin) so the upgraded PostCard
+ * renders its category tag (260823-4yc decision 3).
  */
 export async function listAuthorPosts(username: string, page: number) {
   "use cache";
@@ -52,6 +55,10 @@ export async function listAuthorPosts(username: string, page: number) {
     .select()
     .from(schema.posts)
     .innerJoin(schema.user, eq(schema.user.id, schema.posts.authorId))
+    .leftJoin(
+      schema.categories,
+      eq(schema.categories.id, schema.posts.categoryId),
+    )
     .where(
       and(
         eq(schema.user.username, username),
