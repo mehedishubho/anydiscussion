@@ -11,6 +11,11 @@
 // This form has ZERO client JS. Filter changes re-navigate to /search with the new
 // searchParams (the browser handles the GET submit; no JS intercepts).
 //
+// Inputs use `defaultValue` (NOT `value`): these are UNCONTROLLED native inputs the browser
+// owns. `value` without `onChange` makes React treat them as controlled + read-only, emitting
+// "you provided a `value` prop without an `onChange` handler". `defaultValue` pre-fills the
+// current searchParams and lets the user type freely — correct for a progressive-enhancement form.
+//
 // The category dropdown options come from listCategoriesWithCounts (cached). Inputs
 // are pre-filled with the current searchParams values (passed as props from the page)
 // so the form reflects the active query on re-render after a GET.
@@ -74,7 +79,7 @@ export default async function SearchForm({ values }: SearchFormProps) {
             id="search-q"
             type="search"
             name="q"
-            value={values.q}
+            defaultValue={values.q}
             placeholder="Search posts…"
             autoComplete="off"
             // D-09: NO client autocomplete. spellcheck off avoids OS spell-underlines
@@ -110,7 +115,7 @@ export default async function SearchForm({ values }: SearchFormProps) {
           <select
             id="search-category"
             name="category"
-            value={values.category}
+            defaultValue={values.category}
             className={INPUT_CLASS}
           >
             <option value="">All categories</option>
@@ -130,7 +135,7 @@ export default async function SearchForm({ values }: SearchFormProps) {
             id="search-author"
             type="text"
             name="author"
-            value={values.author}
+            defaultValue={values.author}
             placeholder="e.g. mehedi"
             autoComplete="off"
             className={INPUT_CLASS}
@@ -145,7 +150,7 @@ export default async function SearchForm({ values }: SearchFormProps) {
             id="search-date-from"
             type="date"
             name="dateFrom"
-            value={values.dateFrom}
+            defaultValue={values.dateFrom}
             className={INPUT_CLASS}
           />
         </div>
@@ -158,7 +163,7 @@ export default async function SearchForm({ values }: SearchFormProps) {
             id="search-date-to"
             type="date"
             name="dateTo"
-            value={values.dateTo}
+            defaultValue={values.dateTo}
             className={INPUT_CLASS}
           />
         </div>
