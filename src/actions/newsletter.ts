@@ -6,7 +6,7 @@
 //  (Wave 3's subscribeNewsletter: honeypot + per-IP rate limit, no permission gate)]
 //
 // The newsletter Server Actions. Wave 2 shipped saveNewsletterSettings (admin
-// config); Wave 3 adds subscribeNewsletter (public subscribe + honeypot +
+// config); Wave 3 added subscribeNewsletter (public subscribe + honeypot +
 // per-IP rate limit); Wave 4 adds listSubscribers/countSubscribers/
 // deleteSubscriber (admin list hygiene surface).
 //
@@ -25,7 +25,8 @@
 import { revalidatePath, revalidateTag } from "next/cache";
 import { headers } from "next/headers";
 import { db, schema } from "@/lib/db";
-import { eq } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
+import { z } from "zod";
 import { requireRole } from "@/lib/permissions";
 import { log } from "@/lib/log";
 import { newsletterLimiter } from "@/lib/rate-limit";
@@ -207,4 +208,77 @@ export async function subscribeNewsletter(
     });
     return { status: "error", message: "UNKNOWN" };
   }
+}
+
+// === 260824-3l2 D-03: admin subscriber management (Wave 4) ====================
+//
+// List hygiene surface — NOT a CRUD editor (no create: the public form does
+// that; no edit: invites typos into a field the subscriber owns). Every action
+// below starts with await requireRole("admin") as its FIRST line, before Zod
+// parse and before any DB access. The repo-root middleware matcher on
+// /dashboard/:path* is a UX gate only (forged cookies pass it) — the
+// requireRole re-check inside each action is the real gate (CLAUDE.md
+// "never rely on UI hiding alone"; proven by MUST_NOT_BE_REACHED tests).
+
+/** Dashboard page size for the subscribers list (users.ts pagination shape). */
+const SUBSCRIBERS_PAGE_SIZE = 20;
+
+/**
+ * listSubscribers — one page of subscribers, newest first.
+ *
+ * Selects EXPLICIT columns id/email/status/createdAt — NEVER the token column:
+ * it is an unsubscribe credential and does not belong in dashboard payloads or
+ * logs (T-3l2-05). NOT cached — dashboard read, no "use cache" anywhere in
+ * (admin).
+ */
+export async function listSubscribers(page: number) {
+  // Admin re-check FIRST (D-03).
+  await requireRole("admin");
+  const safePage = Math.max(1, page);
+  const offset = (safePage - 1) * SUBSCRIBERS_PAGE_SIZE;
+  return db
+    .select({
+      id: schema.subscribers.id,
+      email: schema.subscribers.email,
+      status: schema.subscribers.status,
+      createdAt: schema.subscribers.createdAt,
+    })
+    .from(schema.subscribers)
+    .orderBy(desc(schema.subscribers.createdAt))
+    .offset(offset)
+    .limit(SUBSCRIBERS_PAGE_SIZE);
+}
+
+/**
+ * countSubscribers — total row count for pageCount math (the page computes
+ * pageCount = Math.max(1, Math.ceil(count / 20))). Same select-count shape as
+ * src/lib/queries/posts.ts L190.
+ */
+export async function countSubscribers(): Promise<number> {
+  // Admin re-check FIRST (D-03).
+  await requireRole("admin");
+  const [row] = await db
+    .select({ value: sql<number>`count(*)` })
+    .from(schema.subscribers);
+  return Number(row?.value ?? 0);
+}
+
+/**
+ * deleteSubscriber — HARD delete (no soft-delete on this utility table: D-08 —
+ * a soft-deleted email's unique row would be resurrected by the D-01 upsert).
+ * Zod-validates the id as a positive integer AFTER the role gate, then deletes
+ * by id. NO revalidation needed — no public cached surface reads subscribers;
+ * the dashboard table refreshes via TanStack invalidation.
+ *
+ * @throws Error("FORBIDDEN") when the caller is not admin (requireRole FIRST).
+ * @throws ZodError when id is not a positive integer (after the role gate).
+ */
+export async function deleteSubscriber(id: number): Promise<{ ok: true }> {
+  // Admin re-check FIRST (D-03) — before the Zod parse, before any DB access.
+  await requireRole("admin");
+  const parsedId = z.number().int().positive().parse(id);
+  await db
+    .delete(schema.subscribers)
+    .where(eq(schema.subscribers.id, parsedId));
+  return { ok: true };
 }

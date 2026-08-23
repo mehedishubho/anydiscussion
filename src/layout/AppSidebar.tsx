@@ -71,6 +71,15 @@ const navItems: NavItem[] = [
     path: "/dashboard/users",
     requiredRole: "admin",
   },
+  // 260824-3l2 — newsletter subscriber management (D-03). Admin surfaces
+  // grouped after Users; ListIcon is already imported (no new icon). UX-only
+  // gate — list/count/delete re-check requireRole('admin') FIRST server-side.
+  {
+    icon: <ListIcon />,
+    name: "Subscribers",
+    path: "/dashboard/subscribers",
+    requiredRole: "admin",
+  },
   {
     icon: <PlugInIcon />,
     name: "Settings",
