@@ -2,7 +2,7 @@ import GridShape from "@/components/common/GridShape";
 import ThemeTogglerTwo from "@/components/common/ThemeTogglerTwo";
 
 import { ThemeProvider } from "@/context/ThemeContext";
-import Image from "next/image";
+import BrandLogo from "@/components/common/BrandLogo";
 import Link from "next/link";
 import React from "react";
 
@@ -22,16 +22,13 @@ export default function AuthLayout({
               <GridShape />
               <div className="flex flex-col items-center max-w-xs">
                 <Link href="/" className="block mb-4">
-                  <Image
-                    width={231}
-                    height={48}
-                    src="/images/logo/sees-logo.png"
-                    alt="Logo"
+                  <BrandLogo
+                    iconClassName="h-10 w-10 text-brand-400"
+                    wordmarkClassName="text-2xl font-bold tracking-tight text-white"
                   />
                 </Link>
                 <p className="text-center text-gray-400 dark:text-white/60">
-                  Sensory Everywhere Educational Services Limited (SEES) provides person-centred SEN education and disability support services, empowering individuals with disabilities through expert care, learning, and personalised support.
-
+                  A home for curious minds — read, write, and discuss ideas worth sharing on anydiscussion.com.
                 </p>
               </div>
             </div>
