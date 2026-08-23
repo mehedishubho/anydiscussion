@@ -6,8 +6,8 @@ current_phase: 08
 status: verifying
 stopped_at: Completed 08-03-PLAN.md (Google Drive destination + OAuth callback)
 last_updated: "2026-07-30T02:56:20.394Z"
-last_activity: 2026-08-23
-last_activity_desc: Quick task 260823-79v — two-row header with sticky category bar
+last_activity: 2026-08-24
+last_activity_desc: Quick task 260824-36g — de-brand dashboard/auth from SEES to anydiscussion
 progress:
   total_phases: 8
   completed_phases: 7
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-07-01)
 Phase: 08
 Plan: Not started
 Status: Phase complete — ready for verification
-Last activity: 2026-08-23 — Completed quick task 260823-79v: two-row header with sticky category bar
+Last activity: 2026-08-24 — Completed quick task 260824-36g: de-brand dashboard/auth from SEES to anydiscussion
 
 Progress: [█░░░░░░░░░] 13%
 
@@ -150,6 +150,7 @@ Recent decisions affecting current work:
 | 260823-4yc | Frontpage design homepage (Featured card + Latest 3×4 grid + /page/N pagination) + site-wide PostCard upgrade (category tag, avatar, read time) | 2026-08-22 | 2b46f15 | [260823-4yc-implement-frontpage-design-homepage-site](./quick/260823-4yc-implement-frontpage-design-homepage-site/) |
 | 260823-6je | Site header + footer restyle to frontpage design (speech-bubble logo, outlined circular search button, always-dark 4-column footer with cached dynamic categories + inert newsletter) | 2026-08-22 | 6620a4d | [260823-6je-restyle-public-siteheader-sitefooter-to-](./quick/260823-6je-restyle-public-siteheader-sitefooter-to-/) |
 | 260823-79v | Two-row header per frontpage design — static white nav row + sticky-on-scroll category bar (dynamic categories from DB, configured-only social icons, shared socials modules extracted from footer) | 2026-08-23 | 9deadfb | [260823-79v-two-row-header-per-frontpage-design-row-](./quick/260823-79v-two-row-header-per-frontpage-design-row-/) |
+| 260824-36g | De-brand dashboard/auth surfaces from SEES to anydiscussion — shared BrandLogo component (speech-bubble SVG from SiteHeader), sidebar/header/auth-panel swaps, sign-in metadata, SEES blurb replaced | 2026-08-24 | 5e5d493 | [260824-36g-de-brand-dashboard-from-sees-to-anydiscu](./quick/260824-36g-de-brand-dashboard-from-sees-to-anydiscu/) |
 
 ## Deferred Items
 
