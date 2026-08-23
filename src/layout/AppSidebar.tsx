@@ -81,6 +81,9 @@ const navItems: NavItem[] = [
       // Plan 08-04 ships the Backup route; admin-only (BACKUP-05). UX-only gate — the Server
       // Actions re-check requireRole('admin') FIRST (CLAUDE.md "never rely on UI hiding alone").
       { name: "Backup", path: "/dashboard/settings/backup" },
+      // 260824-3l2 — footer newsletter configuration (D-02). UX-only gate —
+      // saveNewsletterSettings re-checks requireRole('admin') FIRST.
+      { name: "Newsletter", path: "/dashboard/settings/newsletter" },
     ],
   },
   { icon: <UserIcon />, name: "Profile", path: "/dashboard/profile" },
