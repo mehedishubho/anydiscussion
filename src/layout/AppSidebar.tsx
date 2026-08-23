@@ -26,7 +26,7 @@
 //   required OR the viewer's role matches the requirement (admin always passes).
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import Image from "next/image";
+import BrandLogo from "@/components/common/BrandLogo";
 import { usePathname } from "next/navigation";
 import { useSidebar } from "../context/SidebarContext";
 import {
@@ -354,19 +354,9 @@ const AppSidebar: React.FC<AppSidebarProps> = ({ role }) => {
       >
         <Link href="/dashboard">
           {isExpanded || isHovered || isMobileOpen ? (
-            <Image
-              src="/images/logo/sees-logo.png"
-              alt="SEES"
-              width={150}
-              height={32}
-            />
+            <BrandLogo />
           ) : (
-            <Image
-              src="/images/logo/logo-icon.svg"
-              alt="Logo"
-              width={32}
-              height={32}
-            />
+            <BrandLogo wordmark={false} />
           )}
         </Link>
       </div>
