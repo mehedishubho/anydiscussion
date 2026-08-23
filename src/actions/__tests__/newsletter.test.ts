@@ -27,6 +27,8 @@ const {
   insertValuesMock,
   insertOnConflictMock,
   insertOnConflictUpdateMock,
+  deleteMock,
+  deleteWhereMock,
   revalidatePathMock,
   revalidateTagMock,
   headersMock,
@@ -43,6 +45,10 @@ const {
   insertValuesMock: vi.fn(),
   insertOnConflictMock: vi.fn(),
   insertOnConflictUpdateMock: vi.fn(),
+  // delete chain (Wave 4): db.delete(schema.subscribers).where(eq(id)) —
+  // deleteMock records the table, deleteWhereMock is the terminal promise.
+  deleteMock: vi.fn(),
+  deleteWhereMock: vi.fn(),
   revalidatePathMock: vi.fn(),
   revalidateTagMock: vi.fn(),
   headersMock: vi.fn(),
@@ -77,17 +83,19 @@ vi.mock("@/lib/rate-limit", () => ({
   newsletterLimiter: { limit: (...a: unknown[]) => newsletterLimiterMock(...a) },
 }));
 
-// db — chainable update + insert matching BOTH insert shapes in the actions:
-// upsertSetting (settings insert → onConflictDoNothing) and the D-01 subscribe
-// upsert (subscribers insert → onConflictDoUpdate). updateSetMock records every
-// .set() patch so key/value persistence can be asserted precisely.
+// db — chainable update + insert + delete + select matching the action shapes:
+// upsertSetting (settings insert → onConflictDoNothing), the D-01 subscribe
+// upsert (subscribers insert → onConflictDoUpdate), deleteSubscriber
+// (delete → where), and the Wave-4 reader chains (from → where/orderBy).
 vi.mock("@/lib/db", () => {
   return {
     db: {
-      // Readers (listSubscribers etc., Wave 4) extend this select chain later.
       select: vi.fn(() => ({
         from: vi.fn(() => ({
           where: vi.fn(() => ({ limit: vi.fn(() => Promise.resolve([])) })),
+          orderBy: vi.fn(() => ({
+            offset: vi.fn(() => ({ limit: vi.fn(() => Promise.resolve([])) })),
+          })),
         })),
       })),
       insert: vi.fn(() => ({
@@ -107,6 +115,12 @@ vi.mock("@/lib/db", () => {
           };
         },
       })),
+      delete: vi.fn((t: unknown) => {
+        deleteMock(t);
+        return {
+          where: (...a: unknown[]) => deleteWhereMock(...a),
+        };
+      }),
     },
     schema: {
       settings: { key: "key", value: "value", updatedAt: "updated_at" },
@@ -124,7 +138,12 @@ vi.mock("@/lib/db", () => {
   };
 });
 
-import { saveNewsletterSettings, subscribeNewsletter } from "../newsletter";
+import {
+  saveNewsletterSettings,
+  subscribeNewsletter,
+  listSubscribers,
+  deleteSubscriber,
+} from "../newsletter";
 
 const adminSession = () => ({
   user: { id: "u-admin", role: "admin" },
@@ -334,5 +353,53 @@ describe("260824-3l2 D-01/D-05/D-06: subscribeNewsletter — public subscribe ga
     );
 
     expect(requireRoleMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("260824-3l2 D-03: listSubscribers / deleteSubscriber — admin gates fire FIRST (MUST_NOT_BE_REACHED)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    requireRoleMock.mockResolvedValue(adminSession());
+    deleteWhereMock.mockResolvedValue(undefined);
+  });
+
+  it("non-admin deleteSubscriber → FORBIDDEN before any db.delete (MUST_NOT_BE_REACHED)", async () => {
+    requireRoleMock.mockImplementation(() => {
+      throw new Error("FORBIDDEN");
+    });
+    deleteWhereMock.mockImplementation(() => {
+      throw new Error("MUST_NOT_BE_REACHED");
+    });
+
+    await expect(deleteSubscriber(1)).rejects.toThrow("FORBIDDEN");
+    expect(requireRoleMock).toHaveBeenCalledWith("admin");
+    expect(deleteMock).not.toHaveBeenCalled();
+    expect(deleteWhereMock).not.toHaveBeenCalled();
+  });
+
+  it("non-admin listSubscribers → FORBIDDEN before any db.select", async () => {
+    requireRoleMock.mockImplementation(() => {
+      throw new Error("FORBIDDEN");
+    });
+
+    await expect(listSubscribers(1)).rejects.toThrow("FORBIDDEN");
+    expect(requireRoleMock).toHaveBeenCalledWith("admin");
+  });
+
+  it("admin deleteSubscriber → HARD delete via db.delete where id, returns ok (no soft-delete on this utility table)", async () => {
+    const result = await deleteSubscriber(7);
+
+    expect(result).toEqual({ ok: true });
+    expect(requireRoleMock).toHaveBeenCalledWith("admin");
+    expect(deleteMock).toHaveBeenCalledTimes(1);
+    expect(deleteWhereMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("deleteSubscriber rejects a non-positive/non-integer id via Zod before any DB call", async () => {
+    await expect(deleteSubscriber(0)).rejects.toThrow();
+    await expect(deleteSubscriber(-3)).rejects.toThrow();
+    await expect(deleteSubscriber(2.5)).rejects.toThrow();
+    expect(deleteMock).not.toHaveBeenCalled();
+    expect(deleteWhereMock).not.toHaveBeenCalled();
   });
 });
