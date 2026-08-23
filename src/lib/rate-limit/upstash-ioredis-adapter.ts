@@ -102,3 +102,22 @@ export const contactFormLimiter = new Ratelimit({
   prefix: "ratelimit:contact",
   analytics: false,
 });
+
+/**
+ * Newsletter subscribe rate limiter (260824-3l2 D-05).
+ *
+ * Policy: 5 subscribes per IP per 1 hour — the same policy as the contact
+ * form (260824-3l2 research A2; independently tunable since the instance is
+ * separate). Second Ratelimit over a NEW IoredisAdapter instance with its own
+ * prefix so the newsletter counters never collide with contact counters.
+ * Backed by the self-hosted Redis via the same structural adapter (NOT the
+ * in-memory fallback — that was deliberately removed in 07-02 and is NOT
+ * reintroduced). `analytics: false` keeps @upstash/core-analytics inert.
+ */
+export const newsletterLimiter = new Ratelimit({
+  // @ts-expect-error -- same structural-adapter note as contactFormLimiter above: IoredisAdapter implements the evalsha/eval/get/set shape @upstash/ratelimit@2.0.8's slidingWindow algorithm calls; TS cannot reconcile the TData generic across the cross-library type boundary.
+  redis: new IoredisAdapter(),
+  limiter: Ratelimit.slidingWindow(5, "1 h"),
+  prefix: "ratelimit:newsletter",
+  analytics: false,
+});

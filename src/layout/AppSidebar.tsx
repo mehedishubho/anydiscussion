@@ -71,6 +71,15 @@ const navItems: NavItem[] = [
     path: "/dashboard/users",
     requiredRole: "admin",
   },
+  // 260824-3l2 — newsletter subscriber management (D-03). Admin surfaces
+  // grouped after Users; ListIcon is already imported (no new icon). UX-only
+  // gate — list/count/delete re-check requireRole('admin') FIRST server-side.
+  {
+    icon: <ListIcon />,
+    name: "Subscribers",
+    path: "/dashboard/subscribers",
+    requiredRole: "admin",
+  },
   {
     icon: <PlugInIcon />,
     name: "Settings",
@@ -81,6 +90,9 @@ const navItems: NavItem[] = [
       // Plan 08-04 ships the Backup route; admin-only (BACKUP-05). UX-only gate — the Server
       // Actions re-check requireRole('admin') FIRST (CLAUDE.md "never rely on UI hiding alone").
       { name: "Backup", path: "/dashboard/settings/backup" },
+      // 260824-3l2 — footer newsletter configuration (D-02). UX-only gate —
+      // saveNewsletterSettings re-checks requireRole('admin') FIRST.
+      { name: "Newsletter", path: "/dashboard/settings/newsletter" },
     ],
   },
   { icon: <UserIcon />, name: "Profile", path: "/dashboard/profile" },

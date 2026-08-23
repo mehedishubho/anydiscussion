@@ -43,6 +43,13 @@
       "when": 1783437821070,
       "tag": "0005_add_featured_views_username_fts",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1787518962798,
+      "tag": "0006_add_subscribers",
+      "breakpoints": true
     }
   ]
 }

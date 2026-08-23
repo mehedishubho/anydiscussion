@@ -3,11 +3,12 @@
 // Clean-room migration drift test (FOUND-06, D-09).
 //
 // Applies every committed migration to a FRESH EMPTY Postgres and asserts all
-// 12 expected tables are present in information_schema.tables. This is the
+// 13 expected tables are present in information_schema.tables. This is the
 // drift gate that catches schema-vs-migration drift: if a developer edits
 // schema.ts but forgets to run `pnpm db:generate`, the generated migration
 // set will either fail to apply or produce a schema that doesn't match.
-// (8 Phase-1 tables + user/session/account/verification Phase-2 auth tables.)
+// (8 Phase-1 tables + user/session/account/verification Phase-2 auth tables
+//  + the 260824-3l2 subscribers newsletter table.)
 //
 // Port note: the throwaway postgres-test service is on host port 5436
 // (remapped from the original 5433 because host 5433 was already bound by a
@@ -56,6 +57,8 @@ async function runCleanRoomTest() {
       "session",
       "account",
       "verification",
+      // 260824-3l2 — newsletter subscribers (hard-delete utility table):
+      "subscribers",
     ];
     const missing = expected.filter((t) => !tables.includes(t));
     if (missing.length > 0) {
