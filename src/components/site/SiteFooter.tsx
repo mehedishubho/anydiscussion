@@ -1,29 +1,43 @@
 // src/components/site/SiteFooter.tsx
 // [CITED: 06-02-PLAN.md Task 1 — public site footer]
 // [CITED: 06-CONTEXT.md D-10 — footer = short site blurb + legal links + quick links + optional socials]
-// [CITED: 260823-6je-PLAN.md locked decision 2 — Newsletter column is frontend-only visuals (inert button, no form, no Server Action, zero client JS)]
+// [CITED: 260823-6je-PLAN.md locked decision 2 — SUPERSEDED by 260824-3l2 D-06:
+//  the Newsletter column is now a functional client island (useActionState +
+//  subscribeNewsletter Server Action) rendered inside this cache boundary,
+//  not the inert visuals the earlier task shipped]
+// [CITED: 260824-3l2-CONTEXT.md D-02 — newsletter.enabled=false renders NO
+//  newsletter column at all (not a disabled form); texts come from the
+//  newsletter.* settings keys with built-in defaults]
+// [CITED: 260824-3l2-CONTEXT.md D-06 — Server Action is the only mutation path;
+//  the column is a small client island inside the cached footer (only string
+//  props cross the cache boundary — the island imports the action directly)]
 // [CITED: 260823-6je-PLAN.md locked decision 3 — social circles render ONLY for configured settings keys; no Instagram, no dead "#" links]
 // [CITED: 260823-6je-PLAN.md locked decision 6 — footer is ALWAYS dark: gray-900 light mode / gray-950 dark mode, white/10 borders]
 // [CITED: 260823-6je-PLAN.md locked decision 7 — dynamic Categories column bounded ~6; footer cache carries BOTH tags: seo-settings AND posts-list]
 // [CITED: 260823-79v-PLAN.md Task 1 — readSocialLinks + SOCIAL_ICON_PATHS extracted to shared modules (social-links query + footer-links pure lib); imports-only rewiring, rendered output unchanged]
 //
-// Public site footer. Server component (no "use client") — pure visuals for the
-// newsletter column (decision 2): the Subscribe button is inert (type="button",
-// no wrapping form, no Server Action); backend wiring comes in a later task.
-// Legal links point to the dashboard-managed `pages` routes (T&C + Privacy per
-// SITE-11); they live in the Quick Links column — the 4-column design has no
-// fifth Legal column (260823-6je).
+// Public site footer. Cached Server Component ('use cache' below). The
+// newsletter column is a CLIENT ISLAND (NewsletterForm) — the first client
+// child of a component-level 'use cache' boundary in this codebase; the
+// documented-safe shape (Next 16 use-cache docs: cached components may return
+// trees containing client components; the island imports the Server Action
+// itself, so no function prop crosses the boundary). Legal links point to the
+// dashboard-managed `pages` routes (T&C + Privacy per SITE-11); they live in
+// the Quick Links column — the 4-column design has no fifth Legal column
+// (260823-6je).
 
 import Link from "next/link";
 import { cacheTag } from "next/cache";
 import { getSeoSettings } from "@/lib/seo/settings";
 import { listCategoriesWithCounts } from "@/lib/queries/taxonomy";
 import { readSocialLinks } from "@/lib/queries/social-links";
+import { readNewsletterSettings } from "@/lib/queries/newsletter-settings";
 import {
   pickSocialLinks,
   boundFooterCategories,
   SOCIAL_ICON_PATHS,
 } from "@/lib/footer-links";
+import NewsletterForm from "@/components/site/NewsletterForm";
 
 /**
  * SiteFooter — public site chrome bottom slab.
@@ -32,7 +46,8 @@ import {
  * white/10 borders — interior classes use ONE white/gray palette set with no
  * dark: variants. Four columns: brand + blurb + configured-only social circles
  * (decision 3) / Quick Links incl. legal / dynamic bounded Categories
- * (decision 7) / inert Newsletter visuals (decision 2).
+ * (decision 7) / Newsletter client island — settings-driven, rendered ONLY
+ * while newsletter.enabled (260824-3l2 D-02/D-06).
  */
 export default async function SiteFooter() {
   // Cache Component: the footer renders in the shared (site) layout, and
@@ -50,10 +65,15 @@ export default async function SiteFooter() {
   "use cache";
   cacheTag("seo-settings");
   cacheTag("posts-list");
-  const [seo, socials, categories] = await Promise.all([
+  // readNewsletterSettings runs at cache-fill time; its result is captured in
+  // the cached output. Revalidation via this boundary's OWN seo-settings tag
+  // (saveNewsletterSettings -> revalidateTag('seo-settings','max')) re-renders
+  // the footer with new texts/visibility — no rebuild, no new cache machinery.
+  const [seo, socials, categories, newsletter] = await Promise.all([
     getSeoSettings(),
     readSocialLinks(),
     listCategoriesWithCounts(),
+    readNewsletterSettings(),
   ]);
 
   const year = new Date().getFullYear();
@@ -188,30 +208,20 @@ export default async function SiteFooter() {
             </ul>
           </nav>
 
-          {/* Newsletter — frontend-only visuals (decision 2): inert input + button, NO form element, NO Server Action */}
-          <div>
-            <h3 className="mb-4 text-base font-semibold text-white">
-              Newsletter
-            </h3>
-            <p className="mb-4 text-sm text-gray-400">
-              Subscribe for the latest posts delivered straight to your inbox.
-            </p>
-            <div className="flex gap-3">
-              <input
-                type="email"
-                name="email"
-                placeholder="Enter your email"
-                aria-label="Email address"
-                className="w-full min-w-0 flex-1 rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white transition-colors placeholder:text-gray-500 focus:border-brand-400 focus:outline-none"
-              />
-              <button
-                type="button"
-                className="shrink-0 rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-brand-600"
-              >
-                Subscribe
-              </button>
-            </div>
-          </div>
+          {/* Newsletter — client island inside the cache boundary (260824-3l2
+              D-02/D-06). enabled=false renders NO column at all (not a disabled
+              form); the lg grid then lays 3 children in 4 tracks — accepted
+              cosmetic (research A4), deliberately NO grid-class switching.
+              Only the three string props cross the cache boundary; the island
+              imports subscribeNewsletter directly (no function props, no
+              headers() inside 'use cache'). */}
+          {newsletter.enabled ? (
+            <NewsletterForm
+              heading={newsletter.heading}
+              description={newsletter.description}
+              successMessage={newsletter.successMessage}
+            />
+          ) : null}
         </div>
 
         <div className="mt-10 border-t border-white/10 pt-6 text-center text-xs text-gray-500">
