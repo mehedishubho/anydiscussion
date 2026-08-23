@@ -20,17 +20,19 @@ import type { FooterCategoryLite } from "@/lib/footer-links";
  * name-ascending (localeCompare) tie-break BEFORE slicing — the same
  * comparator semantics as boundFooterCategories (deliberate consistency) —
  * then slices to `limit` (default 10). Rows from listCategoriesWithCounts
- * (src/lib/queries/taxonomy) structurally satisfy FooterCategoryLite (they
- * carry extra fields — fine).
+ * (src/lib/queries/taxonomy) structurally satisfy FooterCategoryLite; the
+ * generic signature preserves each row's full type (e.g. `id` for React
+ * keys) through the copy-sort-slice pipeline — extra fields ride along
+ * untouched.
  *
  * Most-published categories fill the bar; zero-count ones only appear when
  * the roster is short. Horizontal overflow in the bar markup (Task 3) is the
  * degrade path for many/long (Bangla) names — no truncation logic here.
  */
-export function boundHeaderBarCategories(
-  categories: readonly FooterCategoryLite[],
+export function boundHeaderBarCategories<T extends FooterCategoryLite>(
+  categories: readonly T[],
   limit = 10,
-): FooterCategoryLite[] {
+): T[] {
   return [...categories]
     .sort(
       (a, b) => b.postCount - a.postCount || a.name.localeCompare(b.name),
