@@ -1,4 +1,4 @@
-// src/db/schema.ts (12 tables — 8 Phase-1 + user/session/account/verification Phase-2)
+// src/db/schema.ts (13 tables — 8 Phase-1 + user/session/account/verification Phase-2 + subscribers)
 // [CITED: CLAUDE.md schema reference + drizzle-orm/pg-core verified builders
 //  + better-auth/cli-generated auth-schema.ts (Phase 2)]
 // The single source of truth for the database schema.
@@ -12,6 +12,10 @@
 //          FK constraints ADDED Phase 2 (this file) — .references(() => user.id / categories.id)
 //  - D-08: soft-delete (deletedAt) on content tables (posts, pages, media, categories, tags);
 //          hard-delete on join/utility tables (settings, postTags, postSeo — no deletedAt)
+//  - D-08 (260824-3l2): subscribers is a hard-delete utility table — NO deletedAt.
+//          A soft-deleted email's unique row would be resurrected by onConflictDoUpdate
+//          with stale token/createdAt semantics; "unsubscribed" IS the soft state
+//          via the subscriber_status enum.
 //  - D-11: forward-only migrations; no down/rollback scripts
 //  - D-24/D-25: user.bio + user.avatar (AUTH-08 — Phase 6 byline/avatar via R2 key)
 //
@@ -196,6 +200,42 @@ export const redirects = pgTable("redirects", {
   newPath: varchar("new_path", { length: 255 }).notNull(),
   statusCode: integer("status_code").default(301).notNull(), // 301 | 302
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at")
+    .defaultNow()
+    .$onUpdate(() => new Date())
+    .notNull(),
+});
+
+// subscribers (newsletter — D-01 single opt-in, D-04 token-ready, hard-delete utility table)
+// [CITED: 260824-3l2-CONTEXT.md D-01 — single opt-in, status active on subscribe,
+//  idempotent re-subscribe via onConflictDoUpdate on email]
+// [CITED: 260824-3l2-CONTEXT.md D-04 — unique unsubscribe token present from birth;
+//  the public /newsletter/unsubscribe route is deferred until email sending exists]
+// pgEnum (NOT text + check) matches the postStatusEnum precedent. NO deletedAt —
+// see the D-08 note in the header ("unsubscribed" is the soft state via the enum).
+// NO ip column — IP is used transiently for the rate limit only, never stored
+// (260824-3l2 research A3: no PII retention, same ethos as contact.ts).
+export const subscriberStatusEnum = pgEnum("subscriber_status", [
+  "active",
+  "unsubscribed",
+]);
+export const subscribers = pgTable("subscribers", {
+  id: serial("id").primaryKey(),
+  // Lowercase-normalized before insert — normalization lives in the Zod schema
+  // (z.string().trim().toLowerCase().email()), no citext extension (Better Auth
+  // itself lowercases emails; unique is case-sensitive on plain text).
+  email: text("email").notNull().unique(),
+  status: subscriberStatusEnum("status").default("active").notNull(),
+  // crypto.randomUUID() generated at insert time INSIDE the Server Action, never
+  // inside the footer component (D-04 token-ready for the future unsubscribe
+  // route; unlike posts.previewToken it is notNull because every row needs it
+  // from birth).
+  token: varchar("token", { length: 255 }).notNull().unique(),
+  // The "subscribed at" timestamp shown in the dashboard.
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  // Re-subscribe flips status back to active (D-01) — the Server Action sets an
+  // EXPLICIT updatedAt in the onConflictDoUpdate set clause because $onUpdate
+  // does not reliably fire on the conflict path.
   updatedAt: timestamp("updated_at")
     .defaultNow()
     .$onUpdate(() => new Date())
