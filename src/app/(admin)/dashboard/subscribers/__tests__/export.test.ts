@@ -33,7 +33,7 @@ describe("260824-3l2 D-03/T-3l2-06: toSubscribersCsv — CSV export helper", () 
   it("output starts with the UTF-8 BOM (first char code 0xfeff)", () => {
     const csv = toSubscribersCsv([]);
     expect(csv.charCodeAt(0)).toBe(0xfeff);
-    expect(csv.startsWith("﻿")).toBe(true);
+    expect(csv.startsWith("\uFEFF")).toBe(true);
   });
 
   it("header row is exactly email,status,subscribed_at with every field quoted", () => {

@@ -98,6 +98,18 @@ export default function SubscribersTable({
 
   return (
     <>
+      {/* Export CSV (D-03) — plain anchor to the Route Handler: native browser
+          download, zero client JS. Secondary styling (the + New Category button's
+          sibling); the route re-checks requireRole("admin") in-handler (403). */}
+      <div className="mb-4 flex justify-end">
+        <a
+          href="/dashboard/subscribers/export"
+          className="inline-flex items-center justify-center gap-2 rounded-lg bg-white px-4 py-2.5 text-sm font-medium text-gray-700 shadow-theme-xs ring-1 ring-inset ring-gray-300 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:ring-gray-700"
+        >
+          Export CSV
+        </a>
+      </div>
+
       {errorMsg && (
         <div className="mb-4 rounded-lg border border-error-300 bg-error-50 p-3 text-sm text-error-700 dark:border-error-700 dark:bg-error-900/20 dark:text-error-300">
           {errorMsg}
