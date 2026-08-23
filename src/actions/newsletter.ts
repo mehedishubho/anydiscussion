@@ -5,10 +5,10 @@
 // [CITED: src/actions/contact.ts — the public-unauthenticated-action template
 //  (Wave 3's subscribeNewsletter: honeypot + per-IP rate limit, no permission gate)]
 //
-// The newsletter Server Actions. Wave 2 ships saveNewsletterSettings ONLY —
-// subscribeNewsletter arrives in Wave 3 (public subscribe + rate limit),
-// listSubscribers/countSubscribers/deleteSubscriber in Wave 4 (admin list
-// hygiene surface).
+// The newsletter Server Actions. Wave 2 shipped saveNewsletterSettings (admin
+// config); Wave 3 adds subscribeNewsletter (public subscribe + honeypot +
+// per-IP rate limit); Wave 4 adds listSubscribers/countSubscribers/
+// deleteSubscriber (admin list hygiene surface).
 //
 // Security (260824-3l2 threat model T-3l2-02): requireRole("admin") is the
 // FIRST line of every gated action here, BEFORE any Zod parse or DB write.
@@ -23,13 +23,17 @@
 // the first submission).
 "use server";
 import { revalidatePath, revalidateTag } from "next/cache";
+import { headers } from "next/headers";
 import { db, schema } from "@/lib/db";
 import { eq } from "drizzle-orm";
 import { requireRole } from "@/lib/permissions";
 import { log } from "@/lib/log";
+import { newsletterLimiter } from "@/lib/rate-limit";
 import {
   newsletterSettingsSchema,
+  subscribeSchema,
   type NewsletterSettingsInput,
+  type SubscribeState,
 } from "./newsletter-schema";
 
 // === 260824-3l2 D-02: newsletter configuration (admin-only save surface) =======
@@ -117,4 +121,90 @@ export async function saveNewsletterSettings(
 
   log.info("newsletter settings saved", { enabled: data.enabled });
   return { ok: true };
+}
+
+// === 260824-3l2 D-01/D-05/D-06: public subscribe (Wave 3) ======================
+//
+// subscribeNewsletter — the SECOND public write surface beside submitContact
+// (src/actions/contact.ts is the template). NO requireRole here: the form is
+// public by design, and the honeypot + per-IP Redis rate limit are the controls
+// (D-05). NO 'use cache' (Pitfall 7 — mutations are never cached).
+
+/**
+ * subscribeNewsletter — the public footer subscribe action (D-01 single opt-in).
+ *
+ * Carries the useActionState signature DIRECTLY (SignUpForm precedent, no local
+ * wrapper): (prev, formData) => Promise&lt;SubscribeState&gt;. Error paths
+ * RETURN error states instead of throwing — a thrown error from a useActionState
+ * action escapes to the error boundary instead of rendering inline; returned
+ * states keep the public footer resilient.
+ *
+ * Order of operations mirrors contact.ts steps 1-3:
+ *   1. Zod parse (email normalized: trim + lowercase — no citext) → INVALID_EMAIL.
+ *   2. Honeypot ("website" non-empty after trim) → SILENT success WITHOUT
+ *      inserting (bots that see errors retry with mutated payloads — D-05).
+ *   3. Per-IP rate limit (x-forwarded-for first value, "unknown" fallback —
+ *      contact.ts's extraction, do not invent a second style) → RATE_LIMITED.
+ *   4. The D-01 upsert, ONE statement, no read-check-write race:
+ *      insert({ email, token: crypto.randomUUID() }).onConflictDoUpdate({
+ *        target: email, set: { status: "active", updatedAt: new Date() } })
+ *      Covers all three branches: first subscribe inserts active; existing
+ *      active is an idempotent no-op success; previously unsubscribed flips
+ *      back to active. The explicit updatedAt in set is REQUIRED — Drizzle's
+ *      $onUpdate does not reliably fire on the conflict path.
+ *
+ * Uniform success on every success path (T-3l2-04): duplicate emails are NEVER
+ * an error and the response never leaks whether the email already existed.
+ */
+export async function subscribeNewsletter(
+  _prev: SubscribeState,
+  formData: FormData,
+): Promise<SubscribeState> {
+  // 1. Validate + normalize via the shared Zod schema. Returned (not thrown)
+  //    error state keeps the footer resilient (see docblock).
+  const parsed = subscribeSchema.safeParse({
+    email: String(formData.get("email") ?? ""),
+    website: String(formData.get("website") ?? ""),
+  });
+  if (!parsed.success) {
+    return { status: "error", message: "INVALID_EMAIL" };
+  }
+
+  // 2. Honeypot — silent succeed WITHOUT inserting (D-05; contact.ts L62-67
+  //    precedent). Bots auto-fill hidden fields named "website".
+  if (parsed.data.website && parsed.data.website.trim() !== "") {
+    return { status: "success" };
+  }
+
+  // 3. Rate limit — per-IP, Redis-backed (5 / 1 h on the newsletterLimiter
+  //    instance — single source of truth in src/lib/rate-limit/). x-forwarded-for
+  //    is the standard proxy header (Coolify's proxy sets it); "unknown"
+  //    fallback when absent (local dev). IP is used transiently here only —
+  //    never stored (research A3: no PII retention).
+  const headerList = await headers();
+  const forwardedFor = headerList.get("x-forwarded-for");
+  const ip = forwardedFor?.split(",")[0]?.trim() || "unknown";
+  const { success } = await newsletterLimiter.limit(ip);
+  if (!success) {
+    return { status: "error", message: "RATE_LIMITED" };
+  }
+
+  // 4. The D-01 upsert in a single statement. The token is generated at
+  //    REQUEST time inside this action — never inside the footer component
+  //    (D-04: every row needs the unsubscribe credential from birth).
+  try {
+    await db
+      .insert(schema.subscribers)
+      .values({ email: parsed.data.email, token: crypto.randomUUID() })
+      .onConflictDoUpdate({
+        target: schema.subscribers.email,
+        set: { status: "active", updatedAt: new Date() },
+      });
+    return { status: "success" };
+  } catch (err) {
+    log.error("newsletter subscribe failed", {
+      message: err instanceof Error ? err.message : String(err),
+    });
+    return { status: "error", message: "UNKNOWN" };
+  }
 }

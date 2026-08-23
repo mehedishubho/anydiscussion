@@ -15,6 +15,13 @@
 // the new `contactFormLimiter.limit(ip)` is async. The single consumer
 // (`src/actions/contact.ts`) is migrated in the same plan.
 //
+// 260824-3l2 adds `newsletterLimiter` (D-05) — the same sliding-window policy
+// over its own adapter instance + `ratelimit:newsletter` prefix, consumed by
+// `src/actions/newsletter.ts` subscribeNewsletter.
+//
 // Server-only — NO "use client" directive.
 
-export { contactFormLimiter } from "./upstash-ioredis-adapter";
+export {
+  contactFormLimiter,
+  newsletterLimiter,
+} from "./upstash-ioredis-adapter";
