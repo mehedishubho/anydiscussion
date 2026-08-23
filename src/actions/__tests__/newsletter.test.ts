@@ -26,19 +26,27 @@ const {
   updateWhereMock,
   insertValuesMock,
   insertOnConflictMock,
+  insertOnConflictUpdateMock,
   revalidatePathMock,
   revalidateTagMock,
+  headersMock,
+  newsletterLimiterMock,
 } = vi.hoisted(() => ({
   requireRoleMock: vi.fn(),
   // update chain: db.update(schema.settings).set(patch).where(eq) — set captures
   // the written patch (key/value assertions), where is the terminal promise.
   updateSetMock: vi.fn(),
   updateWhereMock: vi.fn(),
-  // insert chain: db.insert(schema.settings).values(v).onConflictDoNothing()
+  // insert chain: db.insert(...).values(v) captures the row; both conflict
+  // continuations exist (onConflictDoNothing for upsertSetting, onConflictDoUpdate
+  // for the D-01 subscribe upsert — the config object is captured for assertions).
   insertValuesMock: vi.fn(),
   insertOnConflictMock: vi.fn(),
+  insertOnConflictUpdateMock: vi.fn(),
   revalidatePathMock: vi.fn(),
   revalidateTagMock: vi.fn(),
+  headersMock: vi.fn(),
+  newsletterLimiterMock: vi.fn(),
 }));
 
 vi.mock("@/lib/permissions", () => ({
@@ -58,8 +66,20 @@ vi.mock("next/cache", () => ({
   revalidateTag: (...a: unknown[]) => revalidateTagMock(...a),
 }));
 
-// db — chainable update + insert matching the private upsertSetting helper
-// shape (update-then-insert-onConflictDoNothing). updateSetMock records every
+// next/headers — subscribeNewsletter reads x-forwarded-for (contact.ts
+// extraction: first value, "unknown" fallback). Controllable per-test.
+vi.mock("next/headers", () => ({
+  headers: (...a: unknown[]) => headersMock(...a),
+}));
+
+// @/lib/rate-limit — controllable newsletterLimiter mock (D-05).
+vi.mock("@/lib/rate-limit", () => ({
+  newsletterLimiter: { limit: (...a: unknown[]) => newsletterLimiterMock(...a) },
+}));
+
+// db — chainable update + insert matching BOTH insert shapes in the actions:
+// upsertSetting (settings insert → onConflictDoNothing) and the D-01 subscribe
+// upsert (subscribers insert → onConflictDoUpdate). updateSetMock records every
 // .set() patch so key/value persistence can be asserted precisely.
 vi.mock("@/lib/db", () => {
   return {
@@ -71,9 +91,13 @@ vi.mock("@/lib/db", () => {
         })),
       })),
       insert: vi.fn(() => ({
-        values: vi.fn(() => ({
-          onConflictDoNothing: () => insertOnConflictMock(),
-        })),
+        values: (v: unknown) => {
+          insertValuesMock(v);
+          return {
+            onConflictDoNothing: () => insertOnConflictMock(),
+            onConflictDoUpdate: (cfg: unknown) => insertOnConflictUpdateMock(cfg),
+          };
+        },
       })),
       update: vi.fn(() => ({
         set: (patch: unknown) => {
@@ -86,16 +110,34 @@ vi.mock("@/lib/db", () => {
     },
     schema: {
       settings: { key: "key", value: "value", updatedAt: "updated_at" },
+      // subscribers columns as mock markers — assertions compare against these
+      // strings (e.g. onConflictDoUpdate target === "email").
+      subscribers: {
+        id: "id",
+        email: "email",
+        status: "status",
+        token: "token",
+        createdAt: "created_at",
+        updatedAt: "updated_at",
+      },
     },
   };
 });
 
-import { saveNewsletterSettings } from "../newsletter";
+import { saveNewsletterSettings, subscribeNewsletter } from "../newsletter";
 
 const adminSession = () => ({
   user: { id: "u-admin", role: "admin" },
   session: { id: "s1" },
 });
+
+/** Build subscribe FormData the way the footer island submits it. */
+const subscribeForm = (email: string, website?: string) => {
+  const f = new FormData();
+  f.set("email", email);
+  if (website !== undefined) f.set("website", website);
+  return f;
+};
 
 describe("260824-3l2 D-02: saveNewsletterSettings — admin gate fires FIRST (MUST_NOT_BE_REACHED)", () => {
   beforeEach(() => {
@@ -205,5 +247,92 @@ describe("260824-3l2 D-02: saveNewsletterSettings — admin gate fires FIRST (MU
     for (const call of updateSetMock.mock.calls) {
       expect(typeof (call[0] as { value: unknown }).value).toBe("string");
     }
+  });
+});
+
+describe("260824-3l2 D-01/D-05/D-06: subscribeNewsletter — public subscribe gates", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Default happy-path surroundings: forwarded IP present, limiter allows.
+    headersMock.mockResolvedValue({
+      get: (k: string) => (k === "x-forwarded-for" ? "203.0.113.7" : null),
+    });
+    newsletterLimiterMock.mockResolvedValue({ success: true });
+    insertOnConflictUpdateMock.mockResolvedValue(undefined);
+  });
+
+  it("honeypot filled → silent { status: 'success' }, db.insert NEVER called, limiter never reached (D-05)", async () => {
+    const result = await subscribeNewsletter(
+      { status: "idle" },
+      subscribeForm("someone@example.com", "http://spam.example"),
+    );
+
+    expect(result).toEqual({ status: "success" });
+    expect(insertValuesMock).not.toHaveBeenCalled();
+    expect(insertOnConflictUpdateMock).not.toHaveBeenCalled();
+    expect(newsletterLimiterMock).not.toHaveBeenCalled();
+  });
+
+  it("limiter success=false → { status: 'error', message: 'RATE_LIMITED' }, db.insert NEVER called", async () => {
+    newsletterLimiterMock.mockResolvedValue({ success: false });
+
+    const result = await subscribeNewsletter(
+      { status: "idle" },
+      subscribeForm("someone@example.com"),
+    );
+
+    expect(result).toEqual({ status: "error", message: "RATE_LIMITED" });
+    expect(newsletterLimiterMock).toHaveBeenCalledWith("203.0.113.7");
+    expect(insertValuesMock).not.toHaveBeenCalled();
+    expect(insertOnConflictUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it("invalid email → { status: 'error', message: 'INVALID_EMAIL' }, db.insert NEVER called", async () => {
+    const result = await subscribeNewsletter(
+      { status: "idle" },
+      subscribeForm("not-an-email"),
+    );
+
+    expect(result).toEqual({ status: "error", message: "INVALID_EMAIL" });
+    expect(insertValuesMock).not.toHaveBeenCalled();
+    expect(newsletterLimiterMock).not.toHaveBeenCalled();
+  });
+
+  it("valid mixed-case email → single insert with LOWERCASE email + non-empty token; onConflictDoUpdate targets email with status 'active' + explicit updatedAt Date", async () => {
+    const result = await subscribeNewsletter(
+      { status: "idle" },
+      subscribeForm("  User@Example.COM "),
+    );
+
+    expect(result).toEqual({ status: "success" });
+    expect(insertValuesMock).toHaveBeenCalledTimes(1);
+    const values = insertValuesMock.mock.calls[0]?.[0] as {
+      email?: string;
+      token?: string;
+    };
+    // Zod did the normalization (trim + lowercase — no citext).
+    expect(values.email).toBe("user@example.com");
+    expect(typeof values.token).toBe("string");
+    expect(values.token?.length).toBeGreaterThan(0);
+
+    // The D-01 conflict config: email target, active status, explicit Date
+    // ($onUpdate does not fire on the conflict path).
+    expect(insertOnConflictUpdateMock).toHaveBeenCalledTimes(1);
+    const cfg = insertOnConflictUpdateMock.mock.calls[0]?.[0] as {
+      target?: unknown;
+      set?: { status?: unknown; updatedAt?: unknown };
+    };
+    expect(cfg.target).toBe("email"); // mock marker for schema.subscribers.email
+    expect(cfg.set?.status).toBe("active");
+    expect(cfg.set?.updatedAt).toBeInstanceOf(Date);
+  });
+
+  it("NO permission gate by design — requireRole is never called on the public subscribe path (mirrors contact.ts)", async () => {
+    await subscribeNewsletter(
+      { status: "idle" },
+      subscribeForm("someone@example.com"),
+    );
+
+    expect(requireRoleMock).not.toHaveBeenCalled();
   });
 });
