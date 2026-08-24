@@ -21,6 +21,9 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 // Plan 02-06 Task 1 extension: adds sendVerificationEmailMock (AUTH-07 — the
 // explicit post-creation send) and logInfo/logError spies (the action's send-
 // failure path must be observable: log.error fired with the created email).
+// Quick task 260824-ptx Task 1 extension: adds removeUserMock (the guarded
+// deleteUser action's terminal auth.api call — MUST_NOT_BE_REACHED when any
+// guard rejects).
 const {
   createUserMock,
   banUserMock,
@@ -28,6 +31,7 @@ const {
   revokeUserSessionsMock,
   updateUserMock,
   sendVerificationEmailMock,
+  removeUserMock,
   countResult,
   selectAllResult,
   updateSetWhere,
@@ -44,6 +48,7 @@ const {
   revokeUserSessionsMock: vi.fn(),
   updateUserMock: vi.fn(),
   sendVerificationEmailMock: vi.fn(),
+  removeUserMock: vi.fn(),
   countResult: vi.fn(),
   selectAllResult: vi.fn(),
   updateSetWhere: vi.fn(),
@@ -78,6 +83,9 @@ vi.mock("@/lib/auth", () => ({
       // it explicitly after creation (better-auth 1.6.23's admin createUser endpoint
       // never invokes the sendOnSignUp-configured callback).
       sendVerificationEmail: sendVerificationEmailMock,
+      // removeUser — quick task 260824-ptx: the guarded deleteUser action's
+      // terminal call (Better Auth admin plugin cascades sessions/accounts).
+      removeUser: removeUserMock,
       // getSession + userHasPermission are used inside requireCan/getSessionOrThrow;
       // stubbed per-test as needed via the permissions mock below.
       getSession: vi.fn(),
@@ -117,6 +125,8 @@ vi.mock("@/lib/db", () => {
     },
     // schema.user.{id,role,name,bio,avatar,email} are referenced by eq/set paths —
     // plain string keys suffice because eq() just reads the column symbol.
+    // posts.authorId is dereferenced by deleteUser's has-posts guard
+    // (eq(schema.posts.authorId, userId) — quick task 260824-ptx).
     schema: {
       user: {
         id: "id",
@@ -125,6 +135,9 @@ vi.mock("@/lib/db", () => {
         bio: "bio",
         avatar: "avatar",
         email: "email",
+      },
+      posts: {
+        authorId: "authorId",
       },
     },
   };
@@ -145,6 +158,7 @@ vi.mock("@/lib/log", () => ({
 
 // Import the SUT AFTER mocks are in place.
 // Plan 04-03 Task 1: + listUsers, updateUser (the two new actions under test).
+// Quick task 260824-ptx Task 1: + deleteUser (guarded destructive removal).
 import {
   createFirstAdmin,
   createUser,
@@ -153,6 +167,7 @@ import {
   revokeSessions,
   listUsers,
   updateUser,
+  deleteUser,
 } from "../users";
 
 describe("AUTH-02 / D-08: createFirstAdmin — the security-critical bootstrap", () => {
@@ -541,5 +556,110 @@ describe("AUTH-07: createUser action explicitly sends the verification email aft
     // createFirstAdmin zero test), but no verification email is sent.
     expect(createUserMock).toHaveBeenCalledTimes(1);
     expect(sendVerificationEmailMock).not.toHaveBeenCalled();
+  });
+});
+
+// ============================================================
+// Quick task 260824-ptx Task 1 — deleteUser (RED phase first)
+// [CITED: 260824-ptx-PLAN.md Task 1 <behavior> — the five guarded-delete cases]
+// [CITED: owner decision 2026-08-24 — revises 04-CONTEXT D-08 (disable-only):
+//  guarded delete is now allowed; D-08's authorship-integrity rationale is
+//  preserved STRUCTURALLY via the has-posts guard]
+//
+// Threat register coverage (see 260824-ptx-PLAN.md <threat_model>):
+//  - T-Q-01: requireCan({user:["delete"]}) FIRST — removeUser unreachable when denied
+//  - T-Q-02: self + last-admin guards prevent lockout
+//  - T-Q-03: has-posts guard converts the raw NO-ACTION FK error into a friendly
+//    message and preserves D-08 authorship integrity
+//  - T-Q-04: log.info("user deleted") on success (repudiation)
+//
+// Mock-shape note: EVERY db.select(...).from(...).where(...) chain in this file's
+// db mock resolves to countResult() — it is the generic .where-chain result, not
+// just createFirstAdmin's admin count. deleteUser performs sequential .where
+// queries (target-role fetch, then admin count OR post count); their results are
+// queued with countResult.mockResolvedValueOnce(...) in execution order.
+// ============================================================
+describe("DASH-04: deleteUser — guarded destructive removal (owner decision 2026-08-24, revising D-08)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Default: requireCan DENIES — the permission-first test relies on this;
+    // guarded-path tests override with an admin session.
+    requireCanMock.mockImplementation(() => {
+      throw new Error("FORBIDDEN");
+    });
+  });
+
+  it("permission-first: throws FORBIDDEN when requireCan denies — removeUser and every DB query unreachable (T-Q-01)", async () => {
+    // SECURITY-CRITICAL: if the permission check ordering is wrong, either the
+    // DB chain or removeUser fires and this throw surfaces — proving user:delete
+    // gates the action BY EXECUTION ORDER, not just that refusal happens.
+    removeUserMock.mockImplementation(() => {
+      throw new Error("MUST_NOT_BE_REACHED — requireCan did not fire first");
+    });
+    countResult.mockImplementation(() => {
+      throw new Error("MUST_NOT_BE_REACHED — requireCan did not fire before db.select");
+    });
+
+    await expect(deleteUser("target-1")).rejects.toThrow("FORBIDDEN");
+    expect(removeUserMock).not.toHaveBeenCalled();
+    // The capability statement fired with the EXACT user:delete permission.
+    expect(requireCanMock).toHaveBeenCalledWith({ user: ["delete"] });
+  });
+
+  it("self-delete guard: rejects with a friendly error BEFORE any DB query — removeUser never called (T-Q-02)", async () => {
+    requireCanMock.mockResolvedValue({ user: { id: "self-1", role: "admin" } });
+    countResult.mockImplementation(() => {
+      throw new Error("MUST_NOT_BE_REACHED — self guard must fire before any DB query");
+    });
+    removeUserMock.mockImplementation(() => {
+      throw new Error("MUST_NOT_BE_REACHED");
+    });
+
+    await expect(deleteUser("self-1")).rejects.toThrow(
+      "You cannot delete your own account.",
+    );
+    expect(removeUserMock).not.toHaveBeenCalled();
+  });
+
+  it("last-admin guard: rejects when the target is the only remaining admin (T-Q-02)", async () => {
+    requireCanMock.mockResolvedValue({ user: { id: "admin-1", role: "admin" } });
+    // Queue in execution order: target-role fetch, then the admin count.
+    countResult.mockResolvedValueOnce([{ role: "admin" }]); // target-role fetch
+    countResult.mockResolvedValueOnce([{ n: 1 }]); // admin count === 1
+    removeUserMock.mockImplementation(() => {
+      throw new Error("MUST_NOT_BE_REACHED");
+    });
+
+    await expect(deleteUser("target-1")).rejects.toThrow(
+      "Cannot delete the last remaining admin. Promote another admin first.",
+    );
+    expect(removeUserMock).not.toHaveBeenCalled();
+  });
+
+  it("has-posts guard: rejects when the target still has posts — preserves D-08 authorship integrity (T-Q-03)", async () => {
+    requireCanMock.mockResolvedValue({ user: { id: "admin-1", role: "admin" } });
+    // Target is a non-admin → the last-admin count is skipped; queue in
+    // execution order: target-role fetch, then the post count.
+    countResult.mockResolvedValueOnce([{ role: "author" }]); // target-role fetch
+    countResult.mockResolvedValueOnce([{ n: 3 }]); // post count === 3
+    removeUserMock.mockImplementation(() => {
+      throw new Error("MUST_NOT_BE_REACHED");
+    });
+
+    await expect(deleteUser("target-1")).rejects.toThrow(
+      "This user still has posts. Reassign or delete their posts first.",
+    );
+    expect(removeUserMock).not.toHaveBeenCalled();
+  });
+
+  it("success: calls auth.api.removeUser exactly once with { body: { userId } } when all guards pass", async () => {
+    requireCanMock.mockResolvedValue({ user: { id: "admin-1", role: "admin" } });
+    countResult.mockResolvedValueOnce([{ role: "author" }]); // target-role fetch
+    countResult.mockResolvedValueOnce([{ n: 0 }]); // post count === 0
+    removeUserMock.mockResolvedValue({ success: true });
+
+    await expect(deleteUser("target-1")).resolves.toEqual({ success: true });
+    expect(removeUserMock).toHaveBeenCalledTimes(1);
+    expect(removeUserMock).toHaveBeenCalledWith({ body: { userId: "target-1" } });
   });
 });
