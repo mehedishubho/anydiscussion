@@ -100,7 +100,11 @@ describe("AUTH-07: email verification flow (sendOnSignUp + sendVerificationEmail
     );
   });
 
-  it("sendOnSignUp is true so admin.createUser fires the verification email", () => {
+  // CONFIG WIRING ONLY — this test must never be read as framework-behavior
+  // coverage; the createUser causal link (dashboard creation → verification
+  // email) is proven at the ACTION layer in src/actions/__tests__/users.test.ts.
+  // Blind-spot class documented in .planning/debug/createuser-no-verify-email.md.
+  it("sendOnSignUp is true — consumed by /sign-up/email and OAuth link-account ONLY (better-auth 1.6.23); the admin createUser endpoint never triggers it", () => {
     expect(getHooks().sendOnSignUp).toBe(true);
   });
 

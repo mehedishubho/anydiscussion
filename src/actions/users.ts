@@ -91,7 +91,12 @@ export async function createUser(input: {
   // surface exists yet; revalidation becomes relevant only when this user
   // publishes, which routes through publishPost (the canonical revalidation path).
 
-  return auth.api.createUser({
+  // AUTH-07 (Plan 02-06 / T-02-06-01) — better-auth 1.6.23's admin createUser
+  // endpoint contains NO email-verification logic: sendOnSignUp is consumed only
+  // by /sign-up/email and OAuth link-account (verified in
+  // .planning/debug/createuser-no-verify-email.md). The causal link is enforced
+  // HERE — after creation resolves, send the verification email explicitly.
+  const result = await auth.api.createUser({
     body: {
       email: input.email,
       password: input.password,
@@ -99,6 +104,27 @@ export async function createUser(input: {
       role: input.role,
     },
   });
+
+  // A send failure must NOT mask the successful creation (T-02-06-02): the user
+  // exists; a propagated rejection would report creation as failed and a retry
+  // would collide on the duplicate email. Swallow after logging — the email is
+  // included deliberately: the original failure mode was fully silent (UAT Test 5
+  // needed the Resend dashboard to prove the send was never attempted), and
+  // server logs are admin-only. Awaited (not void) so this catch observes the
+  // rejection — fire-and-forget would make it dead code plus an unhandled
+  // rejection inside the Server Action runtime. The R8 timing-attack rationale
+  // does not apply: this is a requireCan-gated admin action where the admin just
+  // created the account (no account-existence secret to protect).
+  try {
+    await auth.api.sendVerificationEmail({ body: { email: input.email } });
+  } catch (err) {
+    log.error("verification email send failed after user creation", {
+      email: input.email,
+      err: String(err),
+    });
+  }
+
+  return result;
 }
 
 /**
