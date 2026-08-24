@@ -1,14 +1,19 @@
 ---
-status: complete
+status: testing
 phase: 02-auth-rbac
 source: [02-01-SUMMARY.md, 02-02-SUMMARY.md, 02-03-SUMMARY.md, 02-04-SUMMARY.md, 02-05-SUMMARY.md]
 started: 2026-07-03T12:13:41.000Z
-updated: 2026-07-03T18:38:32Z
+updated: 2026-08-24T00:00:00Z
 ---
 
 ## Current Test
+<!-- OVERWRITE each test - shows where we are -->
 
-[testing complete — AUTH-03 closed & browser-confirmed (Test 3); AUTH-06/07 live inbox round-trip deferred to Phase 7 / D-04 by user decision (Resend from-domain unverified)]
+number: 5
+name: Verification email on signup (AUTH-07, live inbox round-trip)
+expected: |
+  A NEW (non-admin) user is created via the dashboard (admin.createUser) — a verification email arrives → click the link → the user is verified → they can now sign in (previously blocked by requireEmailVerification).
+awaiting: user response
 
 ## Tests
 
@@ -27,13 +32,16 @@ evidence: "AUTH-03 blocker CLOSED by gap-closure plan 02-05. Automated HTTP inte
 
 ### 4. Forgot-password → reset email → reset password (AUTH-06, live inbox round-trip — coverage D5)
 expected: On /signin click "Forgot password?" → land on /forgot-password → enter the admin email → submit → see the generic "Check your email. If an account exists…" message (never reveals whether the email exists). A reset email arrives in the inbox → click the link → land on /reset-password?token=xxx → enter a new password → submit → redirect to /signin → sign in WITH THE NEW password and reach /dashboard. Requires RESEND_API_KEY set and the recipient to be deliverable (Resend sandbox sender delivers only to the account owner's inbox; other recipients need a verified from-domain — Phase 7 / D-04).
-result: skipped
-reason: "Deferred to Phase 7 / D-04 by user decision (2026-07-04 verify-work session): anydiscussion.com not yet verified on Resend. Live POST /api/auth/request-password-reset returned 200, but lib/email fire-and-forget swallowed a Resend 403 ('The anydiscussion.com domain is not verified'). Code path verified automated via coverage D3 (sendResetPassword hook fires, proven with stubbed sender — 61 tests green incl. email-flows.test.ts) and the UI trigger is wired (ForgotPasswordForm.test.tsx). Real-inbox delivery to be UAT'd in Phase 7 once the from-domain is verified, or via sandbox sender onboarding@resend.dev for the account owner."
+result: pass
+evidence: "Re-tested 2026-08-24 (verify-work resume): full live round-trip passed in browser — forgot-password → generic non-enumeration message → reset email arrived → token link → new password → redirected to /signin → signed in with the new password and reached /dashboard. Prior skip (Resend from-domain unverified, deferred to Phase 7 / D-04) is closed."
 
 ### 5. Verification email on signup (AUTH-07, live inbox round-trip)
 expected: A NEW (non-admin) user is created via the dashboard (admin.createUser) — a verification email arrives → click the link → the user is verified → they can now sign in (previously blocked by requireEmailVerification). NOTE: the bootstrap admin is auto-verified (emailVerified:true by design), so this requires a non-admin user, whose creation UI lands in Phase 4. AUTH-06's reset email exercises the same sendEmail/Resend path, so AUTH-07 delivery is implied once Test 4's reset email lands.
-result: skipped
-reason: "Same Resend from-domain blocker as Test 4 (anydiscussion.com unverified) AND requires a non-admin user whose creation UI lands in Phase 4. AUTH-07's sendVerificationEmail hook is auto-covered by coverage D2 (fires on createUser, sendOnSignUp:true); real-inbox delivery is implied once Test 4's reset round-trip is unblocked."
+result: issue
+reported: "no email received"
+severity: major
+investigated: |
+  Runtime context 2026-08-24: Test 4 (reset email) passed minutes earlier — same lib/email → Resend wrapper, live delivery proven. Server log for the running prod instance shows NO Resend error (old failure mode logged a 403; lib/email logs on error — none present), suggesting either a successful send to an unchecked inbox/spam, or the send was never attempted at runtime. Code path: dashboard UserDrawer → createUser action → auth.api.createUser with sendOnSignUp:true (src/lib/auth/index.ts:73); automated coverage D2 proved the hook fires with a stubbed sender. User confirmed: NO send record in Resend at all (recipient mhs@wpmhs.com) — the send was never attempted. ROOT CAUSE (debug session .planning/debug/createuser-no-verify-email.md): Better Auth 1.6.23's admin-plugin createUser endpoint contains NO email-verification logic — sendOnSignUp:true is consumed only by /sign-up/email (dist/api/routes/sign-up.mjs:241) and OAuth link-account (dist/oauth2/link-account.mjs:106); grep for sendVerificationEmail|emailVerification|sendOnSignUp across the entire admin plugin: zero matches. The comment at src/lib/auth/index.ts:73 ("fires on admin.createUser too") is a false docs-memory assumption traced to 02-RESEARCH.md:347. Automated coverage D2 never exercised the framework path: __tests__/email-flows.test.ts mocks betterAuth as an identity function (lines 31-33) and the admin plugin as () => ({}) (lines 39-41), then invokes the configured sendVerificationEmail callback DIRECTLY (lines 83-101); the "sendOnSignUp fires on createUser" claim was asserted only as expect(sendOnSignUp).toBe(true) (lines 103-105) — the causal claim lived in the test name. Same blind-spot class as the proxy.ts miss: config/callback unit tests bypassing library endpoint routing.
 
 ### A1. lib/email Resend helper (AUTH-06) — coverage D1
 expected: lib/email exports sendEmail({to, subject, text, html?}) — thin Resend wrapper, fire-and-forget safe, never throws.
@@ -62,13 +70,32 @@ coverage_id: D4
 ## Summary
 
 total: 5
-passed: 3
-issues: 0
+passed: 4
+issues: 1
 pending: 0
-skipped: 2
+skipped: 0
 blocked: 0
 
 ## Gaps
+
+- truth: "A NEW (non-admin) user created via the dashboard receives a verification email; clicking its link verifies them so they can sign in (AUTH-07)."
+  status: failed
+  reason: "User reported: no email received"
+  severity: major
+  test: 5
+  root_cause: "Better Auth 1.6.23's admin-plugin createUser endpoint (node_modules/better-auth/dist/plugins/admin/routes.mjs:130-208) contains NO email-verification logic — it does permission check → internalAdapter.createUser → linkAccount credential → return. sendOnSignUp:true is consumed at exactly 2 sites in the whole library: /sign-up/email (dist/api/routes/sign-up.mjs:241) and OAuth link-account (dist/oauth2/link-account.mjs:106); the admin plugin is absent from every sendVerificationEmail call-site list. So the dashboard path (UserDrawer → createUser action → auth.api.createUser) never invokes the sendVerificationEmail callback — sendEmail is never called: no Resend record, no error, nothing. The comment at src/lib/auth/index.ts:73 ('fires on admin.createUser too') is a false docs-memory assumption traced to 02-RESEARCH.md:347, never true of the installed version. Automated coverage D2 never exercised the framework path: __tests__/email-flows.test.ts mocks betterAuth as an identity function (31-33) and the admin plugin as () => ({}) (39-41), invokes the configured callback directly (83-101), and asserts only expect(sendOnSignUp).toBe(true) (103-105) — proving config wiring, not framework behavior (same blind-spot class as the proxy.ts miss)."
+  artifacts:
+    - path: "src/actions/users.ts"
+      issue: "createUser action relies on admin createUser to send the verification email — the endpoint never does; fix lands here (explicit sendVerificationEmail call after successful creation)."
+    - path: "src/lib/auth/index.ts"
+      issue: "Line 73 comment 'sendOnSignUp: true, // fires on admin.createUser too' is false — callback wiring itself (lines 65-74) is correct."
+    - path: "__tests__/email-flows.test.ts"
+      issue: "Mocks betterAuth as identity fn + admin plugin as () => ({}) and calls the callback directly — bypasses the library's actual endpoint routing, so the missing framework behavior was unobservable."
+  missing:
+    - "In src/actions/users.ts createUser: after a successful auth.api.createUser, explicitly call auth.api.sendVerificationEmail({ body: { email } }) wrapped in try/catch (a send failure must not mask successful creation) so dashboard-created users reliably get the verification email. Verified against installed source: sendVerificationEmail exists flat on the server API (dist/api/index.d.mts:727); headerless from a Server Action it takes the anti-enumeration branch, finds the just-created unverified user by email, and calls the configured callback → sendEmail → Resend. Budget ≤500ms constant-time floor (email-verification.mjs:103-114)."
+    - "Correct the false comment at src/lib/auth/index.ts:73."
+    - "Replace/augment the mocked-identity email-flows test with one that exercises real endpoint routing (or documents the boundary honestly) so this blind-spot class can't recur."
+  debug_session: .planning/debug/createuser-no-verify-email.md
 
 - truth: "An unauthenticated user who visits /dashboard (no session cookie) is redirected to /signin by the proxy cookie gate (AUTH-03); the dashboard never renders without a valid session."
   status: resolved
