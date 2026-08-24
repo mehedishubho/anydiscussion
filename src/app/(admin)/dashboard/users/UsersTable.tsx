@@ -1,22 +1,26 @@
 "use client";
 // src/app/(admin)/dashboard/users/UsersTable.tsx
 // [CITED: 04-03-PLAN.md Task 2 — client table with ban/role-change optimistic UI]
-// [CITED: 04-CONTEXT.md D-07 (drawer), D-08 (disable-only), D-10 (revoke-only), D-11 (role dropdown)]
+// [CITED: 04-CONTEXT.md D-07 (drawer), D-08 (REVISED — owner decision 2026-08-24:
+//  guarded delete now allowed; authorship integrity kept via the server-side
+//  post-count guard), D-10 (revoke-only), D-11 (role dropdown)]
 // [CITED: 04-CONTEXT.md D-27 — ban/role-change = optimistic (high-frequency small mutations)]
+// [CITED: 260824-ptx-PLAN.md Task 2 — three-state badge + guarded Delete action]
 //
-// Client component. Owns the row-action mutations (ban/unban/revoke-sessions) which
-// surface the Phase 2 primitives via TanStack useMutation. Optimistic UI is applied
-// to ban/unban (D-27 — small, high-frequency, low-risk-of-conflict); the row flips
-// to the new state immediately and rolls back on error. Create/edit launches the
-// UserDrawer (NOT optimistic — server confirms credentials before the drawer closes).
+// Client component. Owns the row-action mutations (ban/unban/revoke-sessions/delete)
+// which surface the Phase 2 primitives via TanStack useMutation. Optimistic UI is
+// applied to ban/unban/delete (D-27 — small, high-frequency, low-risk-of-conflict);
+// the row flips to the new state (or drops out) immediately and rolls back on error.
+// Create/edit launches the UserDrawer (NOT optimistic — server confirms credentials
+// before the drawer closes).
 //
 // RBAC re-statement: every action wired here (createUser / updateUser / banUser /
-// unbanUser / revokeSessions) re-checks requireCan server-side. UI hiding is a
-// courtesy; the server is the authoritative gate (Phase 2 Pitfall #1).
+// unbanUser / revokeSessions / deleteUser) re-checks requireCan server-side. UI
+// hiding is a courtesy; the server is the authoritative gate (Phase 2 Pitfall #1).
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Table, TableHeader, TableBody, TableRow, TableCell } from "@/components/ui/table";
-import { banUser, unbanUser, revokeSessions } from "@/actions/users";
+import { banUser, unbanUser, revokeSessions, deleteUser } from "@/actions/users";
 import UserDrawer from "./UserDrawer";
 import type { UserRow } from "./page";
 
@@ -44,7 +48,13 @@ function AvatarInitials({ name }: { name: string }) {
   );
 }
 
-export default function UsersTable({ initialUsers }: { initialUsers: UserRow[] }) {
+export default function UsersTable({
+  initialUsers,
+  sessionUserId,
+}: {
+  initialUsers: UserRow[];
+  sessionUserId: string | null;
+}) {
   const queryClient = useQueryClient();
   const [users, setUsers] = useState<UserRow[]>(initialUsers);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -108,6 +118,29 @@ export default function UsersTable({ initialUsers }: { initialUsers: UserRow[] }
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["users"] });
     },
+  });
+
+  // ---- Delete (quick task 260824-ptx — D-08 revision, owner decision 2026-08-24) ----
+  // Optimistic removal per D-27's small-mutation idiom: the row drops out
+  // immediately; a guard rejection (self / last-admin / has-posts — enforced
+  // server-side in deleteUser) rolls the snapshot back and surfaces in the
+  // shared error alert below. The server guards are authoritative; the
+  // window.confirm below is UX friction, not the security boundary.
+  const deleteMutation = useMutation({
+    mutationFn: (userId: string) => deleteUser(userId),
+    onMutate: async (userId) => {
+      setPendingAction(`Deleting ${userId}…`);
+      const snapshot = users;
+      setUsers((prev) => prev.filter((u) => u.id !== userId));
+      return { snapshot };
+    },
+    onError: (_err, _userId, context) => {
+      if (context?.snapshot) setUsers(context.snapshot);
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["users"] });
+    },
+    onSettled: () => setPendingAction(null),
   });
 
   // After drawer create/edit succeeds, refresh local state from the server list.
@@ -178,6 +211,13 @@ export default function UsersTable({ initialUsers }: { initialUsers: UserRow[] }
                         <span className="inline-block rounded-full bg-error-100 px-2.5 py-0.5 text-xs font-medium text-error-700 dark:bg-error-900/30 dark:text-error-300">
                           Banned
                         </span>
+                      ) : user.emailVerified === false ? (
+                        // 260824-ptx — unverified accounts (email_verified false)
+                        // must NOT read as Active. Priority: Banned > Unverified >
+                        // Active (a banned-and-unverified user still shows Banned).
+                        <span className="inline-block rounded-full bg-warning-100 px-2.5 py-0.5 text-xs font-medium text-warning-700 dark:bg-warning-900/30 dark:text-warning-300">
+                          Unverified
+                        </span>
                       ) : (
                         <span className="inline-block rounded-full bg-success-100 px-2.5 py-0.5 text-xs font-medium text-success-700 dark:bg-success-900/30 dark:text-success-300">
                           Active
@@ -232,6 +272,29 @@ export default function UsersTable({ initialUsers }: { initialUsers: UserRow[] }
                         >
                           Revoke sessions
                         </button>
+                        {/* 260824-ptx — guarded Delete (D-08 revision). Own row gets
+                            NO Delete button; the server-side self guard remains the
+                            authoritative protection (sessionUserId here is UX-only
+                            defense in depth). Filled red reads as more destructive
+                            than the outline Ban button. */}
+                        {user.id !== sessionUserId && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (
+                                window.confirm(
+                                  `Delete ${user.name}? This permanently deletes this user and cannot be undone.`,
+                                )
+                              ) {
+                                void deleteMutation.mutate(user.id);
+                              }
+                            }}
+                            disabled={deleteMutation.isPending}
+                            className="rounded-md bg-error-500 px-2.5 py-1 text-xs font-medium text-white hover:bg-error-600 disabled:opacity-50"
+                          >
+                            Delete
+                          </button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -242,9 +305,9 @@ export default function UsersTable({ initialUsers }: { initialUsers: UserRow[] }
         </div>
       )}
 
-      {(banMutation.error || unbanMutation.error || revokeMutation.error) && (
+      {(banMutation.error || unbanMutation.error || revokeMutation.error || deleteMutation.error) && (
         <div className="rounded-lg border border-error-300 bg-error-50 p-3 text-sm text-error-700 dark:border-error-700 dark:bg-error-900/20 dark:text-error-300">
-          {banMutation.error?.message || unbanMutation.error?.message || revokeMutation.error?.message || "Action failed"}
+          {banMutation.error?.message || unbanMutation.error?.message || revokeMutation.error?.message || deleteMutation.error?.message || "Action failed"}
         </div>
       )}
       {pendingAction && (
