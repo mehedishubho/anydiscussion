@@ -21,7 +21,14 @@
 // Suspense keeps the root layout + 404 UI static while the redirect-check streams.
 //
 // T-05-08: the DB lookup is wrapped in try/catch — a missing table, query error,
-// or missing x-invoke-path header falls through gracefully (no redirect → 404).
+// or missing x-incoming-path header falls through gracefully (no redirect → 404).
+//
+// Header source: `x-incoming-path` is set by the repo-root middleware.ts on every
+// matched request (NextResponse.next({ request: { headers } })). This works
+// self-hosted (Coolify). The previous header name (see middleware.ts history)
+// was a Vercel-INTERNAL header that never exists on this runtime, so
+// incomingPath was always null and populated redirects rows were silently
+// ignored (that was the Phase 5 UAT test 5 blocker).
 //
 // Forward-compatibility (D-12): the redirects table ships EMPTY in v1. This
 // wiring is ready for the SETT-03 v2 redirects-manager UI. No seed data needed.
@@ -56,7 +63,9 @@ async function RedirectChecker(): Promise<null> {
 
   try {
     const headerList = await headers();
-    const incomingPath = headerList.get("x-invoke-path");
+    // x-incoming-path — set by repo-root middleware.ts (self-hosted-safe; the
+    // previous name was a Vercel-internal header, always null on this runtime).
+    const incomingPath = headerList.get("x-incoming-path");
 
     if (incomingPath) {
       const [match] = await db
