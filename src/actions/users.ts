@@ -22,9 +22,10 @@ import { requireCan, getSessionOrThrow } from "@/lib/permissions";
 
 // The admin plugin exposes its endpoints FLAT on `auth.api` (verified at runtime
 // against better-auth@1.6.23 — auth.api.admin is undefined; there is NO nested
-// namespace). Call auth.api.createUser / banUser / unbanUser / revokeUserSessions
-// directly. The earlier `as { admin }` cast was wrong and made every action throw
-// "Cannot read properties of undefined (reading 'createUser')" at runtime.
+// namespace). Call auth.api.createUser / banUser / unbanUser / revokeUserSessions /
+// removeUser directly. The earlier `as { admin }` cast was wrong and made every
+// action throw "Cannot read properties of undefined (reading 'createUser')" at
+// runtime.
 // [CITED: better-auth@1.6.23 dist/plugins/admin/admin.mjs — endpoints {} → flat auth.api]
 
 /**
@@ -202,18 +203,21 @@ export async function revokeSessions(input: { userId: string }) {
 //   T-04-11: updateUser self-edit path strips `role` server-side (no self-promotion)
 //   T-04-12: updateUser cross-user path → requireCan({user:["update"]}) BEFORE db.update
 //
-// D-08 (still authoritative): no destructive user-removal action — disable-only via
-// the existing banUser above. Preserves post authorship integrity.
+// D-08 REVISED (owner decision 2026-08-24): a GUARDED destructive deleteUser now
+// exists (bottom of this file). D-08's authorship-integrity rationale is preserved
+// structurally — the has-posts guard rejects deletion of any user who still has
+// posts, so authorship rows can never be orphaned by this action.
 // ============================================================
 
 /**
  * listUsers — admin-gated user listing for the /dashboard/users table (D-07).
  *
- * Returns the columns the UI table needs (no passwordHash / no emailVerified).
+ * Returns the columns the UI table needs (no passwordHash; emailVerified IS
+ * projected since quick task 260824-ptx — the three-state Status badge needs it).
  * Permission check FIRST (Pitfall #1 — non-admin → FORBIDDEN BEFORE any db.select,
  * proven structurally by the MUST_NOT_BE_REACHED test in users.test.ts).
  *
- * @returns Array of user rows with role/bio/avatar/email/name/banned fields.
+ * @returns Array of user rows with role/bio/avatar/email/name/banned/emailVerified fields.
  * @throws Error("UNAUTHORIZED") when no session.
  * @throws Error("FORBIDDEN") when the role lacks user:read.
  */
@@ -235,6 +239,7 @@ export async function listUsers() {
       banned: schema.user.banned,
       banReason: schema.user.banReason,
       banExpires: schema.user.banExpires,
+      emailVerified: schema.user.emailVerified,
     })
     .from(schema.user);
 }
@@ -335,4 +340,105 @@ export async function updateUser(
 
   log.info("user updated", { userId, isSelf });
   return { id: userId };
+}
+
+// ============================================================
+// Quick task 260824-ptx Task 1 — deleteUser (GREEN phase)
+// [CITED: 260824-ptx-PLAN.md Task 1 <action> — guard order is non-negotiable]
+// [CITED: owner decision 2026-08-24 — revises 04-CONTEXT D-08 (disable-only):
+//  guarded delete is now allowed so admins can remove junk accounts that cannot
+//  pass email verification. D-08's authorship-integrity rationale is preserved
+//  STRUCTURALLY via the has-posts guard below.]
+//
+// Threat register coverage (see 260824-ptx-PLAN.md <threat_model>):
+//   T-Q-01: requireCan({user:["delete"]}) FIRST — admin-only via adminAc.statements
+//   T-Q-02: self + last-admin guards prevent lockout
+//   T-Q-03: has-posts guard converts the raw NO-ACTION FK error into a friendly
+//           message (posts.authorId — src/db/schema.ts — is a bare .references()
+//           with no onDelete, so default NO ACTION would raw-error the delete)
+//   T-Q-04: log.info on success (repudiation)
+// ============================================================
+
+/**
+ * deleteUser — admin-gated, GUARDED destructive user removal (owner decision
+ * 2026-08-24, revising D-08's disable-only policy).
+ *
+ * Execution order (enforced structurally by the 5-case block in users.test.ts —
+ * each guard is proven to fire BEFORE auth.api.removeUser):
+ *   1. requireCan({ user: ["delete"] }) — FIRST (Pitfall #1). Its return value
+ *      IS the getSessionOrThrow session (requireCan delegates and returns it) —
+ *      no second session fetch is issued.
+ *   2. Self guard — session identity vs target id, before any DB query.
+ *   3. Target role fetch — "User not found." for a missing row (defensive;
+ *      Better Auth would otherwise error opaquely).
+ *   4. Last-admin guard — only when the target is an admin: count(admins) <= 1
+ *      refuses, preventing admin lockout.
+ *   5. Has-posts guard — count(posts by author) > 0 refuses. WHY: the
+ *      posts.authorId FK is a bare .references() (no onDelete — default NO
+ *      ACTION), so without this guard the DB would raw-error; the guard turns
+ *      that into a friendly message AND preserves D-08's authorship integrity.
+ *   6. Success — auth.api.removeUser (flat keying, same call shape as
+ *      createUser above). The admin-plugin endpoint cascades the user's
+ *      sessions/accounts on the auth side.
+ *
+ * @param userId Target user id.
+ * @throws Error("FORBIDDEN") when the role lacks user:delete (admin-only).
+ * @throws Error("You cannot delete your own account.") on self-delete.
+ * @throws Error("User not found.") when the target row does not exist.
+ * @throws Error("Cannot delete the last remaining admin. Promote another admin first.")
+ * @throws Error("This user still has posts. Reassign or delete their posts first.")
+ */
+export async function deleteUser(userId: string) {
+  // T-Q-01 — permission check FIRST (Pitfall #1). requireCan already returns
+  // the getSessionOrThrow session; reuse it for the identity check.
+  const session = await requireCan({ user: ["delete"] });
+
+  // T-Q-02 — self guard. Fires BEFORE any DB query (proven structurally by the
+  // self-delete test: countResult is mocked to throw MUST_NOT_BE_REACHED).
+  if (session.user.id === userId) {
+    log.error("deleteUser blocked — self-delete");
+    throw new Error("You cannot delete your own account.");
+  }
+
+  // Fetch the target's role (needed to decide whether the last-admin guard
+  // applies). Defensive miss → friendly error instead of Better Auth's opaque one.
+  const [target] = await db
+    .select({ role: schema.user.role })
+    .from(schema.user)
+    .where(eq(schema.user.id, userId));
+  if (!target) {
+    log.error("deleteUser blocked — target not found", { userId });
+    throw new Error("User not found.");
+  }
+
+  // T-Q-02 — last-admin guard. Exact createFirstAdmin count pattern; only when
+  // the target IS an admin (deleting an editor/author never threatens lockout).
+  if (target.role === "admin") {
+    const [adminRow] = await db
+      .select({ n: count() })
+      .from(schema.user)
+      .where(eq(schema.user.role, "admin"));
+    if (Number(adminRow?.n ?? 0) <= 1) {
+      log.error("deleteUser blocked — last remaining admin", { userId });
+      throw new Error("Cannot delete the last remaining admin. Promote another admin first.");
+    }
+  }
+
+  // T-Q-03 — has-posts guard (preserves D-08's authorship integrity). The
+  // posts.authorId FK is a bare .references() with no onDelete — default NO
+  // ACTION — so deleting a post-author would raw-error at the DB. This guard
+  // converts that into a friendly message BEFORE any destructive write.
+  const [postRow] = await db
+    .select({ n: count() })
+    .from(schema.posts)
+    .where(eq(schema.posts.authorId, userId));
+  if (Number(postRow?.n ?? 0) > 0) {
+    log.error("deleteUser blocked — user still has posts", { userId });
+    throw new Error("This user still has posts. Reassign or delete their posts first.");
+  }
+
+  // T-Q-04 — log THEN delegate (log-then-throw / log-then-call idiom). The
+  // admin-plugin endpoint cascades the user's sessions/accounts.
+  log.info("user deleted", { userId });
+  return auth.api.removeUser({ body: { userId } });
 }
