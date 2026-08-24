@@ -7,7 +7,7 @@ status: verifying
 stopped_at: Completed 08-03-PLAN.md (Google Drive destination + OAuth callback)
 last_updated: "2026-07-30T02:56:20.394Z"
 last_activity: 2026-08-24
-last_activity_desc: Phase 02 gap closure 02-06 — createUser action now sends verification email explicitly (AUTH-07 / UAT test 5)
+last_activity_desc: Quick task 260824-ptx — users dashboard Unverified badge + guarded deleteUser (D-08 revised by owner decision)
 progress:
   total_phases: 8
   completed_phases: 7
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-07-01)
 Phase: 08
 Plan: Not started
 Status: Phase complete — ready for verification
-Last activity: 2026-08-24 — Completed quick task 260824-3l2: functional newsletter (subscribe flow + dashboard config + subscriber management)
+Last activity: 2026-08-24 — Completed quick task 260824-ptx: users dashboard Unverified badge + guarded deleteUser
 
 Progress: [█░░░░░░░░░] 13%
 
@@ -127,6 +127,7 @@ Recent decisions affecting current work:
 - [Phase ?]: 08-05: Multi-instance cron double-fire cliff documented not solved in v1; v2 = Redis SET NX lease (ADR 0002)
 - [Phase 02]: 02-06: better-auth admin createUser NEVER sends the verification email (sendOnSignUp consumed only by /sign-up/email + OAuth link-account, verified against installed 1.6.23) — createUser action calls auth.api.sendVerificationEmail explicitly post-creation, try/catch so send failure never masks creation
 - [Phase ?]: 08-04: Backup Settings dashboard = verbatim Storage Settings sibling + D-01 multi-select delta (3 destination checkboxes) + 8 admin-gated Server Actions (requireRole FIRST proven by MUST_NOT_BE_REACHED) + CSRF-bound OAuth consent + revoke-before-delete Drive disconnect + type-the-DB-name Restore gate
+- [Phase 04]: 260824-ptx: D-08 REVISED (owner decision 2026-08-24) — deleteUser allowed with structural guards (permission-first user:delete, self, last-admin, has-posts); authorship integrity preserved via the post-count guard converting the bare-FK NO ACTION error; ban still preferred for authors with posts
 
 ### Pending Todos
 
@@ -153,6 +154,7 @@ Recent decisions affecting current work:
 | 260823-79v | Two-row header per frontpage design — static white nav row + sticky-on-scroll category bar (dynamic categories from DB, configured-only social icons, shared socials modules extracted from footer) | 2026-08-23 | 9deadfb | [260823-79v-two-row-header-per-frontpage-design-row-](./quick/260823-79v-two-row-header-per-frontpage-design-row-/) |
 | 260824-36g | De-brand dashboard/auth surfaces from SEES to anydiscussion — shared BrandLogo component (speech-bubble SVG from SiteHeader), sidebar/header/auth-panel swaps, sign-in metadata, SEES blurb replaced | 2026-08-24 | 5e5d493 | [260824-36g-de-brand-dashboard-from-sees-to-anydiscu](./quick/260824-36g-de-brand-dashboard-from-sees-to-anydiscu/) |
 | 260824-3l2 | Functional frontend newsletter — single-opt-in subscribe Server Action (subscribers table + honeypot + Redis rate limit) as a client island inside the cached footer, dashboard config (enable toggle + heading/description/success texts via settings keys), admin subscribers page with delete + CSV export | 2026-08-24 | a555499 | [260824-3l2-functional-frontend-newsletter-with-dash](./quick/260824-3l2-functional-frontend-newsletter-with-dash/) |
+| 260824-ptx | Users dashboard gap closure (Phase 2 UAT test 5) — three-state Status badge (Banned > Unverified > Active, amber warning palette via emailVerified projection) + guarded deleteUser action (permission-first, self / last-admin / has-posts guards; D-08 revised per owner decision) with optimistic-removal Delete UI | 2026-08-24 | 7a0cdbe | [260824-ptx-users-table-unverified-badge-guarded-del](./quick/260824-ptx-users-table-unverified-badge-guarded-del/) |
 
 ## Deferred Items
 
