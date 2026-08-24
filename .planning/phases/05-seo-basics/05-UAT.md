@@ -70,7 +70,7 @@ blocked: 0
       issue: "body box misbehaving — symptom TBD; same EditorProvider also used by src/app/(admin)/dashboard/pages/PageForm.tsx (fix benefits both)"
   missing:
     - "Wire Publish (editor/admin, calls publishPost) + Submit-for-review (author, calls submitForReview) buttons in PostForm / posts list"
-    - "Diagnose + fix body editor once symptom is specified"
+    - "Rebuild body editor surface to WordPress-classic-editor spec (user screenshot, verbatim ask: 'the body box mush be functional like the screenshot I provided ... so I want same for post and pages or where the body box used'): Visual/Text tabs (Text = HTML source view — planner to scope generateHTML/parse round-trip feasibility); toolbar in this order — Paragraph/block-type dropdown (Paragraph/H1/H2/H3), Bold, Italic, Bulleted list, Numbered list, Blockquote, Align left/center/right (@tiptap/extension-text-align@3 — NEW dep), Insert link, Insert table, More(…) overflow (strike, code, code block, image via MediaPicker, undo/redo); large white min-height writing area; footer bar with live Word count (@tiptap/extension-character-count@3 — NEW dep). Applies EVERYWHERE EditorProvider/TiptapEditor is used (PostForm.tsx + PageForm.tsx). extensions.ts stays the single shared client+server source (round-trip test must still pass). pnpm only; @tiptap/*@3.27.1 line."
   debug_session: ""
 
 - truth: "Saving a post shows clear success/failure feedback (toast) so the user knows the save landed"
