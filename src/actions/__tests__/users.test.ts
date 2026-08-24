@@ -18,12 +18,16 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 // Plan 04-03 Task 1 extension: adds updateUserMock (Better Auth), selectAllResult
 // (listUsers's select-all-from-user path — no .where()), and updateSetWhere (the
 // db.update(...).set(...).where(...) chain used by updateUser for bio/avatar/role).
+// Plan 02-06 Task 1 extension: adds sendVerificationEmailMock (AUTH-07 — the
+// explicit post-creation send) and logInfo/logError spies (the action's send-
+// failure path must be observable: log.error fired with the created email).
 const {
   createUserMock,
   banUserMock,
   unbanUserMock,
   revokeUserSessionsMock,
   updateUserMock,
+  sendVerificationEmailMock,
   countResult,
   selectAllResult,
   updateSetWhere,
@@ -31,12 +35,15 @@ const {
   getSessionOrThrowMock,
   revalidatePathMock,
   revalidateTagMock,
+  logInfoMock,
+  logErrorMock,
 } = vi.hoisted(() => ({
   createUserMock: vi.fn(),
   banUserMock: vi.fn(),
   unbanUserMock: vi.fn(),
   revokeUserSessionsMock: vi.fn(),
   updateUserMock: vi.fn(),
+  sendVerificationEmailMock: vi.fn(),
   countResult: vi.fn(),
   selectAllResult: vi.fn(),
   updateSetWhere: vi.fn(),
@@ -44,6 +51,8 @@ const {
   getSessionOrThrowMock: vi.fn(),
   revalidatePathMock: vi.fn(),
   revalidateTagMock: vi.fn(),
+  logInfoMock: vi.fn(),
+  logErrorMock: vi.fn(),
 }));
 
 // next/cache — Plan 07-03 Task 2 added revalidation calls to updateUser (profile
@@ -65,6 +74,10 @@ vi.mock("@/lib/auth", () => ({
       // updateUser — Better Auth admin plugin's user-update endpoint. Plan 04-03
       // Task 1's updateUser action persists `name` (and role when admin path) via it.
       updateUser: updateUserMock,
+      // sendVerificationEmail — AUTH-07 (Plan 02-06): the createUser action calls
+      // it explicitly after creation (better-auth 1.6.23's admin createUser endpoint
+      // never invokes the sendOnSignUp-configured callback).
+      sendVerificationEmail: sendVerificationEmailMock,
       // getSession + userHasPermission are used inside requireCan/getSessionOrThrow;
       // stubbed per-test as needed via the permissions mock below.
       getSession: vi.fn(),
@@ -124,9 +137,10 @@ vi.mock("@/lib/permissions", () => ({
   getSessionOrThrow: getSessionOrThrowMock,
 }));
 
-// log — no-op stub (structured logger; we don't assert on it but it must not throw).
+// log — structured logger. Plan 02-06: the spies are hoisted so the AUTH-07
+// failure-isolation test can assert log.error fired (previously a no-op stub).
 vi.mock("@/lib/log", () => ({
-  log: { info: vi.fn(), error: vi.fn() },
+  log: { info: logInfoMock, error: logErrorMock },
 }));
 
 // Import the SUT AFTER mocks are in place.
@@ -437,5 +451,95 @@ describe("DASH-04 / D-09 / D-11: updateUser — self-edit + admin cross-user edi
     expect(updateUserMock).not.toHaveBeenCalled();
     // And requireCan was NOT called for the self-edit path.
     expect(requireCanMock).not.toHaveBeenCalled();
+  });
+});
+
+// ============================================================
+// Plan 02-06 Task 1 — AUTH-07 regression block (RED phase first)
+// [CITED: 02-06-PLAN.md Task 1 <behavior> — the five AUTH-07 assertions]
+// [CITED: .planning/debug/createuser-no-verify-email.md — root cause:
+//  better-auth 1.6.23's admin createUser endpoint contains NO email-verification
+//  logic; sendOnSignUp:true is consumed only by /sign-up/email and OAuth
+//  link-account. The old __tests__/email-flows.test.ts config-only test proved
+//  config wiring, never behavior — this block is the causal proof that shipped
+//  as a blind spot.]
+//
+// Threat register coverage (see 02-06-PLAN.md <threat_model>):
+//  - T-02-06-01: dashboard-created user → verification email actually sent
+//  - T-02-06-02: send failure logged, never masked as a failed creation
+//  - T-02-06-04: requireCan still fires FIRST (proven above; not reordered here)
+// ============================================================
+describe("AUTH-07: createUser action explicitly sends the verification email after creation (Plan 02-06 — UAT Test 5 gap closure)", () => {
+  const adminInput = {
+    name: "New User",
+    email: "new@example.com",
+    password: "longenough",
+    role: "author" as const,
+  };
+  const creationResult = { user: { id: "u-new", email: "new@example.com" } };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Permitted path: requireCan resolves (admin holds user:create).
+    requireCanMock.mockResolvedValue({ user: { id: "admin-1", role: "admin" } });
+    createUserMock.mockResolvedValue(creationResult);
+    sendVerificationEmailMock.mockResolvedValue(undefined);
+  });
+
+  it("causal link: createUser resolves AND sendVerificationEmail fires exactly once with { body: { email } } — the assertion D2 never made", async () => {
+    await expect(createUser(adminInput)).resolves.toEqual(creationResult);
+
+    expect(sendVerificationEmailMock).toHaveBeenCalledTimes(1);
+    expect(sendVerificationEmailMock).toHaveBeenCalledWith({
+      body: { email: adminInput.email },
+    });
+  });
+
+  it("ordering: the send happens only AFTER the creation call resolves", async () => {
+    await createUser(adminInput);
+
+    // invocationCallOrder is global across mocks — the creation call index must
+    // be strictly lower than the send call index.
+    expect(createUserMock.mock.invocationCallOrder[0]).toBeLessThan(
+      sendVerificationEmailMock.mock.invocationCallOrder[0],
+    );
+  });
+
+  it("failure isolation: a send rejection does NOT fail the action — creation result returned, failure logged via log.error (T-02-06-02)", async () => {
+    sendVerificationEmailMock.mockRejectedValueOnce(new Error("Resend down"));
+
+    await expect(createUser(adminInput)).resolves.toEqual(creationResult);
+
+    // The swallowed failure is observable in the server log, carrying the email
+    // (the original failure mode was fully silent — needed Resend's dashboard
+    // to even prove no send was attempted).
+    expect(logErrorMock).toHaveBeenCalledWith(
+      "verification email send failed after user creation",
+      expect.objectContaining({ email: adminInput.email }),
+    );
+  });
+
+  it("no send on failed creation: createUserMock rejects → the action rejects AND sendVerificationEmail was never called", async () => {
+    createUserMock.mockRejectedValueOnce(new Error("creation failed"));
+
+    await expect(createUser(adminInput)).rejects.toThrow("creation failed");
+    expect(sendVerificationEmailMock).not.toHaveBeenCalled();
+  });
+
+  it("bootstrap scope: createFirstAdmin NEVER sends a verification email (bootstrap admin is auto-verified by design — D-09 still gates dashboard-created users)", async () => {
+    // count(admins) === 0 → the bootstrap path proceeds.
+    countResult.mockReturnValue([{ n: 0 }]);
+    createUserMock.mockResolvedValue({ user: { id: "u1", role: "admin" } });
+
+    await createFirstAdmin({
+      name: "Root Admin",
+      email: "admin@example.com",
+      password: "correct-horse",
+    });
+
+    // The admin WAS created (emailVerified:true comes via the body — see the
+    // createFirstAdmin zero test), but no verification email is sent.
+    expect(createUserMock).toHaveBeenCalledTimes(1);
+    expect(sendVerificationEmailMock).not.toHaveBeenCalled();
   });
 });
