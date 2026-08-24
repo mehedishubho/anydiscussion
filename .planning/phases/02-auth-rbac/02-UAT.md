@@ -1,19 +1,14 @@
 ---
-status: testing
+status: complete
 phase: 02-auth-rbac
 source: [02-01-SUMMARY.md, 02-02-SUMMARY.md, 02-03-SUMMARY.md, 02-04-SUMMARY.md, 02-05-SUMMARY.md]
 started: 2026-07-03T12:13:41.000Z
-updated: 2026-08-24T00:00:00Z
+updated: 2026-08-24T22:00:00Z
 ---
 
 ## Current Test
-<!-- OVERWRITE each test - shows where we are -->
 
-number: 5
-name: Verification email on signup (AUTH-07, live inbox round-trip)
-expected: |
-  A NEW (non-admin) user is created via the dashboard (admin.createUser) — a verification email arrives → click the link → the user is verified → they can now sign in (previously blocked by requireEmailVerification).
-awaiting: user response
+[testing complete]
 
 ## Tests
 
@@ -37,11 +32,8 @@ evidence: "Re-tested 2026-08-24 (verify-work resume): full live round-trip passe
 
 ### 5. Verification email on signup (AUTH-07, live inbox round-trip)
 expected: A NEW (non-admin) user is created via the dashboard (admin.createUser) — a verification email arrives → click the link → the user is verified → they can now sign in (previously blocked by requireEmailVerification). NOTE: the bootstrap admin is auto-verified (emailVerified:true by design), so this requires a non-admin user, whose creation UI lands in Phase 4. AUTH-06's reset email exercises the same sendEmail/Resend path, so AUTH-07 delivery is implied once Test 4's reset email lands.
-result: issue
-reported: "no email received"
-severity: major
-investigated: |
-  Runtime context 2026-08-24: Test 4 (reset email) passed minutes earlier — same lib/email → Resend wrapper, live delivery proven. Server log for the running prod instance shows NO Resend error (old failure mode logged a 403; lib/email logs on error — none present), suggesting either a successful send to an unchecked inbox/spam, or the send was never attempted at runtime. Code path: dashboard UserDrawer → createUser action → auth.api.createUser with sendOnSignUp:true (src/lib/auth/index.ts:73); automated coverage D2 proved the hook fires with a stubbed sender. User confirmed: NO send record in Resend at all (recipient mhs@wpmhs.com) — the send was never attempted. ROOT CAUSE (debug session .planning/debug/createuser-no-verify-email.md): Better Auth 1.6.23's admin-plugin createUser endpoint contains NO email-verification logic — sendOnSignUp:true is consumed only by /sign-up/email (dist/api/routes/sign-up.mjs:241) and OAuth link-account (dist/oauth2/link-account.mjs:106); grep for sendVerificationEmail|emailVerification|sendOnSignUp across the entire admin plugin: zero matches. The comment at src/lib/auth/index.ts:73 ("fires on admin.createUser too") is a false docs-memory assumption traced to 02-RESEARCH.md:347. Automated coverage D2 never exercised the framework path: __tests__/email-flows.test.ts mocks betterAuth as an identity function (lines 31-33) and the admin plugin as () => ({}) (lines 39-41), then invokes the configured sendVerificationEmail callback DIRECTLY (lines 83-101); the "sendOnSignUp fires on createUser" claim was asserted only as expect(sendOnSignUp).toBe(true) (lines 103-105) — the causal claim lived in the test name. Same blind-spot class as the proxy.ts miss: config/callback unit tests bypassing library endpoint routing.
+result: pass
+evidence: "Re-tested 2026-08-24 (verify-work resume, after gap closure 02-06 + live-fix quick tasks 260824-ptx/260824-qtu): created a fresh non-admin user via dashboard UserDrawer → verification email arrived → link clicked → user verified → signed in successfully. Owner verdict: pass. Prior issue (no email ever sent — better-auth 1.6.23 admin createUser endpoint contains no email-verification logic; sendOnSignUp consumed only by /sign-up/email + OAuth link-account) fixed by 02-06: createUser action now calls auth.api.sendVerificationEmail explicitly after creation; regression tests pin the causal link at the action layer."
 
 ### A1. lib/email Resend helper (AUTH-06) — coverage D1
 expected: lib/email exports sendEmail({to, subject, text, html?}) — thin Resend wrapper, fire-and-forget safe, never throws.
@@ -70,8 +62,8 @@ coverage_id: D4
 ## Summary
 
 total: 5
-passed: 4
-issues: 1
+passed: 5
+issues: 0
 pending: 0
 skipped: 0
 blocked: 0
@@ -79,8 +71,10 @@ blocked: 0
 ## Gaps
 
 - truth: "A NEW (non-admin) user created via the dashboard receives a verification email; clicking its link verifies them so they can sign in (AUTH-07)."
-  status: failed
-  reason: "User reported: no email received"
+  status: resolved
+  resolved_by: "02-06 (gap-closure plan, executed 2026-08-24)"
+  resolution: "createUser action now calls auth.api.sendVerificationEmail explicitly after creation (try/catch — a send failure never masks successful creation, logged via log.error). False comment at src/lib/auth/index.ts:73 corrected to the verified 1.6.23 boundary; dishonest config-only test renamed with action-layer regression tests in src/actions/__tests__/users.test.ts carrying the causal proof (createUser → sendVerificationEmail exactly once, after creation resolves). Live round-trip verified 2026-08-24: dashboard-created non-admin user received the verification email, clicked the link, verified, signed in (owner verdict: pass)."
+  original_reason: "User reported: no email received"
   severity: major
   test: 5
   root_cause: "Better Auth 1.6.23's admin-plugin createUser endpoint (node_modules/better-auth/dist/plugins/admin/routes.mjs:130-208) contains NO email-verification logic — it does permission check → internalAdapter.createUser → linkAccount credential → return. sendOnSignUp:true is consumed at exactly 2 sites in the whole library: /sign-up/email (dist/api/routes/sign-up.mjs:241) and OAuth link-account (dist/oauth2/link-account.mjs:106); the admin plugin is absent from every sendVerificationEmail call-site list. So the dashboard path (UserDrawer → createUser action → auth.api.createUser) never invokes the sendVerificationEmail callback — sendEmail is never called: no Resend record, no error, nothing. The comment at src/lib/auth/index.ts:73 ('fires on admin.createUser too') is a false docs-memory assumption traced to 02-RESEARCH.md:347, never true of the installed version. Automated coverage D2 never exercised the framework path: __tests__/email-flows.test.ts mocks betterAuth as an identity function (31-33) and the admin plugin as () => ({}) (39-41), invokes the configured callback directly (83-101), and asserts only expect(sendOnSignUp).toBe(true) (103-105) — proving config wiring, not framework behavior (same blind-spot class as the proxy.ts miss)."

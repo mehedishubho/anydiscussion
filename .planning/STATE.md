@@ -7,7 +7,7 @@ status: verifying
 stopped_at: Completed 08-03-PLAN.md (Google Drive destination + OAuth callback)
 last_updated: "2026-07-30T02:56:20.394Z"
 last_activity: 2026-08-24
-last_activity_desc: Quick task 260824-u1b — replace UsersTable window.confirm popups with TailAdmin Modal ConfirmDialog (all four row actions)
+last_activity_desc: Phase 2 UAT complete (5/5 pass) — AUTH-07 verification-email gap resolved by 02-06, live round-trip verified; debug session closed
 progress:
   total_phases: 8
   completed_phases: 7
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-07-01)
 Phase: 08
 Plan: Not started
 Status: Phase complete — ready for verification
-Last activity: 2026-08-24 — Completed quick task 260824-u1b: UsersTable confirmations via TailAdmin Modal ConfirmDialog
+Last activity: 2026-08-24 — Phase 2 UAT complete: 5/5 pass, 0 issues (AUTH-07 gap closed by 02-06, live-verified)
 
 Progress: [█░░░░░░░░░] 13%
 
@@ -141,7 +141,7 @@ Recent decisions affecting current work:
 
 - [Phase 3]: Tiptap v3 SSR round-trip (`@tiptap/html` `generateHTML` with chosen extensions) is MEDIUM-confidence — validate before wiring all rendering.
 - [Phase 6]: Cache Components + `<Suspense>` boundary placement on `/[slug]` is HIGHEST-confidence open question — plan a spike before building all archive routes.
-- [Phase 2 → UAT]: **Verification debt** — AUTH-06/07 real-inbox email delivery deferred to UAT (`.planning/phases/02-auth-rbac/02-UAT.md` UAT-02-01). Automated hook-firing tests pass (53 green); the manual round-trip requires operator `RESEND_API_KEY` + DNS deliverability (DKIM/SPF/DMARC — Phase 7 / D-04). Must close before production launch.
+- [Phase 2 → UAT]: ~~Verification debt — AUTH-06/07 real-inbox email delivery deferred to UAT~~ **CLOSED 2026-08-24**: both live round-trips passed (AUTH-06 forgot/reset Test 4; AUTH-07 dashboard-created-user verification email Test 5, after gap closure 02-06). Phase 2 UAT complete — 5/5 pass, 0 issues (`.planning/phases/02-auth-rbac/02-UAT.md`).
 - [Phase 2]: Better Auth `admin` vs `access` plugin split — confirm whether `access` plugin is needed for fine-grained permissions beyond the three roles.
 
 ### Quick Tasks Completed

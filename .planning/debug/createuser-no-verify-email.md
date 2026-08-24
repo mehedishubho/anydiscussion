@@ -1,8 +1,10 @@
 ---
-status: diagnosed
+status: resolved
 trigger: "AUTH-07 Phase 02 test 5: dashboard-created user (non-admin) never receives verification email — Resend shows NO send record at all"
 created: 2026-08-24T00:00:00Z
-updated: 2026-08-24T00:05:00Z
+updated: 2026-08-24T22:00:00Z
+resolved_by: "02-06 (gap-closure plan, executed 2026-08-24)"
+resolution: "Root cause confirmed and fixed. createUser action (src/actions/users.ts) now calls auth.api.sendVerificationEmail explicitly after creation — the causal link enforced in our action code, not assumed of the framework. False comment at src/lib/auth/index.ts:73 corrected; dishonest config-only test renamed; action-layer regression tests added (src/actions/__tests__/users.test.ts). Live round-trip verified 2026-08-24: dashboard-created non-admin user received the email, clicked the link, verified, signed in (UAT test 5 pass)."
 ---
 
 ## Current Focus
