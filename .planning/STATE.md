@@ -7,7 +7,7 @@ status: verifying
 stopped_at: Completed 08-03-PLAN.md (Google Drive destination + OAuth callback)
 last_updated: "2026-07-30T02:56:20.394Z"
 last_activity: 2026-08-24
-last_activity_desc: Quick task 260824-3l2 — functional newsletter (subscribe flow + dashboard config + subscriber management)
+last_activity_desc: Phase 02 gap closure 02-06 — createUser action now sends verification email explicitly (AUTH-07 / UAT test 5)
 progress:
   total_phases: 8
   completed_phases: 7
@@ -125,6 +125,7 @@ Recent decisions affecting current work:
 - [Phase ?]: 08-05: Scratch DB backup_verify on existing Postgres (D-08) via raw autocommit pg.Client (SQLSTATE 25001 guard) + terminate-before-DROP no-linger finally
 - [Phase ?]: 08-05: Hourly-poll + isDue(cronExpr) cadence so admin schedule changes take effect without a restart
 - [Phase ?]: 08-05: Multi-instance cron double-fire cliff documented not solved in v1; v2 = Redis SET NX lease (ADR 0002)
+- [Phase 02]: 02-06: better-auth admin createUser NEVER sends the verification email (sendOnSignUp consumed only by /sign-up/email + OAuth link-account, verified against installed 1.6.23) — createUser action calls auth.api.sendVerificationEmail explicitly post-creation, try/catch so send failure never masks creation
 - [Phase ?]: 08-04: Backup Settings dashboard = verbatim Storage Settings sibling + D-01 multi-select delta (3 destination checkboxes) + 8 admin-gated Server Actions (requireRole FIRST proven by MUST_NOT_BE_REACHED) + CSRF-bound OAuth consent + revoke-before-delete Drive disconnect + type-the-DB-name Restore gate
 
 ### Pending Todos

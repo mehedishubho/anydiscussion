@@ -69,9 +69,11 @@ Plans:
   4. A user can reset a forgotten password via an email link and verify their email on account creation (Better Auth defaults + SMTP working).
   5. A user record carries the profile fields (bio, avatar) needed for byline/author pages, and the post status enum (`draft` / `pending_review` / `published`) and review workflow primitives exist so Phase 3 can enforce author → submit-for-review → editor/admin-approve → publish.
 
-**Plans**: 5/5 plans complete
+**Plans**: 6/6 plans complete
 
 Plans:
+
+- [x] 02-06-PLAN.md
 
 **Wave 1**
 
