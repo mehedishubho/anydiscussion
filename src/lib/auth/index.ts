@@ -70,7 +70,12 @@ export const auth = betterAuth({
         text: `Click the link to verify your email: ${url}`,
       });
     },
-    sendOnSignUp: true, // fires on admin.createUser too
+    // sendOnSignUp is consumed ONLY by /sign-up/email and OAuth link-account in
+    // better-auth 1.6.23 — the admin createUser endpoint NEVER invokes the
+    // callback (verified in .planning/debug/createuser-no-verify-email.md). The
+    // createUser action in src/actions/users.ts calls
+    // auth.api.sendVerificationEmail explicitly after creation.
+    sendOnSignUp: true,
   },
 
   user: {
