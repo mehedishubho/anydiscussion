@@ -180,7 +180,7 @@ Plans:
   4. A post with a long Bangla meta description passes validation using a byte/reasonable-char-count rule, not a Latin-character limit (Bangla content does not get falsely rejected).
   5. An RSS feed at `/rss.xml` (or `/feed.xml`) publishes the latest posts for feed readers.
 
-**Plans**: 3/3 plans complete
+**Plans**: 6 plans (3 complete + 3 gap closure from UAT)
 
 Plans:
 
@@ -192,6 +192,15 @@ Plans:
 
 - [x] 05-02-PLAN.md — Standalone SEO routes: app/sitemap.ts (posts+pages, per-type priority/changefreq) + app/robots.ts (allow/disallow + sitemap pointer) + app/rss.xml/route.ts (full-text RSS 2.0 via renderPostBody, CDATA, escapeXml). Covers SEO-02, SEO-07, SEO-08.
 - [x] 05-03-PLAN.md — Dashboard SEO surface + redirects check: post-editor SeoPanel + post_seo writes in savePost (D-08 gap closure) + admin-only settings/seo page + saveSeoSettings (requireRole('admin') FIRST + 2-arg revalidateTag) + app/not-found.tsx redirects-table lookup (D-12, Node runtime). Covers SEO-01 (dashboard data side), SEO-06 (live editor).
+
+**Wave 1 gap closure** *(from Phase 5 UAT — parallel, no file overlap)*
+
+- [ ] 05-04-PLAN.md — Redirects runtime fix (middleware.ts sets x-incoming-path request header + broadened matcher; not-found.tsx reads it — the Vercel-only x-invoke-path was dead code self-hosted) + SEO entry in the Settings submenu (AppSidebar). Closes UAT gaps 4 (blocker) + 3. Covers SEO-04, SEO-01.
+- [ ] 05-05-PLAN.md — Editor surface rebuild to WordPress-classic spec: Visual/Text tabs, ordered toolbar (block-type dropdown, align via @tiptap/extension-text-align@3.27.1), min-height writing area, live word-count footer (@tiptap/extension-character-count@3.27.1); extensions.ts stays the single client+server source (round-trip test extended). Closes UAT gap 1 (editor half). Covers SEO-02, SEO-06.
+
+**Wave 2 gap closure** *(blocked on 05-05 — package.json overlap + publish e2e needs the rebuilt editor)*
+
+- [ ] 05-06-PLAN.md — Publish workflow + toast feedback: role-aware Publish (editor/admin) / Submit-for-review (author) buttons in PostForm + posts-list row actions wiring the existing publishPost/submitForReview actions; sonner@2.0.8 toasts on every PostForm/PageForm save outcome (Toaster mounted dashboard-only). Closes UAT gaps 1 (publish half) + 2. Covers SEO-02, SEO-07.
 
 **Pitfalls owned:** Bangla meta-length validation (byte/char, not Latin assumptions); sitemap must update via revalidation, not require a full rebuild.
 **Research flag:** none — `generateMetadata`, `sitemap.ts`, and JSON-LD are standard Next.js Metadata API patterns. (Redirects-manager UI is fast-follow — `proxy.ts` checks the table but v1 ships it empty.)
