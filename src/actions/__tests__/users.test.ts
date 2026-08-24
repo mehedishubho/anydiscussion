@@ -24,6 +24,9 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 // Quick task 260824-ptx Task 1 extension: adds removeUserMock (the guarded
 // deleteUser action's terminal auth.api call — MUST_NOT_BE_REACHED when any
 // guard rejects).
+// Quick task 260824-qtu Task 1 extension: adds the next/headers mock (users.ts
+// now imports `headers` directly) + the headerless-internal-call regression
+// block asserting forwarded headers on all four middleware-gated endpoints.
 const {
   createUserMock,
   banUserMock,
@@ -65,6 +68,17 @@ const {
 vi.mock("next/cache", () => ({
   revalidatePath: (...a: unknown[]) => revalidatePathMock(...a),
   revalidateTag: (...a: unknown[]) => revalidateTagMock(...a),
+}));
+
+// next/headers — quick task 260824-qtu: users.ts now imports `headers` DIRECTLY to
+// forward the caller's request headers into middleware-gated admin endpoints (the
+// live-401 fix). This mock did not exist before because @/lib/permissions is
+// module-mocked, so next/headers was never imported transitively. The real
+// implementation throws outside a request scope — stub it with a plain Headers
+// instance carrying a cookie, matching what adminMiddleware's session resolution
+// needs to find the caller's session.
+vi.mock("next/headers", () => ({
+  headers: async () => new Headers({ cookie: "test" }),
 }));
 
 // auth.api — the Better Auth admin endpoints, exposed FLAT (no `admin` namespace at
@@ -652,7 +666,7 @@ describe("DASH-04: deleteUser — guarded destructive removal (owner decision 20
     expect(removeUserMock).not.toHaveBeenCalled();
   });
 
-  it("success: calls auth.api.removeUser exactly once with { body: { userId } } when all guards pass", async () => {
+  it("success: calls auth.api.removeUser exactly once with { body: { userId }, headers } when all guards pass", async () => {
     requireCanMock.mockResolvedValue({ user: { id: "admin-1", role: "admin" } });
     countResult.mockResolvedValueOnce([{ role: "author" }]); // target-role fetch
     countResult.mockResolvedValueOnce([{ n: 0 }]); // post count === 0
@@ -660,6 +674,144 @@ describe("DASH-04: deleteUser — guarded destructive removal (owner decision 20
 
     await expect(deleteUser("target-1")).resolves.toEqual({ success: true });
     expect(removeUserMock).toHaveBeenCalledTimes(1);
-    expect(removeUserMock).toHaveBeenCalledWith({ body: { userId: "target-1" } });
+    // 260824-qtu: exact-shape assertion relaxed to objectContaining — removeUser is
+    // middleware-gated, so the call MUST now also carry forwarded request headers.
+    expect(removeUserMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: { userId: "target-1" },
+        headers: expect.anything(),
+      }),
+    );
+  });
+});
+
+// ============================================================
+// Quick task 260824-qtu Task 1 — headerless-internal-call regression block (RED first)
+// [CITED: 260824-qtu-PLAN.md Task 1 <behavior> — the headerless internal-call bug class]
+// [CITED: live 401 root cause — better-auth 1.6.23 admin-plugin routes gated by
+//  adminMiddleware (node_modules/better-auth/dist/plugins/admin/routes.mjs:16-20)
+//  throw APIError UNAUTHORIZED when invoked server-side WITHOUT request headers:
+//  getAuthoritativeSessionFromCtx finds no session. ALL FOUR middleware-gated
+//  auth.api call sites in users.ts were headerless, so ban/unban/revoke-sessions
+//  carry the same latent bug (DB has zero banned users — ban never worked live).]
+//
+// Threat register coverage (see 260824-qtu-PLAN.md <threat_model>):
+//  - T-Q2-01: headers are the CALLER'S OWN live request (never fabricated or
+//    substituted) — requireCan still fires FIRST unchanged, adminMiddleware
+//    re-authorizes the SAME session (defense in depth preserved)
+//  - T-Q2-02: the only headers source is the next/headers async function
+//    (permissions/index.ts:24 precedent) — no hand-built Headers here
+//  - T-Q2-03: "user deleted" logs only after removeUser resolves
+//  - T-Q2-04: removeUser rejection becomes a readable thrown message
+// ============================================================
+describe("REGRESSION 260824-qtu: middleware-gated admin endpoints receive forwarded request headers (headerless internal call = live 401)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Success-path default: requireCan resolves with an admin session (the
+    // gated endpoints are admin capabilities; the FORBIDDEN ordering is already
+    // covered above and must stay unchanged).
+    requireCanMock.mockResolvedValue({ user: { id: "admin-1", role: "admin" } });
+  });
+
+  it("banUser success: forwards request headers alongside body (headerless = live 401)", async () => {
+    banUserMock.mockResolvedValue({ success: true });
+
+    await banUser("target-id", { banReason: "spam" });
+
+    expect(banUserMock).toHaveBeenCalledTimes(1);
+    expect(banUserMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: expect.objectContaining({ userId: "target-id", banReason: "spam" }),
+        headers: expect.anything(),
+      }),
+    );
+    // Bug-class regression: the headers key MUST be present on the call argument.
+    expect(banUserMock.mock.calls[0][0].headers).toBeDefined();
+  });
+
+  it("unbanUser success: forwards request headers alongside body (headerless = live 401)", async () => {
+    unbanUserMock.mockResolvedValue({ success: true });
+
+    await unbanUser("target-id");
+
+    expect(unbanUserMock).toHaveBeenCalledTimes(1);
+    expect(unbanUserMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: expect.objectContaining({ userId: "target-id" }),
+        headers: expect.anything(),
+      }),
+    );
+    expect(unbanUserMock.mock.calls[0][0].headers).toBeDefined();
+  });
+
+  it("revokeSessions success: forwards request headers alongside body (headerless = live 401)", async () => {
+    revokeUserSessionsMock.mockResolvedValue({ success: true });
+
+    await revokeSessions({ userId: "target-id" });
+
+    expect(revokeUserSessionsMock).toHaveBeenCalledTimes(1);
+    expect(revokeUserSessionsMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: expect.objectContaining({ userId: "target-id" }),
+        headers: expect.anything(),
+      }),
+    );
+    expect(revokeUserSessionsMock.mock.calls[0][0].headers).toBeDefined();
+  });
+
+  it("deleteUser failure path: removeUser rejection becomes a readable error + log.error — log.info NEVER fires (T-Q2-03/T-Q2-04)", async () => {
+    // Guards pass: target is a non-admin author with zero posts.
+    countResult.mockResolvedValueOnce([{ role: "author" }]); // target-role fetch
+    countResult.mockResolvedValueOnce([{ n: 0 }]); // post count === 0
+    // The live failure mode: the gated endpoint rejects with an opaque APIError.
+    removeUserMock.mockRejectedValueOnce(new Error("APIError UNAUTHORIZED"));
+
+    await expect(deleteUser("target-1")).rejects.toThrow(
+      "Failed to delete user — please try again.",
+    );
+    // The failure is observable in the server log with the target id.
+    expect(logErrorMock).toHaveBeenCalledWith(
+      "deleteUser failed",
+      expect.objectContaining({ userId: "target-1" }),
+    );
+    // The old premature "user deleted" log must NOT fire on failure.
+    expect(logInfoMock).not.toHaveBeenCalled();
+  });
+
+  it("deleteUser log-ordering: 'user deleted' fires only AFTER removeUser resolves (T-Q2-03)", async () => {
+    // Same green-path mocks as the success test above.
+    countResult.mockResolvedValueOnce([{ role: "author" }]); // target-role fetch
+    countResult.mockResolvedValueOnce([{ n: 0 }]); // post count === 0
+    removeUserMock.mockResolvedValue({ success: true });
+
+    await deleteUser("target-1");
+
+    // invocationCallOrder is global across mocks (precedent: the AUTH-07 ordering
+    // test above) — the removeUser call index must be strictly lower than the
+    // success log's index, so the log can never claim a deletion that did not happen.
+    expect(removeUserMock.mock.invocationCallOrder[0]).toBeLessThan(
+      logInfoMock.mock.invocationCallOrder[0],
+    );
+    expect(logInfoMock).toHaveBeenCalledWith("user deleted", { userId: "target-1" });
+  });
+
+  it("deliberate asymmetry: auth.api.createUser stays HEADERLESS (caller-check skip is by design — routes.mjs:146-149)", async () => {
+    createUserMock.mockResolvedValue({ user: { id: "u-new" } });
+    sendVerificationEmailMock.mockResolvedValue(undefined);
+
+    await createUser({
+      name: "New User",
+      email: "new@example.com",
+      password: "longenough",
+      role: "author",
+    });
+
+    // createUser tolerates headerless server-side calls BY DESIGN (the admin
+    // endpoint's caller check is skipped when no headers are forwarded) and
+    // sendVerificationEmail is deliberately headerless (anti-enumeration). Pin the
+    // asymmetry so a future "cleanup" cannot silently change these call shapes —
+    // the AUTH-07 exact-match assertion on sendVerificationEmail above already
+    // enforces headerless there.
+    expect(createUserMock.mock.calls[0][0]).not.toHaveProperty("headers");
   });
 });
