@@ -168,6 +168,13 @@ None - no external service configuration required.
 - AUTH-07 automated coverage is complete at the action layer; the live Resend round-trip (UAT Test 5 re-run) remains the designated manual gate before closing the UAT issue
 - Pre-existing repo-wide tsc errors (icon className typing + one test file) are logged in deferred-items.md for a future cleanup pass
 
+## Self-Check: PASSED
+
+- .planning/phases/02-auth-rbac/02-06-SUMMARY.md — FOUND
+- .planning/phases/02-auth-rbac/deferred-items.md — FOUND
+- Task commits on branch: 3827446 (test RED), c4a5a1a (feat GREEN), 050a040 (docs) — all FOUND
+- Verification gates: users.test.ts 18/18, email-flows.test.ts 10/10, full suite 562/562, both negative greps pass, tsc delta vs base zero
+
 ---
 *Phase: 02-auth-rbac*
 *Completed: 2026-08-24*
