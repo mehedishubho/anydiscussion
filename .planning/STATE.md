@@ -7,7 +7,7 @@ status: verifying
 stopped_at: Completed 08-03-PLAN.md (Google Drive destination + OAuth callback)
 last_updated: "2026-07-30T02:56:20.394Z"
 last_activity: 2026-08-24
-last_activity_desc: Quick task 260824-ptx — users dashboard Unverified badge + guarded deleteUser (D-08 revised by owner decision)
+last_activity_desc: Quick task 260824-qtu — forward request headers to middleware-gated auth.api admin calls (fixes live 401 on delete/ban/unban/revoke)
 progress:
   total_phases: 8
   completed_phases: 7
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-07-01)
 Phase: 08
 Plan: Not started
 Status: Phase complete — ready for verification
-Last activity: 2026-08-24 — Completed quick task 260824-ptx: users dashboard Unverified badge + guarded deleteUser
+Last activity: 2026-08-24 — Completed quick task 260824-qtu: forward headers to middleware-gated auth.api admin calls (401 fix)
 
 Progress: [█░░░░░░░░░] 13%
 
@@ -155,6 +155,7 @@ Recent decisions affecting current work:
 | 260824-36g | De-brand dashboard/auth surfaces from SEES to anydiscussion — shared BrandLogo component (speech-bubble SVG from SiteHeader), sidebar/header/auth-panel swaps, sign-in metadata, SEES blurb replaced | 2026-08-24 | 5e5d493 | [260824-36g-de-brand-dashboard-from-sees-to-anydiscu](./quick/260824-36g-de-brand-dashboard-from-sees-to-anydiscu/) |
 | 260824-3l2 | Functional frontend newsletter — single-opt-in subscribe Server Action (subscribers table + honeypot + Redis rate limit) as a client island inside the cached footer, dashboard config (enable toggle + heading/description/success texts via settings keys), admin subscribers page with delete + CSV export | 2026-08-24 | a555499 | [260824-3l2-functional-frontend-newsletter-with-dash](./quick/260824-3l2-functional-frontend-newsletter-with-dash/) |
 | 260824-ptx | Users dashboard gap closure (Phase 2 UAT test 5) — three-state Status badge (Banned > Unverified > Active, amber warning palette via emailVerified projection) + guarded deleteUser action (permission-first, self / last-admin / has-posts guards; D-08 revised per owner decision) with optimistic-removal Delete UI | 2026-08-24 | 7a0cdbe | [260824-ptx-users-table-unverified-badge-guarded-del](./quick/260824-ptx-users-table-unverified-badge-guarded-del/) |
+| 260824-qtu | Fix live 401 on dashboard user delete — better-auth 1.6.23 adminMiddleware throws UNAUTHORIZED on headerless internal calls; ALL FOUR middleware-gated auth.api call sites (removeUser/banUser/unbanUser/revokeUserSessions) now forward headers: await headers() (createUser/sendVerificationEmail deliberately headerless, pinned by tests); lying premature log.info("user deleted") moved after success + friendly error wrap | 2026-08-24 | dd9578b | [260824-qtu-fix-headerless-auth-api-admin-401-delete](./quick/260824-qtu-fix-headerless-auth-api-admin-401-delete/) |
 
 ## Deferred Items
 
