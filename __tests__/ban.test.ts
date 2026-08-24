@@ -45,6 +45,14 @@ vi.mock("@/lib/log", () => ({
   log: { info: vi.fn(), error: vi.fn() },
 }));
 
+// next/headers — 260824-qtu: users.ts now forwards `await headers()` into the
+// middleware-gated ban/unban endpoints (the live-401 fix). The real
+// implementation throws outside a request scope, so stub it (same mock as
+// src/actions/__tests__/users.test.ts).
+vi.mock("next/headers", () => ({
+  headers: async () => new Headers({ cookie: "test" }),
+}));
+
 import { banUser, unbanUser } from "@/actions/users";
 
 describe("D-16: banUser — admin-gated ban primitive (success path)", () => {

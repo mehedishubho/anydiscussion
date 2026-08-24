@@ -43,6 +43,14 @@ vi.mock("@/lib/log", () => ({
   log: { info: vi.fn(), error: vi.fn() },
 }));
 
+// next/headers — 260824-qtu: users.ts now forwards `await headers()` into the
+// middleware-gated revokeUserSessions endpoint (the live-401 fix). The real
+// implementation throws outside a request scope, so stub it (same mock as
+// src/actions/__tests__/users.test.ts).
+vi.mock("next/headers", () => ({
+  headers: async () => new Headers({ cookie: "test" }),
+}));
+
 import { revokeSessions } from "@/actions/users";
 // Import the auth instance to assert session config (AUTH-01 persist).
 // We re-mock @/lib/auth above, so we import the raw config indirectly via a

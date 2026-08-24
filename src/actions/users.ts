@@ -14,6 +14,7 @@
 // Server-only — top directive mandatory for Server Actions.
 "use server";
 import { revalidatePath, revalidateTag } from "next/cache";
+import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { db, schema } from "@/lib/db";
 import { eq, count } from "drizzle-orm";
@@ -27,6 +28,23 @@ import { requireCan, getSessionOrThrow } from "@/lib/permissions";
 // action throw "Cannot read properties of undefined (reading 'createUser')" at
 // runtime.
 // [CITED: better-auth@1.6.23 dist/plugins/admin/admin.mjs — endpoints {} → flat auth.api]
+//
+// WHY `headers` IS IMPORTED (260824-qtu — do NOT "clean up" the asymmetry below):
+// every admin-plugin route gated by adminMiddleware (removeUser, banUser, unbanUser,
+// revokeUserSessions, setRole, … — better-auth@1.6.23
+// dist/plugins/admin/routes.mjs:16-20) resolves the caller's session FROM THE
+// REQUEST HEADERS via getAuthoritativeSessionFromCtx and throws APIError
+// UNAUTHORIZED when invoked server-side WITHOUT them. A headerless internal
+// auth.api call therefore 401s even when requireCan already passed — the live
+// deleteUser 401 shipped exactly this way (ban/unban/revoke carried the same
+// latent bug: zero banned users existed in the DB). Every call to a gated
+// endpoint MUST forward the caller's OWN live request headers via await
+// headers() — never fabricated (pattern: src/lib/permissions/index.ts:24).
+// DELIBERATE exceptions, pinned by tests (users.test.ts REGRESSION 260824-qtu):
+//   - auth.api.createUser — headerless BY DESIGN: routes.mjs:146-149 skips the
+//     caller check when no headers are forwarded.
+//   - auth.api.sendVerificationEmail — deliberately headerless (anti-enumeration;
+//     .planning/debug/createuser-no-verify-email.md).
 
 /**
  * createFirstAdmin — the first-run admin-creation bootstrap action.
@@ -146,6 +164,8 @@ export async function banUser(
   // state on the author page, this becomes MISSING and needs revalidatePath("/author/${username}").
 
   return auth.api.banUser({
+    // Middleware-gated endpoint — forward the caller's headers (see import note).
+    headers: await headers(),
     body: {
       userId,
       ...(options?.banReason ? { banReason: options.banReason } : {}),
@@ -166,6 +186,8 @@ export async function unbanUser(userId: string) {
   // not rendered on /author/[username]. No public surface.
 
   return auth.api.unbanUser({
+    // Middleware-gated endpoint — forward the caller's headers (see import note).
+    headers: await headers(),
     body: { userId },
   });
 }
@@ -186,6 +208,8 @@ export async function revokeSessions(input: { userId: string }) {
   // surface (no route renders session state).
 
   return auth.api.revokeUserSessions({
+    // Middleware-gated endpoint — forward the caller's headers (see import note).
+    headers: await headers(),
     body: { userId: input.userId },
   });
 }
@@ -255,9 +279,11 @@ export async function listUsers() {
  *   (B) Cross-user edit (!isSelf): requireCan({user:["update"]}) FIRST. Non-admin
  *       → FORBIDDEN BEFORE any db.update (T-04-12 — MUST_NOT_BE_REACHED test).
  *
- * Persistence:
- *   - `name` flows through auth.api.updateUser (Better Auth owns the core column).
- *   - `bio` + `avatar` (AUTH-08 fields) persist via db.update on schema.user.
+ * Persistence (ALL fields via a single direct db.update on schema.user — see the
+ * inline comment below for why auth.api.updateUser is NOT used; 260824-qtu
+ * corrected this JSDoc, which still claimed name flows through the Better Auth
+ * endpoint):
+ *   - `name` + `bio` + `avatar` (AUTH-08 fields) persist via db.update on schema.user.
  *   - `role` persists via db.update ONLY on the cross-user path when provided.
  *
  * @param userId Target user id.
@@ -356,7 +382,8 @@ export async function updateUser(
 //   T-Q-03: has-posts guard converts the raw NO-ACTION FK error into a friendly
 //           message (posts.authorId — src/db/schema.ts — is a bare .references()
 //           with no onDelete, so default NO ACTION would raw-error the delete)
-//   T-Q-04: log.info on success (repudiation)
+//   T-Q-04: "user deleted" logs only AFTER removeUser resolves (repudiation —
+//           verified, not assumed); 260824-qtu hardened the failure surface too
 // ============================================================
 
 /**
@@ -377,8 +404,10 @@ export async function updateUser(
  *      posts.authorId FK is a bare .references() (no onDelete — default NO
  *      ACTION), so without this guard the DB would raw-error; the guard turns
  *      that into a friendly message AND preserves D-08's authorship integrity.
- *   6. Success — auth.api.removeUser (flat keying, same call shape as
- *      createUser above). The admin-plugin endpoint cascades the user's
+ *   6. Success — auth.api.removeUser with forwarded request headers (middleware-
+ *      gated endpoint — see the next/headers import note). "user deleted" logs
+ *      only AFTER the endpoint resolves; a rejection is converted into a
+ *      readable thrown error. The admin-plugin endpoint cascades the user's
  *      sessions/accounts on the auth side.
  *
  * @param userId Target user id.
@@ -387,6 +416,7 @@ export async function updateUser(
  * @throws Error("User not found.") when the target row does not exist.
  * @throws Error("Cannot delete the last remaining admin. Promote another admin first.")
  * @throws Error("This user still has posts. Reassign or delete their posts first.")
+ * @throws Error("Failed to delete user — please try again.") when removeUser rejects.
  */
 export async function deleteUser(userId: string) {
   // T-Q-01 — permission check FIRST (Pitfall #1). requireCan already returns
@@ -437,8 +467,23 @@ export async function deleteUser(userId: string) {
     throw new Error("This user still has posts. Reassign or delete their posts first.");
   }
 
-  // T-Q-04 — log THEN delegate (log-then-throw / log-then-call idiom). The
-  // admin-plugin endpoint cascades the user's sessions/accounts.
-  log.info("user deleted", { userId });
-  return auth.api.removeUser({ body: { userId } });
+  // T-Q-04 (260824-qtu) — logging follows RESOLUTION, not assumption: "user
+  // deleted" fires only after auth.api.removeUser actually resolves (the old
+  // log-then-call shape claimed deletions that never happened — the live 401
+  // shipped exactly that, with the log written and the row still present). A
+  // rejection is converted into a readable message: the raw APIError surfaced as
+  // a blank dashboard alert + "no message was provided" Server Components error.
+  // Do NOT rethrow the raw err. The endpoint is middleware-gated — headers are
+  // forwarded (see the next/headers import note).
+  try {
+    const result = await auth.api.removeUser({
+      headers: await headers(),
+      body: { userId },
+    });
+    log.info("user deleted", { userId });
+    return result;
+  } catch (err) {
+    log.error("deleteUser failed", { userId, err: String(err) });
+    throw new Error("Failed to delete user — please try again.");
+  }
 }
