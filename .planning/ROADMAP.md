@@ -180,7 +180,7 @@ Plans:
   4. A post with a long Bangla meta description passes validation using a byte/reasonable-char-count rule, not a Latin-character limit (Bangla content does not get falsely rejected).
   5. An RSS feed at `/rss.xml` (or `/feed.xml`) publishes the latest posts for feed readers.
 
-**Plans**: 7/7 plans complete
+**Plans**: 7/8 plans executed
 
 Plans:
 
@@ -205,6 +205,10 @@ Plans:
 **Wave 3 gap closure** *(blocked on 05-05 + 05-06 — fixes the rebuilt editor surface + the publish-validation no-op from the UAT re-run)*
 
 - [x] 05-07-PLAN.md — Editor surface styling (@tailwindcss/typography @plugin + .tiptap.ProseMirror rules + Placeholder via @tiptap/extensions@3.27.1 + immediatelyRender:true) + loud publish validation (onInvalid toast/focus on all 3 submit paths, Zod 4 "Category is required" constructor error, derive-on-empty slug auto-fill). Closes UAT re-run gap R1. Covers SEO-02, SEO-06.
+
+**Wave 4 gap closure** *(blocked on 05-06 — fixes the edit-page RSC crash from the UAT re-run)*
+
+- [ ] 05-08-PLAN.md — Edit-page RSC boundary fix + schedule persistence: delete the inline function-prop stub that crashes every /dashboard/posts/[id]/edit render; SchedulePicker drops the onChange prop and calls the existing setSchedule action client-side (debounced, sonner toasts per the 05-06 pattern; clear-to-empty guarded off; picker hidden from authors per Phase-3 D-15) + structural regression test pinning no-function-props across the boundary. Closes UAT re-run gap "edit page renders + Schedule picker persists". Covers SEO-02, SEO-07 (R1 re-test chain).
 
 **Pitfalls owned:** Bangla meta-length validation (byte/char, not Latin assumptions); sitemap must update via revalidation, not require a full rebuild.
 **Research flag:** none — `generateMetadata`, `sitemap.ts`, and JSON-LD are standard Next.js Metadata API patterns. (Redirects-manager UI is fast-follow — `proxy.ts` checks the table but v1 ships it empty.)
