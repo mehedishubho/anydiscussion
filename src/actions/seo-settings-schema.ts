@@ -15,6 +15,7 @@
 //
 // NO "use server" / "use client" directive — pure schema module imported by both.
 import { z } from "zod";
+import { imageUrlSchema } from "@/lib/validation/image-url";
 
 /**
  * seoSettingsSchema — the five site-wide SEO defaults (D-11).
@@ -26,7 +27,10 @@ import { z } from "zod";
 export const seoSettingsSchema = z.object({
   siteTitle: z.string().min(1, "Site title is required").max(255),
   siteDescription: z.string().max(500).optional(),
-  defaultOgImage: z.string().url().optional().or(z.literal("")),
+  // Shared image-URL contract (quick 260826-5l0): defaultOgImage accepts
+  // media-library root-relative URLs; canonicalBaseUrl is a base URL and must
+  // stay absolute-only with its own message.
+  defaultOgImage: imageUrlSchema.optional(),
   canonicalBaseUrl: z.string().url("Canonical base URL must be a valid URL"),
   twitterHandle: z.string().max(50).optional(),
 });
