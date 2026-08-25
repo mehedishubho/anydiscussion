@@ -180,7 +180,7 @@ Plans:
   4. A post with a long Bangla meta description passes validation using a byte/reasonable-char-count rule, not a Latin-character limit (Bangla content does not get falsely rejected).
   5. An RSS feed at `/rss.xml` (or `/feed.xml`) publishes the latest posts for feed readers.
 
-**Plans**: 6/6 plans complete
+**Plans**: 6/7 plans complete
 
 Plans:
 
@@ -201,6 +201,10 @@ Plans:
 **Wave 2 gap closure** *(blocked on 05-05 — package.json overlap + publish e2e needs the rebuilt editor)*
 
 - [x] 05-06-PLAN.md — Publish workflow + toast feedback: role-aware Publish (editor/admin) / Submit-for-review (author) buttons in PostForm + posts-list row actions wiring the existing publishPost/submitForReview actions; sonner@2.0.8 toasts on every PostForm/PageForm save outcome (Toaster mounted dashboard-only). Closes UAT gaps 1 (publish half) + 2. Covers SEO-02, SEO-07.
+
+**Wave 3 gap closure** *(blocked on 05-05 + 05-06 — fixes the rebuilt editor surface + the publish-validation no-op from the UAT re-run)*
+
+- [ ] 05-07-PLAN.md — Editor surface styling (@tailwindcss/typography @plugin + .tiptap.ProseMirror rules + Placeholder via @tiptap/extensions@3.27.1 + immediatelyRender:true) + loud publish validation (onInvalid toast/focus on all 3 submit paths, Zod 4 "Category is required" constructor error, derive-on-empty slug auto-fill). Closes UAT re-run gap R1. Covers SEO-02, SEO-06.
 
 **Pitfalls owned:** Bangla meta-length validation (byte/char, not Latin assumptions); sitemap must update via revalidation, not require a full rebuild.
 **Research flag:** none — `generateMetadata`, `sitemap.ts`, and JSON-LD are standard Next.js Metadata API patterns. (Redirects-manager UI is fast-follow — `proxy.ts` checks the table but v1 ships it empty.)
