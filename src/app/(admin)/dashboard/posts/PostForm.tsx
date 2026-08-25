@@ -38,6 +38,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import Image from "next/image";
+import { toast } from "sonner";
 import { EditorProvider } from "@/components/editor/EditorProvider";
 import { postSchema, zodResolver, type PostSchemaInput } from "./schema-client";
 import { savePost } from "@/actions/posts";
@@ -90,11 +91,21 @@ export default function PostForm(props: PostFormProps) {
   // Invalidate the ["posts"] query key on success so any dashboard list refreshes.
   // The mutation inherits the Server Action's behavior 1:1 (no client-side
   // transformation) — the form is the source of truth until the server confirms.
+  //
+  // 05-06 gap closure (UAT test 3 — "silent saves"): every outcome fires a
+  // sonner toast. The success toast is the always-visible signal that the save
+  // landed; the error toast carries the raw action message (FORBIDDEN /
+  // NOT_FOUND / validation text) so failures are diagnosable. The inline error
+  // box below stays — the toast is the primary channel, the box is persistent.
   const mutation = useMutation({
     mutationFn: (values: PostSchemaInput) =>
       savePost(values as Parameters<typeof savePost>[0]),
     onSuccess: () => {
+      toast.success("Post saved");
       void queryClient.invalidateQueries({ queryKey: ["posts"] });
+    },
+    onError: (err: Error) => {
+      toast.error(err.message);
     },
   });
 
