@@ -7,8 +7,18 @@ updated: 2026-08-25T19:35:00Z
 ---
 
 ## Current Test
+<!-- OVERWRITE each test - shows where we are -->
 
-[awaiting re-run — see "Re-run (post gap-closure)" below]
+number: R1
+name: Live publish flow re-run
+expected: |
+  As an editor, open /dashboard/posts/new (or an existing draft). Body editor shows the
+  WordPress-classic surface (Visual/Text tabs, toolbar, word-count footer) and accepts typing.
+  Fill title + body, click Publish — a success toast appears. Save-draft also toasts.
+  (Claude then auto-verifies: post in /sitemap.xml + /rss.xml, /blog/{slug} page source shows
+  canonical + og:url + BlogPosting JSON-LD.)
+result: issue (2026-08-25) — "first time body box input showing like this and after adding
+all data and click on publish button nothing happen". Diagnosis in progress.
 
 ## Tests
 
@@ -39,10 +49,8 @@ note: User reached the page by URL (SEO item missing from sidebar — logged as 
 
 ### 5. Redirects runtime — 404 fallback + populated-row redirect (covers behavior_unverified[1])
 expected: On a running dev server, visit an unmatched path (e.g. `/nonexistent`) → the 404 UI renders WITHOUT crashing (empty redirects table → try/catch swallows → null → 404). Then manually insert a `redirects` row (old_path `/old`, new_path `/new`, status_code 301) and visit `/old` → `permanentRedirect`/`redirect` fires to `/new`.
-result: issue
-reported: "Row inserted (id 1, /old → /new, 301) via docker compose psql by Claude; curl http://localhost:3000/old returns 404 — redirect never fires"
-severity: blocker
-partial_pass: 404 fallback ✓ (auto-verified: unmatched path renders 404 UI, no crash, before and after row insert). Redirect lookup FAILS: row present but no redirect — root cause below.
+result: pass
+note: RESOLVED by gap-closure plan 05-04 (middleware moved to src/middleware.ts, Node runtime, redirect lookup + 308/307 mapping before 404). Re-verified live 2026-08-25 in re-run R2: GET /old → 308 → /new; GET /old2 → 307 → /new2; /nonexistent → 404.
 
 ## Summary
 
@@ -125,12 +133,48 @@ requirements SATISFIED in code, no code gaps — 3 runtime flows need live re-te
 
 ### R1. Live publish flow re-run (covers original tests 2 + 3, gaps 1 + 2)
 expected: As an editor, open `/dashboard/posts/new` (or an existing draft). Body editor shows the WordPress-classic surface (Visual/Text tabs, toolbar, word-count footer) and accepts typing. Fill title + body, click Publish — a success toast appears. The post then: (a) appears in `/sitemap.xml` under `/blog/{slug}` (0.8/weekly), (b) appears in `/rss.xml` as an `<item>` with a correct `pubDate` (CR-02: publish stamps `publishedAt`), (c) its live page source at `/blog/{slug}` shows `<link rel="canonical" href=".../blog/{slug}">` (CR-01), matching `og:url`, and a `BlogPosting` JSON-LD script (CR-03-escaped). Save-draft also toasts.
-result: pending
+result: issue
+reported: "first time body box input showing like this and after adding all data and click on publish button nothing happen"
+severity: major
+evidence: "Screenshot 2026-08-25: toolbar renders correctly (Visual/Text tabs, Paragraph dropdown, B/I/lists/align/link/table/More, word-count footer '1 word, 9 characters') BUT the writing surface renders as an unstyled plain text box (black border, no padding, no ProseMirror placeholder) instead of the Tiptap contenteditable surface. Typed text 'hjhjhjhj' lands in the plain box. Category* field visible and empty. After filling all data, clicking Publish produces no toast, no navigation, no visible save."
 
 ### R2. Live redirects re-run (covers original test 5, gap 4)
 expected: Dev server running, `redirects` row id 1 (`/old` → `/new`, 301) present in dev DB from the prior UAT (re-insert if the DB was reset). `curl -i http://localhost:3000/old` returns **308** with `Location: /new` (middleware maps 301→308). Unmatched path (e.g. `/nonexistent`) still renders the 404 UI.
-result: pending
+result: pass
+source: automated
+note: Auto-verified via curl 2026-08-25 against live dev server. DB rows present: /old→/new (301), /old2→/new2 (302), /blog/old-post→/blog/new-post (301). GET /old → 308 Permanent Redirect, Location: /new; GET /old2 → 307 Temporary Redirect, Location: /new2; GET /nonexistent → 404. Node-runtime middleware (src/middleware.ts) firing on public paths — original blocker resolved by gap-closure plan 05-04.
 
 ### R3. Sidebar SEO click-through (covers original test 4 gap)
 expected: In the dashboard, Settings submenu shows an `SEO` entry; clicking it navigates to `/dashboard/settings/seo` and the form loads (no URL typing).
 result: pending
+
+## Gaps added by re-run
+
+- truth: "The rebuilt classic-editor body box renders the styled Tiptap surface on first load, and Publish saves the post with a visible success toast"
+  status: failed
+  reason: "User reported after gap-closure merge: body box renders as an unstyled plain text box on first load (toolbar + word-count footer render fine), and clicking Publish after filling all data does nothing — no toast, no navigation, no save"
+  severity: major
+  test: R1
+  root_cause: "CONFIRMED (two independent causes; hydration/JS-death REFUTED — live word-count updates in screenshot prove hydration, TiptapEditor is next/dynamic ssr:false and could not appear in SSR HTML at all). (A) Editor surface: the .tiptap.ProseMirror contenteditable has ZERO styles in the codebase — Tiptap v3 ships no CSS, globals.css has no .ProseMirror rules, the 'prose prose-sm dark:prose-invert' classes on TiptapEditor.tsx:128 are DEAD (@tailwindcss/typography not in package.json, no @plugin in globals.css; verified against served chunk: min-h-[350px] present, zero prose rules), 'focus:outline-none' is on the wrapper div while focus lands on the child contenteditable so the browser default focus ring (hard black border on Windows Chrome/Edge) survives, and no Placeholder extension means the empty surface shows nothing. Secondary: useEditor without immediatelyRender:true yields a transient null-editor first frame under Next.js; warm dev server may serve stale CSS on first post-rebuild load (dev-only). (B) Publish no-op: posts-schema.ts:30 makes categoryId REQUIRED (z.number().int().positive) with undefined default on /dashboard/posts/new; screenshot shows Category empty → RHF/Zod validation fails → handleSubmit (PostForm.tsx:208, 358, 368) has NO onInvalid callback → silent no-op (no toast/focus/scroll; only small inline captions mid-form above the button). Slug is a bare manual input (no auto-derive from title) failing ^[a-z0-9]+(-[a-z0-9]+)*$ silently — second blocker. Zod 4 emits cryptic 'Invalid input: expected number, received undefined' instead of 'Category is required'. Toaster IS mounted (sonner 2.0.8, AdminShell.tsx:71) — once the mutation fires, toasts work."
+  artifacts:
+    - path: "src/components/editor/TiptapEditor.tsx"
+      issue: "L53 useEditor without immediatelyRender (null-editor first frame under Next); L128 wrapper carries dead prose classes + misdirected focus:outline-none (focus lands on child .ProseMirror)"
+    - path: "src/app/globals.css"
+      issue: "no .ProseMirror/.tiptap rules; no @plugin for @tailwindcss/typography"
+    - path: "package.json"
+      issue: "@tailwindcss/typography absent — prose classes generate zero CSS"
+    - path: "src/components/editor/extensions.ts"
+      issue: "no Placeholder extension — empty surface shows nothing"
+    - path: "src/app/(admin)/dashboard/posts/PostForm.tsx"
+      issue: "L208/L358/L368 handleSubmit called without onInvalid — validation failure is a silent no-op; slug input L224-240 has no auto-derivation"
+    - path: "src/actions/posts-schema.ts"
+      issue: "L30 categoryId required but undefined yields cryptic Zod type error, not 'Category is required'"
+    - path: "src/app/(admin)/dashboard/pages/PageForm.tsx"
+      issue: "shares EditorProvider — same unstyled surface (fix benefits both)"
+  missing:
+    - "Style the editor writing surface: install @tailwindcss/typography (pnpm) + @plugin directive in globals.css, add .tiptap.ProseMirror rules (outline:none, fill height), fix focus:outline-none placement, add Placeholder extension (@tiptap/extension-placeholder@3)"
+    - "Set immediatelyRender:true in useEditor (component is client-only behind next/dynamic ssr:false — safe)"
+    - "Add onInvalid callback to all three handleSubmit calls in PostForm.tsx: error toast + focus/scroll to first invalid field"
+    - "Fix categoryId Zod 4 error message (z.number({ error: 'Category is required' }))"
+    - "Auto-derive slug from title when slug empty/untouched (transliterate-strip to ^[a-z0-9]+(-[a-z0-9]+)*$), or mark Slug required with visible asterisk — planner to scope"
+  debug_session: "2 parallel gsd-debugger agents 2026-08-25 (editor-surface + publish no-op); both refuted shared hydration cause; cross-confirmed typography-plugin finding"
