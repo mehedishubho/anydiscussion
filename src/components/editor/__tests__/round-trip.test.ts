@@ -18,6 +18,7 @@
 import { describe, it, expect } from "vitest";
 import { generateHTML } from "@tiptap/html";
 import { editorExtensions } from "../extensions";
+import { sanitizeBeforeRender } from "@/lib/sanitize";
 
 describe("CONT-02/03 — Tiptap v3 SSR round-trip (PRIMARY research flag)", () => {
   it("serializes a heading node to <h1>", () => {
@@ -172,5 +173,65 @@ describe("CONT-02/03 — Tiptap v3 SSR round-trip (PRIMARY research flag)", () =
     expect(html).not.toContain('<iframe src="https://evil.com"');
     // If generateHTML happens to render an iframe, it MUST go through sanitize
     // before reaching the browser — that wiring is Slice B/D's responsibility.
+  });
+});
+
+// 05-05 (UAT gap 1 — WordPress-classic editor surface): alignment must survive
+// the FULL pipeline, not just the editor. TextAlign is configured for
+// heading + paragraph only (extensions.ts); these tests prove that (a) the
+// serialized HTML carries the inline text-align style through generateHTML and
+// (b) the render-gate (sanitizeBeforeRender, defense-in-depth site #2) does NOT
+// strip the alignment style. If DOMPurify strips it, lib/sanitize must add
+// "style" to ADD_ATTR — the test decides, not assumption.
+describe("05-05 — text-align round-trip + sanitize-preserve (UAT gap 1)", () => {
+  it("serializes a center-aligned paragraph with inline text-align style", () => {
+    const json = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          attrs: { textAlign: "center" },
+          content: [{ type: "text", text: "Centered" }],
+        },
+      ],
+    };
+    const html = generateHTML(json, editorExtensions);
+    expect(html).toContain("Centered");
+    expect(html).toContain("text-align: center");
+    expect(html).toContain("<p");
+  });
+
+  it("RETAINS the text-align style through sanitizeBeforeRender (defense-in-depth must not strip alignment)", () => {
+    const json = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          attrs: { textAlign: "center" },
+          content: [{ type: "text", text: "Centered" }],
+        },
+      ],
+    };
+    const html = generateHTML(json, editorExtensions);
+    const sanitized = sanitizeBeforeRender(html);
+    expect(sanitized).toContain("Centered");
+    expect(sanitized).toContain("text-align: center");
+  });
+
+  it("serializes a right-aligned heading the same way (alignment on both configured types)", () => {
+    const json = {
+      type: "doc",
+      content: [
+        {
+          type: "heading",
+          attrs: { level: 2, textAlign: "right" },
+          content: [{ type: "text", text: "Right heading" }],
+        },
+      ],
+    };
+    const html = generateHTML(json, editorExtensions);
+    expect(html).toContain("Right heading");
+    expect(html).toContain("text-align: right");
+    expect(html).toContain("<h2");
   });
 });

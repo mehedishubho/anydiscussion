@@ -20,6 +20,12 @@
 //   - D-02 Embeds via raw-HTML paste — DOMPurify (lib/sanitize) gates iframe src.
 //     No @tiptap/extension-youtube node — raw HTML in the doc serializes through
 //     generateHTML and is then sanitized.
+//   - UAT 05 gap 1 (05-05): TextAlign limited to heading + paragraph (the toolbar
+//     align surface) — alignment renders as an inline text-align style that must
+//     survive generateHTML AND sanitizeBeforeRender (round-trip tests pin this).
+//   - UAT 05 gap 1 (05-05): CharacterCount — storage-only extension powering the
+//     editor footer's live word/character count. Contributes NO schema output, so
+//     server-side generateHTML is unaffected.
 //
 // Tiptap v3.27.1 specifics (verified at install):
 //   - `@tiptap/extension-table` ships NAMED export `TableKit` (bundles Table +
@@ -37,6 +43,8 @@ import { TableKit } from "@tiptap/extension-table";
 import Image from "@tiptap/extension-image";
 import Link from "@tiptap/extension-link";
 import CodeBlock from "@tiptap/extension-code-block";
+import TextAlign from "@tiptap/extension-text-align";
+import CharacterCount from "@tiptap/extension-character-count";
 
 export const editorExtensions = [
   StarterKit.configure({
@@ -61,4 +69,13 @@ export const editorExtensions = [
     autolink: false,
     HTMLAttributes: { rel: "noopener noreferrer", target: "_blank" },
   }),
+  // UAT 05 gap 1 (05-05) — alignment on body-level blocks ONLY (heading +
+  // paragraph, matching the toolbar align buttons). Alignment serializes as an
+  // inline text-align style; the round-trip test pins that it survives BOTH
+  // generateHTML and sanitizeBeforeRender.
+  TextAlign.configure({ types: ["heading", "paragraph"] }),
+  // UAT 05 gap 1 (05-05) — word/character count storage for the editor footer.
+  // Default config: no schema output, so server-side generateHTML is unaffected
+  // (the shared-array parity this file exists to protect stays intact).
+  CharacterCount,
 ];
