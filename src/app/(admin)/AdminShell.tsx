@@ -5,6 +5,7 @@ import AppHeader from "@/layout/AppHeader";
 import AppSidebar from "@/layout/AppSidebar";
 import Backdrop from "@/layout/Backdrop";
 import QueryProvider from "./QueryProvider";
+import { Toaster } from "sonner";
 import React from "react";
 
 /**
@@ -25,6 +26,13 @@ import React from "react";
  * (and thus inside `(admin)`) — never added to the root app/layout.tsx and
  * never imported from `(site)`. This keeps TanStack JS out of the public
  * bundle (PERF-02 isolation, audited in Phase 7).
+ *
+ * Phase 5 gap closure (Plan 05-06, UAT test 3 — silent saves): sonner's
+ * <Toaster> mounted here, NEXT TO QueryProvider, with the same D-28-style
+ * isolation — inside the (admin) shell only, never in the root layout, so
+ * toast JS stays out of the (site) public bundle (PERF-02). richColors for
+ * unambiguous success/error semantics, top-right per the TailAdmin dashboard
+ * convention. Forms import { toast } from "sonner" directly — no wrapper.
  */
 export default function AdminShell({
   children,
@@ -58,6 +66,9 @@ export default function AdminShell({
           <QueryProvider>{children}</QueryProvider>
         </div>
       </div>
+      {/* sonner Toaster — (admin)-scoped only (05-06 gap closure, D-28-style
+          isolation). richColors + top-right per the plan; theme left default. */}
+      <Toaster richColors position="top-right" />
     </div>
   );
 }

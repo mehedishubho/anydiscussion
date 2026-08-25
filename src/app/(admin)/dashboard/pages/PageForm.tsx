@@ -20,9 +20,9 @@
 //
 // The save wrapper dispatches createPage vs updatePage based on `initial` presence
 // (mirrors posts' savePost dispatch by id).
-import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { EditorProvider } from "@/components/editor/EditorProvider";
 import { pageSchema, zodResolver, type PageSchemaInput } from "./schema-client";
 import { createPage, updatePage } from "@/actions/pages";
@@ -46,7 +46,6 @@ interface PageFormProps {
 
 export default function PageForm({ initial }: PageFormProps) {
   const queryClient = useQueryClient();
-  const [optimisticMessage, setOptimisticMessage] = useState<string | null>(null);
 
   const {
     register,
@@ -70,6 +69,12 @@ export default function PageForm({ initial }: PageFormProps) {
   // D-26 + D-27 — savePage wrapped in useMutation; OPTIMISTIC on page save.
   // Dispatches createPage vs updatePage based on initial.id presence. onSuccess
   // invalidates ["pages"] so any dashboard list refreshes.
+  //
+  // 05-06 gap closure (UAT test 3 — "silent saves"): the former banner state
+  // (optimisticMessage + setTimeout clearing) is replaced by sonner toasts —
+  // the feedback channel changes ONLY; the D-27 optimistic invalidation logic
+  // and the create/update dispatch are untouched. Errors carry the raw action
+  // message (FORBIDDEN / NOT_FOUND / validation text) for diagnosability.
   const mutation = useMutation({
     mutationFn: async (values: PageSchemaInput) => {
       const payload = {
@@ -86,20 +91,13 @@ export default function PageForm({ initial }: PageFormProps) {
       }
       return createPage(payload);
     },
-    // D-27 optimistic — instant UI feedback. The server is still source of truth.
-    onMutate: () => {
-      setOptimisticMessage("Saving…");
-    },
     onSuccess: () => {
-      setOptimisticMessage("Saved.");
+      toast.success("Page saved");
       void queryClient.invalidateQueries({ queryKey: ["pages"] });
-      // Clear the optimistic banner after a beat so it doesn't linger.
-      setTimeout(() => setOptimisticMessage(null), 2000);
     },
     onError: (err: Error) => {
-      setOptimisticMessage(null);
       // Surface the server error (FORBIDDEN / NOT_FOUND / validation message).
-      void err;
+      toast.error(err.message);
     },
   });
 
@@ -235,12 +233,6 @@ export default function PageForm({ initial }: PageFormProps) {
           </div>
         </div>
       </div>
-
-      {optimisticMessage && (
-        <div className="rounded-lg border border-brand-300 bg-brand-50 p-3 text-sm text-brand-700 dark:border-brand-700 dark:bg-brand-900/20 dark:text-brand-300">
-          {optimisticMessage}
-        </div>
-      )}
 
       {submitError && (
         <div className="rounded-lg border border-error-300 bg-error-50 p-3 text-sm text-error-700 dark:border-error-700 dark:bg-error-900/20 dark:text-error-300">
