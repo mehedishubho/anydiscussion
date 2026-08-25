@@ -26,7 +26,8 @@
 // (@plugin "@tailwindcss/typography" in globals.css makes the prose classes
 // below generate CSS), the authored .tiptap.ProseMirror rules in globals.css
 // (outline:none kills the browser-default black focus ring; min-height:inherit
-// fills this wrapper's min-h-[350px]), and the Placeholder extension in
+// fills this wrapper's min-h-[350px] via the min-h-[inherit] bridge on
+// EditorContent's container div — WR-01), and the Placeholder extension in
 // extensions.ts (empty-surface guidance text via a decoration, styled by the
 // p.is-empty::before rule). Tiptap v3 ships no CSS of its own — every visual
 // property on the surface is owned by globals.css + these utility classes.
@@ -147,9 +148,16 @@ export function TiptapEditor({ value, onChange, editable = true }: TiptapEditorP
            lands on the child .ProseMirror contenteditable, never on this
            wrapper, so it was dead; the authored .tiptap.ProseMirror
            { outline: none; min-height: inherit } rule in globals.css owns both
-           the focus ring and the surface fill instead. */
+           the focus ring and the surface fill instead.
+           WR-01: EditorContent renders its OWN bare container <div> between
+           this wrapper and the .tiptap.ProseMirror contenteditable, so the
+           globals.css min-height:inherit alone resolved against auto — the
+           editable surface stayed ~1 line tall and the empty area below was
+           not clickable into focus. The min-h-[inherit] bridge below closes
+           the chain: wrapper (min-h-[350px]) -> container (inherit) ->
+           contenteditable (inherit, globals.css). */
         <div className="prose prose-sm dark:prose-invert max-w-none min-h-[350px] px-4 py-3 sm:px-6 sm:py-5">
-          <EditorContent editor={editor} />
+          <EditorContent editor={editor} className="min-h-[inherit]" />
         </div>
       ) : (
         <textarea

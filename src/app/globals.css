@@ -312,8 +312,13 @@
      the browser-default focus ring (the hard black border from the UAT
      screenshot) must be killed here on the focused element itself. */
   outline: none;
-  /* Fill the wrapper's min-h-[350px] so the white writing area is tall
-     (EditorContent's own div does not inherit the min-height otherwise). */
+  /* Fill the wrapper's min-h-[350px] so the white writing area is tall.
+     Two-link inherit chain (WR-01): EditorContent renders its own bare
+     container div between the min-h-[350px] wrapper and this element — that
+     container carries min-h-[inherit] (TiptapEditor.tsx), so this rule
+     resolves against the container, which resolves against the wrapper.
+     Without the container link, inherit resolved against auto (~1 line) and
+     the empty area below the text was not clickable into focus. */
   min-height: inherit;
 }
 
