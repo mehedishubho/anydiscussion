@@ -75,8 +75,10 @@ export interface ArchiveMetadataInput {
  *
  * - Title: `postSeo.metaTitle` overrides `post.title` (D-08 manual-override).
  * - Description: `postSeo.metaDescription` → `post.excerpt` → `siteDescription` fallback.
- * - Canonical (D-04): `postSeo.canonicalUrl` overrides; else derives `/{post.slug}`
- *   (metadataBase resolves to absolute).
+ * - Canonical (D-04): `postSeo.canonicalUrl` overrides; else derives
+ *   `/blog/{post.slug}` — the public single-post route (matches sitemap.ts,
+ *   rss.xml, and publishPost's revalidatePath literals; metadataBase resolves
+ *   to absolute).
  * - OG image (D-09 fallback chain): `postSeo.ogImage` → `post.featureImage` →
  *   `settings.defaultOgImage`.
  * - openGraph.type is "article" with publishedTime/modifiedTime/authors.
@@ -90,8 +92,9 @@ export function buildPostMetadata(
   const title = seo?.metaTitle || post.title;
   const description =
     seo?.metaDescription || post.excerpt || s.siteDescription;
-  // D-04 — canonical override: respect post_seo.canonicalUrl else derive from slug.
-  const canonical = seo?.canonicalUrl || `/${post.slug}`;
+  // D-04 — canonical override: respect post_seo.canonicalUrl else derive from the
+  // /blog/[slug] route (matches sitemap.ts, rss.xml, publishPost revalidatePath).
+  const canonical = seo?.canonicalUrl || `/blog/${post.slug}`;
   // D-09 — OG fallback chain: post_seo.ogImage → posts.featureImage → site default.
   const ogImage = seo?.ogImage || post.featureImage || s.defaultOgImage;
   const hasImage = Boolean(ogImage);

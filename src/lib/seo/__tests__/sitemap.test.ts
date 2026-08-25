@@ -13,8 +13,10 @@
 //   T-05-05 — draft + soft-deleted posts do NOT appear.
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import type { MetadataRoute } from "next";
+import { buildPostMetadata } from "@/lib/seo/metadata";
 import {
   fakeSettings,
+  fakePost,
   fakeSitemapPosts,
   fakeSitemapPages,
   DRAFT_POST_SLUG,
@@ -170,6 +172,19 @@ describe("SEO-08: pure sitemap entry builders (testable without DB)", () => {
     expect(entry.changeFrequency).toBe("weekly");
     expect(entry.url).toBe(`${fakeSettings.canonicalBaseUrl}/blog/my-post`);
     expect(entry.lastModified).toEqual(new Date("2026-06-20T00:00:00Z"));
+  });
+
+  it("cross-check: buildPostMetadata derived canonical matches buildPostSitemapEntry URL (CR-01 drift guard)", () => {
+    // The derived (no canonicalUrl override) metadata canonical + metadataBase
+    // must equal the sitemap entry URL exactly — the two derivations must never
+    // drift apart again (CR-01: metadata said /{slug} while sitemap said /blog/{slug}).
+    const m = buildPostMetadata(fakePost, null, fakeSettings);
+    const entry = buildPostSitemapEntry(
+      fakePost.slug,
+      fakePost.updatedAt,
+      fakeSettings.canonicalBaseUrl,
+    );
+    expect(`${fakeSettings.canonicalBaseUrl}${m.alternates?.canonical}`).toBe(entry.url);
   });
 
   it("buildPageSitemapEntry returns priority 0.5 / monthly / {base}/{slug}", () => {

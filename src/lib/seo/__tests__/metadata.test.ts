@@ -61,15 +61,15 @@ describe("SEO-01 / SEO-04 / D-04: buildPostMetadata — canonical override + fal
     expect(m.alternates?.canonical).toBe(fakePostSeo.canonicalUrl);
   });
 
-  it("derives canonical from slug when postSeo is null", () => {
+  it("derives canonical from the /blog/{slug} route when postSeo is null (CR-01)", () => {
     const m = buildPostMetadata(fakePost, null, fakeSettings);
-    expect(m.alternates?.canonical).toBe(`/${fakePost.slug}`);
+    expect(m.alternates?.canonical).toBe(`/blog/${fakePost.slug}`);
   });
 
-  it("derives canonical from slug when postSeo.canonicalUrl is empty", () => {
+  it("derives canonical from the /blog/{slug} route when postSeo.canonicalUrl is empty (CR-01)", () => {
     const m = buildPostMetadata(fakePost, { ...fakePostSeo, canonicalUrl: "" }, fakeSettings);
-    // Empty string is falsy — falls through to slug derivation.
-    expect(m.alternates?.canonical).toBe(`/${fakePost.slug}`);
+    // Empty string is falsy — falls through to the /blog/{slug} route derivation.
+    expect(m.alternates?.canonical).toBe(`/blog/${fakePost.slug}`);
   });
 
   it("uses postSeo.metaTitle when set, else post.title", () => {
