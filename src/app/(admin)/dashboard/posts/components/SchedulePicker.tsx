@@ -17,9 +17,23 @@
 // The edit page (Server Component) pre-fetches site.timezone via the SAME getSetting
 // action and passes `initialTimezone` for instant first-paint (no flash of an
 // unresolved label). This component also re-validates on mount.
+//
+// 05-08: this component calls setSchedule(postId, date) DIRECTLY from the flatpickr
+// onChange option — the action's first call site. The edit page (a Server Component)
+// must never pass a function prop here: functions cannot cross the server-to-client
+// RSC serialization boundary, and the Phase-3 inline no-op stub prop threw on EVERY
+// edit-page render (the 05-UAT R1 re-test blocker). The call is DEBOUNCED (~700ms)
+// because with enableTime:true flatpickr fires onChange once per calendar-date pick
+// AND once per time-slider increment — one settled value, one action call, one toast.
+// An empty dates array (clear-to-empty) cancels any pending debounced call and
+// returns WITHOUT invoking the action: setSchedule requires a non-null Date, and
+// flatpickr's default readonly input makes a UI clear unreachable — defensive guard
+// only; the persisted value simply stays.
 import { useEffect, useRef, useState } from "react";
 import flatpickr from "flatpickr";
+import { toast } from "sonner";
 import { getSetting } from "@/actions/settings";
+import { setSchedule } from "@/actions/posts";
 
 // flatpickr instance type — structural (only the methods we use).
 type FlatpickrInstance = { destroy: () => void };
@@ -27,7 +41,6 @@ type FlatpickrInstance = { destroy: () => void };
 interface SchedulePickerProps {
   postId: number;
   publishedAt: Date | null;
-  onChange: (date: Date | null) => void;
   /** Pre-fetched timezone from the edit page (Server Component) for instant first-paint. */
   initialTimezone?: string;
 }
@@ -35,11 +48,12 @@ interface SchedulePickerProps {
 export default function SchedulePicker({
   postId,
   publishedAt,
-  onChange,
   initialTimezone,
 }: SchedulePickerProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const fpRef = useRef<FlatpickrInstance | null>(null);
+  // 05-08 — handle of the pending debounced setSchedule call (see header comment).
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [timezone, setTimezone] = useState<string | null>(initialTimezone ?? null);
 
   // D-14 — read the live timezone value from settings on mount (re-validates the
@@ -67,14 +81,41 @@ export default function SchedulePicker({
       dateFormat: "Y-m-d H:i",
       defaultDate: publishedAt ?? undefined,
       onChange: (dates) => {
-        if (dates.length > 0) {
-          onChange(dates[0]);
-        } else {
-          onChange(null);
+        // Clear-to-empty guard: cancel any pending debounced save and return
+        // WITHOUT invoking the action — setSchedule requires a non-null Date
+        // (see header comment; defensive only, UI clears are unreachable).
+        if (dates.length === 0) {
+          if (debounceRef.current) {
+            clearTimeout(debounceRef.current);
+            debounceRef.current = null;
+          }
+          return;
         }
+        // Reset the debounce timer on every fire — one settled value, one
+        // action call, one toast (see header comment for the per-tick rationale).
+        if (debounceRef.current) clearTimeout(debounceRef.current);
+        const date = dates[0];
+        debounceRef.current = setTimeout(() => {
+          debounceRef.current = null;
+          void (async () => {
+            try {
+              await setSchedule(postId, date);
+              toast.success("Schedule saved");
+            } catch (err) {
+              // Raw action message (FORBIDDEN / network text) — 05-06 convention.
+              toast.error(
+                err instanceof Error ? err.message : "Failed to save schedule",
+              );
+            }
+          })();
+        }, 700);
       },
     });
     return () => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+        debounceRef.current = null;
+      }
       fpRef.current?.destroy();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

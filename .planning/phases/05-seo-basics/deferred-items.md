@@ -28,3 +28,24 @@ historically exited 0 with these present (all prior phases built), so they do
 not gate the build — but they pollute `tsc --noEmit`. Suggest a `/gsd-quick`
 or `/gsd-debug` pass to either fix the prop types or add a targeted tsconfig
 exclusion for the demo-era TailAdmin files.
+
+## 2026-08-25 — Plan 05-08 (edit-page RSC fix + schedule persistence)
+
+### Root-cause refinement of the 05-05 tsc error list
+
+Re-measured during 05-08 verification, with a main-repo baseline run for
+attribution (`pnpm exec tsc --noEmit` in D:/Devsroom-Work/anydiscussion,
+which HAS `next-env.d.ts` present):
+
+- **8 of the 12 errors** (all the `className`/IntrinsicAttributes ones in
+  auth forms, date-picker.tsx, AppSidebar.tsx) are a **fresh-worktree
+  environment artifact**: `next-env.d.ts` is gitignored and absent until the
+  first `next build` runs in the worktree, so `.svg`-import components lose
+  their ambient prop types. They vanish once `pnpm build` regenerates
+  `next-env.d.ts` — NOT a code bug.
+- **The 4 TS18048 errors in `src/actions/__tests__/storage-settings.test.ts`
+  (L318-322) DO reproduce in the main repo** — real pre-existing strict-mode
+  looseness in the test (asserting `result.cloudinary.*` where the return
+  type marks provider blocks optional). Unchanged by 05-08; still worth a
+  `/gsd-quick` fix (narrow with a non-null assertion or restructure the
+  expected shape).
