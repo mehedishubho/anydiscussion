@@ -106,7 +106,13 @@ export function Toolbar({ editor }: ToolbarProps) {
   const editorState = useEditorState({
     editor,
     selector: ({ editor: e }): ToolbarState => {
-      if (!e) return NULL_EDITOR_STATE;
+      // tiptap#7849 (quick 260826-5l0 / Phase 05 UAT R1): Editor.destroy() nulls
+      // the internal commandManager but leaves the instance NON-null, and
+      // useEditorState re-invokes this unmemoized selector with the destroyed
+      // editor during React StrictMode's mount→remount cycle — a null-only
+      // guard let e.can().undo() below throw. The upstream fix (PR #8015) is
+      // not in @tiptap/react 3.27.1, so bail to the everything-off state here.
+      if (!e || e.isDestroyed) return NULL_EDITOR_STATE;
       const blockType: BlockType = e.isActive("heading", { level: 1 })
         ? "heading1"
         : e.isActive("heading", { level: 2 })
