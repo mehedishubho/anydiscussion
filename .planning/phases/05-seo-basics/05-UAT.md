@@ -3,30 +3,30 @@ status: pending
 phase: 05-seo-basics
 source: [05-VERIFICATION.md]
 started: 2026-07-07T04:30:00Z
-updated: 2026-08-25T19:35:00Z
+updated: 2026-08-25T20:49:32Z
 ---
 
 ## Current Test
 <!-- OVERWRITE each test - shows where we are -->
 
 number: R1
-name: Live publish flow re-test (after 05-07 + review fixes)
+name: Live publish flow re-test (after 05-08)
 expected: |
-  As an editor, open /dashboard/posts/new (fresh load). Body editor shows the STYLED
-  WordPress-classic surface on FIRST load: tall white writing area (350px, clickable
-  anywhere to focus), typography-styled text, placeholder text while empty, no black
-  focus ring. Type a title — slug auto-fills; tabbing through the slug field does NOT
-  stop auto-fill; deleting the slug keeps it deleted while you own it.
-  Click Publish with Category EMPTY → error toast names the first problem and focus
-  jumps to that field (never a silent no-op). Fill Category, publish → success toast.
-  Save-draft also toasts. (Claude then auto-verifies: post in /sitemap.xml + /rss.xml,
-  /blog/{slug} page source shows canonical + og:url + BlogPosting JSON-LD.)
+  As an editor, open /dashboard/posts/new (fresh load) — the editor-surface, slug,
+  and validation-toast behaviors from the prior re-test (all confirmed working
+  2026-08-25) still hold. After publishing, open the post's edit page — it LOADS
+  (no RSC crash): "Edit: {title}" heading, form pre-filled, sidebar Schedule picker
+  + Preview visible. Picking a date in the Schedule picker saves it (toast) and the
+  value survives a page reload. (Claude then auto-verifies: post in /sitemap.xml +
+  /rss.xml, /blog/{slug} page source shows canonical + og:url + BlogPosting JSON-LD.)
 awaiting: user response
 note: |
-  Prior R1 run (2026-08-25) failed: unstyled surface + silent publish no-op. Fixed by
-  gap plan 05-07 (b84f952, 38ace32, e0356e9) + code-review warning fixes WR-01 min-height
-  bridge (657ff3e) and WR-02 slug ownership via onChange (e12cb59). Verification 0529729:
-  0 code gaps, both root causes closed at artifact level.
+  2026-08-25 run: 05-07 + WR-01/WR-02 fixes CONFIRMED WORKING — publish succeeded
+  end-to-end (post 2 "R1 Walkthrough Test Post" published, published_at stamped,
+  DB-verified). NEW blocker surfaced on the post-publish visit to the edit page:
+  Server Component passes an inline onChange function prop to the client
+  SchedulePicker → RSC serialization throws, edit page unrenderable. Fix = plan
+  05-08 (wire picker to setSchedule action client-side, remove the function prop).
 
 ## Tests
 
@@ -142,10 +142,12 @@ requirements SATISFIED in code, no code gaps — 3 runtime flows need live re-te
 ### R1. Live publish flow re-run (covers original tests 2 + 3, gaps 1 + 2)
 expected: As an editor, open `/dashboard/posts/new` (or an existing draft). Body editor shows the WordPress-classic surface (Visual/Text tabs, toolbar, word-count footer) and accepts typing. Fill title + body, click Publish — a success toast appears. The post then: (a) appears in `/sitemap.xml` under `/blog/{slug}` (0.8/weekly), (b) appears in `/rss.xml` as an `<item>` with a correct `pubDate` (CR-02: publish stamps `publishedAt`), (c) its live page source at `/blog/{slug}` shows `<link rel="canonical" href=".../blog/{slug}">` (CR-01), matching `og:url`, and a `BlogPosting` JSON-LD script (CR-03-escaped). Save-draft also toasts.
 result: issue
-fix_state: fixed_pending_retest (05-07 b84f952/38ace32/e0356e9 + WR-01 657ff3e + WR-02 e12cb59; verification 0529729 confirms both root causes closed at artifact level — live re-test pending 2026-08-26)
+fix_state: partial — 05-07 b84f952/38ace32/e0356e9 + WR-01 657ff3e + WR-02 e12cb59 fixes CONFIRMED WORKING live (publish flow succeeded end-to-end, post 2 published); NEW blocker found in the same re-test (edit-page RSC crash, see "edit page renders" gap below) — fix = plan 05-08
 reported: "first time body box input showing like this and after adding all data and click on publish button nothing happen"
 severity: major
 evidence: "Screenshot 2026-08-25: toolbar renders correctly (Visual/Text tabs, Paragraph dropdown, B/I/lists/align/link/table/More, word-count footer '1 word, 9 characters') BUT the writing surface renders as an unstyled plain text box (black border, no padding, no ProseMirror placeholder) instead of the Tiptap contenteditable surface. Typed text 'hjhjhjhj' lands in the plain box. Category* field visible and empty. After filling all data, clicking Publish produces no toast, no navigation, no visible save."
+retest_reported: 'Console Error {"level":"error","msg":"Event handlers cannot be passed to Client Component props. <... postId={2} publishedAt={Date} onChange={function onChange} initialTimezone=...> ... If you need interactivity, consider converting part of this to a Client Component.","name":"Error"} at src/app/error.tsx (20:13) GlobalError.useEffect — "getting this error and toste notification showing error url when I click to publish"'
+retest_severity: blocker — edit page unrenderable (EVERY visit to /dashboard/posts/[id]/edit throws). Publish itself SUCCEEDED: DB shows post 2 published_at=2026-08-25 18:05:37.
 
 ### R2. Live redirects re-run (covers original test 5, gap 4)
 expected: Dev server running, `redirects` row id 1 (`/old` → `/new`, 301) present in dev DB from the prior UAT (re-insert if the DB was reset). `curl -i http://localhost:3000/old` returns **308** with `Location: /new` (middleware maps 301→308). Unmatched path (e.g. `/nonexistent`) still renders the 404 UI.
@@ -187,3 +189,20 @@ result: pending
     - "Fix categoryId Zod 4 error message (z.number({ error: 'Category is required' }))"
     - "Auto-derive slug from title when slug empty/untouched (transliterate-strip to ^[a-z0-9]+(-[a-z0-9]+)*$), or mark Slug required with visible asterisk — planner to scope"
   debug_session: "2 parallel gsd-debugger agents 2026-08-25 (editor-surface + publish no-op); both refuted shared hydration cause; cross-confirmed typography-plugin finding"
+
+- truth: "The post edit page (/dashboard/posts/[id]/edit) renders, and the Schedule picker persists picked dates"
+  status: failed
+  reason: "User reported (re-test 2026-08-25): after a successful publish, console error 'Event handlers cannot be passed to Client Component props' with props dump postId={2} publishedAt={Date} onChange={function onChange} initialTimezone=...; error toast shows a URL (Next.js docs link embedded in the error); edit page unrenderable"
+  severity: blocker
+  test: R1
+  root_cause: "CONFIRMED (direct code read, orchestrator): src/app/(admin)/dashboard/posts/[id]/edit/page.tsx:99-103 — the edit page is a Server Component passing an inline onChange={() => {}} stub to the 'use client' SchedulePicker; functions cannot cross the server→client RSC serialization boundary, so EVERY render of the edit page throws (surfaces via error.tsx; the 'error url' in the toast is the Next.js docs link embedded in the message). SchedulePicker.tsx:30 declares onChange REQUIRED (which forced the stub) and consumes it only in its flatpickr config (L69-75) — nothing persists the picked date: setSchedule(postId, publishedAt) exists at actions/posts.ts:391 (D-15 editor/admin gated) but has ZERO call sites, so the picker is currently decorative. Grep confirms posts/[id]/edit/page.tsx is SchedulePicker's ONLY render site (pages editor drops it, D-18) and no other function props cross the boundary on that page (PostForm/PreviewLink receive serializable values only; PostForm has no router.* calls). Bug predates 05-07 — Phase-3 code, first live load-test of the edit page. Publish itself SUCCEEDED: posts row id=2 'R1 Walkthrough Test Post' / r1-walkthrough-test / published / published_at 2026-08-25 18:05:37 (psql)."
+  artifacts:
+    - path: "src/app/(admin)/dashboard/posts/[id]/edit/page.tsx"
+      issue: "L99-103 inline onChange function prop server→client — RSC serialization throw on every edit-page render"
+    - path: "src/app/(admin)/dashboard/posts/components/SchedulePicker.tsx"
+      issue: "L30 onChange required in props interface (forces server pages to pass a function); L69-75 flatpickr onChange only forwards to the dead prop — picked dates never reach setSchedule"
+    - path: "src/actions/posts.ts"
+      issue: "setSchedule (L391) exists but has no call sites anywhere"
+  missing:
+    - "Remove the onChange prop from SchedulePicker's interface entirely; wire the flatpickr onChange to call the setSchedule server action directly from the client component (setSchedule(postId, dates[0])) with sonner success/error toasts matching the 05-06 toast pattern; decide clear-to-empty semantics (setSchedule requires a Date — ignore clears or toast guidance); delete the stub prop from posts/[id]/edit/page.tsx:99-103"
+  debug_session: "orchestrator inline 2026-08-26 — direct Read of edit/page.tsx + SchedulePicker.tsx + actions grep; no agent needed (single 10-line root cause)"
