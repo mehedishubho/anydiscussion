@@ -1,5 +1,13 @@
 @import 'tailwindcss';
 
+/* 05-07 (UAT re-run R1, cause A) — Tailwind v4 CSS-first plugin wiring. This
+   project has NO tailwind.config.js: @theme/@utility directives above ARE the
+   config, and `@plugin` is how first-party plugins load. This single line makes
+   the existing `prose prose-sm dark:prose-invert` classes on TiptapEditor.tsx
+   generate CSS (they were dead classes generating nothing before — verified
+   against the served dashboard chunk). */
+@plugin "@tailwindcss/typography";
+
 @custom-variant dark (&:is(.dark *));
 
 @theme {
@@ -290,6 +298,37 @@
     display: none;
     -webkit-appearance: none;
   }
+}
+
+/* Tiptap editor surface (05-07 — UAT re-run R1 cause A).
+   Scoping judgment: these rules are intentionally GLOBAL but match zero nodes
+   on the public site — (site) renders sanitized static HTML with no
+   contenteditable, so the .tiptap.ProseMirror selector has nothing to hit
+   there. prose utilities only emit CSS where the prose classes are used
+   (TiptapEditor.tsx — a dashboard-only next/dynamic import). No
+   dashboard-only parent wrapper needed: zero matched nodes costs nothing. */
+.tiptap.ProseMirror {
+  /* Focus lands on the child .ProseMirror contenteditable, NOT the wrapper —
+     the browser-default focus ring (the hard black border from the UAT
+     screenshot) must be killed here on the focused element itself. */
+  outline: none;
+  /* Fill the wrapper's min-h-[350px] so the white writing area is tall
+     (EditorContent's own div does not inherit the min-height otherwise). */
+  min-height: inherit;
+}
+
+/* Placeholder decoration painted by the Placeholder extension
+   (@tiptap/extensions) on empty nodes. showOnlyCurrent:false paints is-empty
+   on every empty textblock; :first-child restricts the visible placeholder to
+   the document's first empty paragraph. Documented Tiptap CSS pattern:
+   float+height:0 keeps the pseudo-element from affecting layout. Gray token
+   adapts to dark mode automatically (theme variable). */
+.tiptap.ProseMirror p.is-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: var(--color-gray-400);
+  float: left;
+  height: 0;
+  pointer-events: none;
 }
 
 /* third-party libraries CSS */

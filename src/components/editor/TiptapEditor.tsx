@@ -21,6 +21,16 @@
 //     onUpdate -> onChange -> RHF body field is LIVE (the "body box not
 //     working" UAT symptom's canary).
 //
+// Styled surface (05-07 / UAT re-run R1, cause A): the writing surface's
+// styling comes from THREE pieces working together — the typography plugin
+// (@plugin "@tailwindcss/typography" in globals.css makes the prose classes
+// below generate CSS), the authored .tiptap.ProseMirror rules in globals.css
+// (outline:none kills the browser-default black focus ring; min-height:inherit
+// fills this wrapper's min-h-[350px]), and the Placeholder extension in
+// extensions.ts (empty-surface guidance text via a decoration, styled by the
+// p.is-empty::before rule). Tiptap v3 ships no CSS of its own — every visual
+// property on the surface is owned by globals.css + these utility classes.
+//
 // Text-tab safety (threat T-05-11): textarea edits go through
 // editor.commands.setContent(html, { emitUpdate: true }) — ProseMirror parses
 // the HTML against the schema (non-schema nodes/marks are dropped), and the
@@ -54,6 +64,12 @@ export function TiptapEditor({ value, onChange, editable = true }: TiptapEditorP
     extensions: editorExtensions, // single source of truth (Pitfall #1)
     content: value as Record<string, unknown> | null,
     editable,
+    // 05-07 (UAT re-run R1) — create the editor synchronously. This component
+    // is client-only behind EditorProvider's next/dynamic({ssr:false}), so
+    // there is NO SSR/hydration surface — immediatelyRender:true just
+    // eliminates the transient null-editor first frame under Next.js (the
+    // surface smoke test's immediate .tiptap.ProseMirror query pins this).
+    immediatelyRender: true,
     onUpdate: ({ editor }: { editor: Editor }) => {
       onChange(editor.getJSON());
     },
@@ -125,7 +141,14 @@ export function TiptapEditor({ value, onChange, editable = true }: TiptapEditorP
       {/* Visual surface: toolbar + large min-height white writing area. */}
       {mode === "visual" && editor && <Toolbar editor={editor} />}
       {mode === "visual" ? (
-        <div className="prose prose-sm dark:prose-invert max-w-none focus:outline-none min-h-[350px] px-4 py-3 sm:px-6 sm:py-5">
+        /* 05-07 (UAT re-run R1): prose classes are LIVE now that the typography
+           plugin is wired in globals.css (@plugin "@tailwindcss/typography").
+           The old focus:outline-none utility is deliberately REMOVED — focus
+           lands on the child .ProseMirror contenteditable, never on this
+           wrapper, so it was dead; the authored .tiptap.ProseMirror
+           { outline: none; min-height: inherit } rule in globals.css owns both
+           the focus ring and the surface fill instead. */
+        <div className="prose prose-sm dark:prose-invert max-w-none min-h-[350px] px-4 py-3 sm:px-6 sm:py-5">
           <EditorContent editor={editor} />
         </div>
       ) : (
