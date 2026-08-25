@@ -1,110 +1,170 @@
 ---
 phase: 05-seo-basics
-reviewed: 2026-08-25T18:20:18Z
+reviewed: 2026-08-25T21:27:44Z
 depth: standard
-files_reviewed: 7
+files_reviewed: 3
 files_reviewed_list:
-  - src/lib/slug/derive.ts
-  - src/lib/slug/__tests__/derive.test.ts
-  - src/app/globals.css
-  - src/components/editor/extensions.ts
-  - src/components/editor/TiptapEditor.tsx
-  - src/actions/posts-schema.ts
-  - src/app/(admin)/dashboard/posts/PostForm.tsx
+  - src/app/(admin)/dashboard/posts/[id]/edit/page.tsx
+  - src/app/(admin)/dashboard/posts/components/SchedulePicker.tsx
+  - src/app/(admin)/dashboard/posts/__tests__/edit-page-rsc-boundary.test.ts
 findings:
   critical: 0
-  warning: 2
+  warning: 5
   info: 4
-  total: 6
+  total: 9
 status: issues_found
 ---
 
-# Phase 5: Code Review Report (Gap-Closure 05-07 Scope)
+# Phase 5: Code Review Report (Gap-Closure 05-08 Delta)
 
-**Reviewed:** 2026-08-25T18:20:18Z
+**Reviewed:** 2026-08-25T21:27:44Z
 **Depth:** standard
-**Files Reviewed:** 7
+**Files Reviewed:** 3
 **Status:** issues_found
 
 ## Summary
 
-Scoped re-review of the 05-07 gap-closure commits (b84f952, 38ace32; merged as 981c3ab) only — the prior full-phase review (48 files) and its 3 fixed Criticals are out of scope. All 7 in-scope files were read in full; supporting files were cross-referenced to verify claims (CategoryPicker's `id={name}`, SeoPanel field ids, EditorProvider's `next/dynamic({ssr:false})`, the round-trip test's shared-array import, installed `@tiptap/extensions@3.27.1` Placeholder source, installed `@tiptap/react` EditorContent mount logic). Targeted suites re-run: `pnpm vitest run src/lib/slug src/components/editor` — 32/32 green.
+Delta review of the 05-08 gap-closure changes (commits 937d6cc + b13db8e above diff_base 651f84f): the RSC-violating function prop removed from the edit page, SchedulePicker's direct client-side `setSchedule` call (flatpickr onChange, ~700ms useRef debounce, sonner toasts), the author-side UX hide of the Publish card, and the structural source-scan regression test. All 3 files were read in full; cross-referenced to verify claims: `src/actions/posts.ts` (`getPost`, `setSchedule`, `publishPost`), `src/actions/settings.ts` (`getSetting`), `src/actions/tags.ts` (`getPostTagIds`), `src/lib/permissions/index.ts` (`requireCan`), `PostForm.tsx` / `PreviewLink.tsx` prop surfaces, and `vitest.config.ts` (the new test's include path). The new suite was executed: **2/2 green** (`pnpm vitest run "src/app/(admin)/dashboard/posts/__tests__/edit-page-rsc-boundary.test.ts"`).
 
 **Verified sound (adversarial checks that did NOT yield findings):**
 
-- `deriveSlugFromTitle` is correct for the D-20 contract: lowercase → strip `[^a-z0-9]+` to single hyphen → trim; Bangla-only titles derive `""` (no transliteration); mixed Bangla titles derive the Latin fragment; output is always `[a-z0-9-]` so it cannot inject into URLs, and the server chain (`postSchema` regex + `validateSlug` + `assertUniqueSlug`) is untouched.
-- Zod 4 constructor error verified empirically against the installed zod: `undefined`, `null`, `NaN`, and string inputs all report "Category is required" — the previously cryptic missing-category path is closed.
-- Placeholder server-safety holds: `generateHTML` walks the schema only and never instantiates plugin views (the v3 Placeholder's viewport-tracking plugin — scroll listeners, ResizeObserver, dispatched transactions — is client-only). The round-trip test imports the SAME shared `editorExtensions` array, so Placeholder is inside the parity gate; all editor tests green in jsdom.
-- `immediatelyRender: true` is safe — `EditorProvider.tsx:18-21` confirms `next/dynamic(..., { ssr: false })`, so there is no SSR/hydration surface.
-- globals.css `@plugin "@tailwindcss/typography"` sits immediately after `@import 'tailwindcss'` (correct Tailwind v4 CSS-first ordering); the surface rules are scoped under `.tiptap.ProseMirror`, which matches zero nodes on the public site (no contenteditable there) — no leak.
-- onInvalid focus targets exist: `title`/`slug` inputs carry ids, CategoryPicker renders `id={name}` (= `categoryId`) on its `<select>`, all four SeoPanel fields carry ids matching field names; id-less fields (tagIds, hidden featureImage, body) degrade to toast-only as documented. No duplicate-id collisions (PageForm's ids render on a different route).
-- No XSS surface: `data-placeholder` is a static string, `content: attr(data-placeholder)` cannot execute script, and derived slugs are regex-constrained before touching URLs.
+- The RSC fix is real. The edit page now passes only `postId` (number), `publishedAt` (Date | null), and `initialTimezone` (string | undefined) — all serializable across the server-to-client boundary. `SchedulePickerProps` declares no function member. The structural test passes against the current source.
+- The author hide is UX-only as claimed: `role !== "author"` (`page.tsx:102`) only hides the card; `setSchedule` independently gates with `requireCan({ post: ["publish"] })` as its FIRST statement (`posts.ts:393`), which throws `Error("FORBIDDEN")` for authors regardless of UI state. Convention "every mutating action starts with the check" is honored.
+- Debounce mechanics are correct: the timer resets on every onChange fire (one settled value → one action call → one toast), is cancelled on clear-to-empty (`dates.length === 0`) and on unmount cleanup, and the async IIFE has both success and failure toast paths.
+- `PostFormProps` (10 props) and `PreviewLinkProps` (2 props) were inspected — everything the edit page passes them today is serializable (primitives, arrays, `unknown` body JSON).
+- `getPost`'s error contract (NOT_FOUND throw; `assertOwnsPost` FORBIDDEN/UNAUTHORIZED) mapping to the route's `notFound()` is correct for the getPost paths specifically.
+- `vitest.config.ts` include globs (`src/**/__tests__/**/*.test.ts`) pick up the new test file; it runs in the node environment as designed.
 
-Two Warnings found, both in the interaction details of the new code, plus four Info polish items. No Criticals.
+The 5 Warnings are: a latent wrong-post schedule write (stale closure across dynamic-param changes), a catch-all 404 that masks infrastructure faults, a failure toast that cannot show its promised message in production builds, an ungated `getSetting` server action that the new client-side call cements, and a regression pin that is narrower than the crash class it exists to prevent.
+
+## Critical Issues
+
+None. No exploitable security hole, crash-on-normal-path, or data loss in the reviewed delta was found. (WR-01 is a wrong-row DB write but its trigger path does not exist in the current UI — see the finding.)
 
 ## Warnings
 
-### WR-01: `min-height: inherit` chain is broken — the contenteditable does not fill the 350px wrapper
+### WR-01: Stale `postId`/`publishedAt` closure in SchedulePicker — picking a date after a route-param change writes the schedule to the WRONG post
 
-**File:** `src/app/globals.css:310-318` (with `src/components/editor/TiptapEditor.tsx:151-153`)
-**Issue:** The rule's stated purpose ("Fill the wrapper's min-h-[350px] so the white writing area is tall") does not hold. `EditorContent` does not render the `.tiptap.ProseMirror` element directly under the `min-h-[350px]` prose wrapper — `@tiptap/react@3.27.1`'s `PureEditorContent` renders its own bare container `<div>` (`<div ref={...} {...rest} />`, no className since none is passed) and then appends `editor.view.dom` into it (verified in `node_modules/@tiptap/react/dist/index.js`, `init()` → `element.append(...editor.view.dom.parentNode.childNodes)`). Actual DOM: `wrapper(min-h-[350px]) > bare div > .tiptap.ProseMirror`. CSS `min-height: inherit` takes the *parent's* computed value — the bare container div's min-height is `auto` (computes to 0 for a block box), so the contenteditable inherits 0, not 350px. Consequence: the white area still looks 350px tall (the wrapper carries the min-height), but the actual editable/clickable surface is only ~one line tall — clicking in the lower empty area of the white box does not focus the editor, defeating the point of the rule. No test covers this (the surface smoke test asserts only `.tiptap.ProseMirror` existence, not height), and the D2 human-judgment UAT walkthrough has not run yet — so this is currently unverified-by-anyone.
-**Fix:** Carry the height through the container div, e.g. in `TiptapEditor.tsx`:
-
-```tsx
-<EditorContent editor={editor} className="min-h-[inherit] sm:min-h-[inherit]" />
-```
-
-(`EditorContent` spreads props onto its container div.) Then `.tiptap.ProseMirror { min-height: inherit }` inherits 350px from the container. Alternatively, in globals.css target the container: `.prose > div:has(> .tiptap.ProseMirror) { min-height: inherit; }` — but the `EditorContent` className is the cleanest chain.
-
-### WR-02: `slugTouched`-on-blur defeats auto-derive for keyboard users and refills a slug the user just cleared
-
-**File:** `src/app/(admin)/dashboard/posts/PostForm.tsx:116-129, 283-290`
-**Issue:** The ownership signal for the slug field is `onBlur` (`slugTouched.current = true`). Two misbehaviors follow:
-
-1. **Tab-through disables auto-derive without any typing.** The slug input is between title and excerpt in tab order. A keyboard user who tabs title → slug → excerpt has "blurred" the slug without ever typing in it: `slugTouched` becomes true and auto-derive is permanently off, even though the must-have truth is "auto-fills from the Title while the user has not typed a slug". Same for click-into-slug-then-click-away. Submit then fails with "Slug is required" — loud, but the shipped feature silently disabled itself for a user who never typed a slug.
-2. **Clear-and-retype is corrupted by mid-interaction refill.** User clicks into the auto-filled slug ("hello-world"), selects all, hits Delete (no blur — still focused), pauses: `slugValue` becomes `""`, `slugTouched` is still false, so the effect immediately `setValue("slug", "hello-world")` again — under their cursor, with the caret moved to end. Their next keystrokes APPEND to the refilled value ("hello-worldnews" instead of "news"). If unnoticed, a wrong-but-regex-valid slug publishes. This violates the never-overwrite invariant for the clearing interaction.
-
-Root cause: blur is the wrong "user owns this field" signal; any user edit (including deleting to empty) is the correct one, and RHF's merged custom `onChange` fires only for user input — programmatic `setValue` does not fire it, so auto-fill itself would not trip the flag.
-**Fix:** Move the ownership signal from `onBlur` to `onChange`:
+**File:** `src/app/(admin)/dashboard/posts/components/SchedulePicker.tsx:77-122` (closure use at 102; eslint-disable at 121); usage site `src/app/(admin)/dashboard/posts/[id]/edit/page.tsx:110-116`
+**Issue:** The flatpickr init effect has `[]` deps with `// eslint-disable-next-line react-hooks/exhaustive-deps`, so it runs exactly once and its `onChange` closure captures the FIRST render's `postId` and `publishedAt` (and `defaultDate` is likewise frozen). App Router soft navigation between `/dashboard/posts/{a}/edit` and `/dashboard/posts/{b}/edit` re-renders the same component position with new props WITHOUT remounting it (the well-known dynamic-segment gotcha — React reconciles by position/type, and neither SchedulePicker nor its parents carry a `key`). If that ever happens, the input still shows post A's schedule while the page says "Edit: B", and a picked date calls `setSchedule(postA, date)` — persisting to the wrong row. No in-page UI currently links edit→edit directly (breadcrumb exits to the list, URL-bar edits are hard navigations), so the path is latent today — but every future link that soft-navigates between edit pages silently arms it, and the disabled lint rule is precisely the one that would have flagged the missing dep.
+**Fix:** Remount on post change at the usage site (one line, in a reviewed file):
 
 ```tsx
-{...register("slug", {
-  onChange: () => {
-    slugTouched.current = true; // any user edit (incl. clear-to-empty) owns the field
-  },
-})}
+<SchedulePicker
+  key={post.id}
+  postId={post.id}
+  publishedAt={post.publishedAt ? new Date(post.publishedAt) : null}
+  initialTimezone={timezone ?? undefined}
+/>
 ```
 
-This fixes both edges: tab-through never fires `onChange` (auto-derive keeps working); select-all+delete fires it once (no refill, clean retype). Drop the `onBlur` handler entirely.
+Apply the same `key={post.id}` to `<PostForm>` (its `defaultValues`/effects have the same staleness class), or alternatively add `postId` to the effect deps and re-initialize flatpickr when it changes.
+
+### WR-02: Catch-all `notFound()` converts transient failures of `getPostTagIds`/`getSetting` into 404s
+
+**File:** `src/app/(admin)/dashboard/posts/[id]/edit/page.tsx:54-63`
+**Issue:** The `try` block wraps three calls, but the comment justifies 404 only for `getPost`'s error types (NOT_FOUND / FORBIDDEN / UNAUTHORIZED). `getPostTagIds(postId)` and `getSetting("site.timezone")` failing for infrastructure reasons (DB connection blip, pool exhaustion) after `getPost` succeeded also lands in the `catch` and renders a 404 — misreporting a 500-class fault as "post doesn't exist", hiding it from ops/debuggability, and blocking the user from editing a post they can access. This is incorrect behavior, not just noise: the wrong status code also pollutes any monitoring that tracks 404s.
+**Fix:** Keep the auth/existence decision scoped to `getPost`; the two auxiliary reads already have sane fallbacks:
+
+```tsx
+try {
+  post = await getPost(postId);
+} catch {
+  notFound();
+}
+// Non-auth auxiliary reads — degrade, don't 404.
+let tagIds: number[] = [];
+let timezone: string | null = null;
+try {
+  tagIds = await getPostTagIds(postId);
+  timezone = await getSetting("site.timezone");
+} catch {
+  // tagIds=[] / timezone=null fall back gracefully below.
+}
+```
+
+(Or rethrow non-auth errors to the route `error.tsx` if one exists.)
+
+### WR-03: Failure toast relies on `err.message` — Next.js production builds mask thrown Server Action error messages
+
+**File:** `src/app/(admin)/dashboard/posts/components/SchedulePicker.tsx:104-109`; cross-file `src/actions/posts.ts:391-402`
+**Issue:** The catch path promises "Raw action message (FORBIDDEN / network text)" (`err instanceof Error ? err.message : …`). In dev this works (`requireCan` throws `new Error("FORBIDDEN")`, `src/lib/permissions/index.ts:65`), but in production builds Next.js redacts uncaught Server Action error messages sent to the client — the browser receives a generic message plus a `digest`, never the literal "FORBIDDEN". So the exact failure mode this toast exists for (an author-level session somehow triggering the picker, or a denied permission) displays an opaque generic string in production. Note `setSchedule` also returns `{ ok: true }` even when its `db.update` matched 0 rows (see IN-02), so the success toast can lie too.
+**Fix:** Return a typed result instead of throwing for expected failures, and branch on it client-side:
+
+```ts
+// actions/posts.ts
+export async function setSchedule(postId: number, publishedAt: Date) {
+  const session = await requireCan({ post: ["publish"] }); // throws only on infra faults
+  // …existence check + update…
+  return { ok: true as const };
+}
+// caller: const r = await setSchedule(postId, date);
+// r.ok ? toast.success("Schedule saved") : toast.error(r.error ?? "Failed to save schedule")
+```
+
+(If keeping throw-based flow, map `digest`/known codes to friendly text in the catch.) The same dev-only-message pattern exists in PostForm/PreviewLink (05-06/05-07 convention) — out of scope here, but the convention itself deserves a follow-up.
+
+### WR-04: `getSetting` is an ungated Server Action — the new client-side call cements a world-readable settings surface
+
+**File:** cross-file `src/actions/settings.ts:34-41`; reviewed caller `src/app/(admin)/dashboard/posts/components/SchedulePicker.tsx:35,64`
+**Issue:** Every other action consulted in this review gates first (`getPost` → `assertOwnsPost`, `listPosts` → `requireCan read`, `saveSeoSettings` → `requireRole admin`). `getSetting(key)` performs NO session or permission check, and because it lives in a `"use server"` file it is an HTTP endpoint: any client — including a fully unauthenticated visitor POSTing to the app — can read ANY key in the settings table (`site.timezone` today, but also `storage.active_provider`, and every future key such as analytics IDs or header/footer custom code). Today's values are non-sensitive, so this is a standing exposure rather than an active leak — but the 05-08 change makes SchedulePicker call it directly from the client, which normalizes the pattern and guarantees the exposure survives any future "why is the client calling a gated action" cleanup. The reviewed component is fine; the action it now depends on is the defect.
+**Fix:** In `src/actions/settings.ts`, gate reads — either require a session, or (better, since the public site may eventually need `site.timezone` too) check an explicit public-readable allowlist:
+
+```ts
+const PUBLIC_READ_KEYS = new Set(["site.timezone"]);
+export async function getSetting(key: string): Promise<string | null> {
+  if (!PUBLIC_READ_KEYS.has(key)) await getSessionOrThrow(); // or requireCan({settings:["read"]})
+  // …existing select…
+}
+```
+
+### WR-05: The RSC-boundary regression pin is narrower than the crash class it exists to prevent
+
+**File:** `src/app/(admin)/dashboard/posts/__tests__/edit-page-rsc-boundary.test.ts:39-53`
+**Issue:** Two coverage gaps versus the suite's raison d'être (the 05-UAT R1 serialization crash): (a) only the `<SchedulePicker … />` span is scanned — `PostForm` and `PreviewLink` receive props from the SAME Server Component, and a function prop on either (`formatter={…}`, `renderItem={() => …}`, an inline callback) throws identically at RSC serialization time on every render while this suite stays green; (b) only `on[A-Z]\w*=`-named props are flagged on SchedulePicker itself — any function-valued prop under a different name reintroduces the exact R1 bug undetected. The file header correctly says "a function value in a Client Component's props" is the bug class, but the assertions only pin the event-handler-named subset of one component. The pin still catches the literal R1 regression (verified: suite passes today), so this is a false-security gap, not a broken test.
+**Fix:** Broaden to the whole page render (and ideally pin the sibling interfaces the way `SchedulePickerProps` is pinned):
+
+```ts
+it("edit page passes no event-handler or inline-function props to ANY client component", () => {
+  const src = stripComments(readFileSync(EDIT_PAGE, "utf8"));
+  // JSX-region heuristic: every PascalCase tag's prop list.
+  const tags = src.match(/<[A-Z]\w*[^<>]*?>/g) ?? [];
+  for (const tag of tags) {
+    expect(tag, `handler/function prop in ${tag.slice(0, 40)}…`).not.toMatch(
+      /\bon[A-Z]\w*\s*=|\{\s*\(\s*\)?\s*=>/,
+    );
+  }
+});
+```
 
 ## Info
 
-### IN-01: `.int()` path still yields a cryptic Zod default message
+### IN-01: Header comment contradicts the code on mount re-validation
 
-**File:** `src/actions/posts-schema.ts:35`
-**Issue:** Empirically probed against the installed zod: every path now reads "Category is required" (undefined/null/NaN/string/zero/negative) EXCEPT a non-integer number, which returns Zod's default "Invalid input: expected int, received number". Unreachable from the `<select>` UI (options carry integer ids), but it is the one remaining cryptic path on this field and the fix is one word.
-**Fix:** `z.number({ error: "Category is required" }).int("Category is required").positive("Category is required")`.
+**File:** `src/app/(admin)/dashboard/posts/components/SchedulePicker.tsx:17-19` vs `61-62`
+**Issue:** The header says "This component also re-validates on mount," but the effect's first line is `if (initialTimezone) return;` ("trust the server-fetched prop when available") — so on the edit page, which supplies the prop whenever the key exists, re-validation never runs. The inner comment is accurate; the header is stale. A future maintainer relying on the header could assume settings changes appear on mount.
+**Fix:** Reword the header to "re-validates on mount only when no `initialTimezone` prop was supplied."
 
-### IN-02: Dead regex step in `deriveSlugFromTitle`
+### IN-02: `setSchedule` does not verify the post exists — 0-row update still returns `{ ok: true }`
 
-**File:** `src/lib/slug/derive.ts:32`
-**Issue:** `.replace(/-+/g, "-")` is unreachable as a collapse step: the preceding `[^a-z0-9]+` replacement already consumes every hyphen (hyphens match the negated class) and emits single hyphens, so consecutive hyphens cannot exist at that point. Harmless belt-and-braces, but it reads as load-bearing.
-**Fix:** Remove the step, or keep it with a comment saying it is redundant defense. Removing is cleaner — the tests already pin collapse behavior.
+**File:** cross-file `src/actions/posts.ts:395-401`
+**Issue:** `db.update(...).where(eq(posts.id, postId))` on a nonexistent id affects 0 rows and the action still returns `{ ok: true }`, so SchedulePicker toasts "Schedule saved" for a post deleted in another tab mid-session. Inconsistent with `getPost`/`publishPost`, which throw `NOT_FOUND`. Low likelihood, low harm, but it makes the success toast an unreliable signal.
+**Fix:** Select existence first (or check the node-postgres rowcount like `upsertSetting` in settings.ts does) and `throw new Error("NOT_FOUND")` on miss.
 
-### IN-03: onInvalid surfaces raw Zod defaults and code-like strings into user-facing toasts
+### IN-03: Magic debounce constant
 
-**File:** `src/app/(admin)/dashboard/posts/PostForm.tsx:169-173` (messages sourced from `src/actions/posts-schema.ts:20, 36`)
-**Issue:** The gap-closure's goal was "no cryptic messages", but onInvalid toasts `message` verbatim for every field. Fields without custom messages still surface Zod 4 defaults ("Too big: expected string to have at most 255 elements" for title/metaTitle caps) and `tagIds.max` surfaces the code-like constant "TOO_MANY_TAGS" directly to the user. Readable-ish, but inconsistent with the bar this change set for categoryId.
-**Fix:** Add human custom messages to the few user-facing caps (`title.max(255, "Title is too long (max 255)")`, `tagIds.max(8, "Maximum 8 tags")`, same for metaTitle/metaDescription/excerpt caps) — the schema is shared, so the server error path improves too.
+**File:** `src/app/(admin)/dashboard/posts/components/SchedulePicker.tsx:111`
+**Issue:** `700` is inline with only prose (comments) explaining it. The value is load-bearing (long enough to swallow flatpickr's per-tick fires, short enough to feel instant).
+**Fix:** `const SCHEDULE_SAVE_DEBOUNCE_MS = 700;` above the component, referenced in the `setTimeout` call.
 
-### IN-04: Placeholder CSS misses the empty-heading-first case
+### IN-04: Source-scan heuristics can mis-strip the file they scan
 
-**File:** `src/app/globals.css:326`
-**Issue:** The selector is `p.is-empty:first-child`. If the document's first block is an empty heading (e.g. user formatted the first line as a heading, then deleted the text), the editor is visually empty but shows no placeholder — the decoration is painted on the `<h1>` (showOnlyCurrent:false paints all empty textblocks) but the CSS only matches `p`. Cosmetic edge.
-**Fix:** Broaden to `.tiptap.ProseMirror > .is-empty:first-child::before` (any textblock tag) if the heading case matters, or accept as-is and note it.
+**File:** `src/app/(admin)/dashboard/posts/__tests__/edit-page-rsc-boundary.test.ts:30-31,53`
+**Issue:** `stripComments`'s `//.*$` also cuts string literals containing `//` — e.g., a future `helpUrl="https://…"` prop on SchedulePicker would eat the rest of that line and could corrupt the extracted span (potentially hiding a real violation or truncating the match). Similarly, `\bon[A-Z]\w*` would false-positive on a kebab attribute like `data-onChange`. Latent only — current source has no such literals — and the cited r2-destination convention shares it.
+**Fix:** Add a guard comment in the test, or strip string literals before comments (`src.replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g, '""')` first).
 
 ---
 
-_Reviewed: 2026-08-25T18:20:18Z_
+_Reviewed: 2026-08-25T21:27:44Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
