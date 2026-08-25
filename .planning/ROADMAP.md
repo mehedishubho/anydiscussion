@@ -180,7 +180,7 @@ Plans:
   4. A post with a long Bangla meta description passes validation using a byte/reasonable-char-count rule, not a Latin-character limit (Bangla content does not get falsely rejected).
   5. An RSS feed at `/rss.xml` (or `/feed.xml`) publishes the latest posts for feed readers.
 
-**Plans**: 6 plans (3 complete + 3 gap closure from UAT)
+**Plans**: 5/6 plans executed
 
 Plans:
 
@@ -195,8 +195,8 @@ Plans:
 
 **Wave 1 gap closure** *(from Phase 5 UAT — parallel, no file overlap)*
 
-- [ ] 05-04-PLAN.md — Redirects runtime fix (middleware.ts sets x-incoming-path request header + broadened matcher; not-found.tsx reads it — the Vercel-only x-invoke-path was dead code self-hosted) + SEO entry in the Settings submenu (AppSidebar). Closes UAT gaps 4 (blocker) + 3. Covers SEO-04, SEO-01.
-- [ ] 05-05-PLAN.md — Editor surface rebuild to WordPress-classic spec: Visual/Text tabs, ordered toolbar (block-type dropdown, align via @tiptap/extension-text-align@3.27.1), min-height writing area, live word-count footer (@tiptap/extension-character-count@3.27.1); extensions.ts stays the single client+server source (round-trip test extended). Closes UAT gap 1 (editor half). Covers SEO-02, SEO-06.
+- [x] 05-04-PLAN.md — Redirects runtime fix (middleware.ts sets x-incoming-path request header + broadened matcher; not-found.tsx reads it — the Vercel-only x-invoke-path was dead code self-hosted) + SEO entry in the Settings submenu (AppSidebar). Closes UAT gaps 4 (blocker) + 3. Covers SEO-04, SEO-01.
+- [x] 05-05-PLAN.md — Editor surface rebuild to WordPress-classic spec: Visual/Text tabs, ordered toolbar (block-type dropdown, align via @tiptap/extension-text-align@3.27.1), min-height writing area, live word-count footer (@tiptap/extension-character-count@3.27.1); extensions.ts stays the single client+server source (round-trip test extended). Closes UAT gap 1 (editor half). Covers SEO-02, SEO-06.
 
 **Wave 2 gap closure** *(blocked on 05-05 — package.json overlap + publish e2e needs the rebuilt editor)*
 
