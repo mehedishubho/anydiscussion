@@ -10,15 +10,23 @@ updated: 2026-08-25T19:35:00Z
 <!-- OVERWRITE each test - shows where we are -->
 
 number: R1
-name: Live publish flow re-run
+name: Live publish flow re-test (after 05-07 + review fixes)
 expected: |
-  As an editor, open /dashboard/posts/new (or an existing draft). Body editor shows the
-  WordPress-classic surface (Visual/Text tabs, toolbar, word-count footer) and accepts typing.
-  Fill title + body, click Publish — a success toast appears. Save-draft also toasts.
-  (Claude then auto-verifies: post in /sitemap.xml + /rss.xml, /blog/{slug} page source shows
-  canonical + og:url + BlogPosting JSON-LD.)
-result: issue (2026-08-25) — "first time body box input showing like this and after adding
-all data and click on publish button nothing happen". Diagnosis in progress.
+  As an editor, open /dashboard/posts/new (fresh load). Body editor shows the STYLED
+  WordPress-classic surface on FIRST load: tall white writing area (350px, clickable
+  anywhere to focus), typography-styled text, placeholder text while empty, no black
+  focus ring. Type a title — slug auto-fills; tabbing through the slug field does NOT
+  stop auto-fill; deleting the slug keeps it deleted while you own it.
+  Click Publish with Category EMPTY → error toast names the first problem and focus
+  jumps to that field (never a silent no-op). Fill Category, publish → success toast.
+  Save-draft also toasts. (Claude then auto-verifies: post in /sitemap.xml + /rss.xml,
+  /blog/{slug} page source shows canonical + og:url + BlogPosting JSON-LD.)
+awaiting: user response
+note: |
+  Prior R1 run (2026-08-25) failed: unstyled surface + silent publish no-op. Fixed by
+  gap plan 05-07 (b84f952, 38ace32, e0356e9) + code-review warning fixes WR-01 min-height
+  bridge (657ff3e) and WR-02 slug ownership via onChange (e12cb59). Verification 0529729:
+  0 code gaps, both root causes closed at artifact level.
 
 ## Tests
 
@@ -134,6 +142,7 @@ requirements SATISFIED in code, no code gaps — 3 runtime flows need live re-te
 ### R1. Live publish flow re-run (covers original tests 2 + 3, gaps 1 + 2)
 expected: As an editor, open `/dashboard/posts/new` (or an existing draft). Body editor shows the WordPress-classic surface (Visual/Text tabs, toolbar, word-count footer) and accepts typing. Fill title + body, click Publish — a success toast appears. The post then: (a) appears in `/sitemap.xml` under `/blog/{slug}` (0.8/weekly), (b) appears in `/rss.xml` as an `<item>` with a correct `pubDate` (CR-02: publish stamps `publishedAt`), (c) its live page source at `/blog/{slug}` shows `<link rel="canonical" href=".../blog/{slug}">` (CR-01), matching `og:url`, and a `BlogPosting` JSON-LD script (CR-03-escaped). Save-draft also toasts.
 result: issue
+fix_state: fixed_pending_retest (05-07 b84f952/38ace32/e0356e9 + WR-01 657ff3e + WR-02 e12cb59; verification 0529729 confirms both root causes closed at artifact level — live re-test pending 2026-08-26)
 reported: "first time body box input showing like this and after adding all data and click on publish button nothing happen"
 severity: major
 evidence: "Screenshot 2026-08-25: toolbar renders correctly (Visual/Text tabs, Paragraph dropdown, B/I/lists/align/link/table/More, word-count footer '1 word, 9 characters') BUT the writing surface renders as an unstyled plain text box (black border, no padding, no ProseMirror placeholder) instead of the Tiptap contenteditable surface. Typed text 'hjhjhjhj' lands in the plain box. Category* field visible and empty. After filling all data, clicking Publish produces no toast, no navigation, no visible save."
