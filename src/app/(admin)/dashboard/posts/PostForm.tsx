@@ -109,10 +109,16 @@ export default function PostForm(props: PostFormProps) {
   const featureImageValue = watch("featureImage");
 
   // 05-07 — slug auto-derive (derive-on-empty, NEVER overwrite). slugTouched is
-  // set by the slug input's custom onBlur (merged into register below): once
-  // the user has interacted with the slug field, derivation stops — which also
-  // protects EXISTING slugs on /edit (slug is content identity per D-12/D-20;
-  // a title edit on a published post must not silently change the URL).
+  // set by the slug input's custom onChange (merged into register below): once
+  // the user has actually EDITED the slug, derivation stops. WR-02: the signal
+  // must be onChange, not onBlur — blur alone (tabbing or clicking through the
+  // field without typing) must NOT disable derive, while any real edit
+  // (including clearing to empty) must own it, or a clear gets refilled under
+  // the user's cursor mid-retype. RHF fires the merged onChange only on real
+  // user input; programmatic setValue from the effect below never trips it.
+  // EXISTING slugs on /edit are protected by the derive-on-empty guard itself
+  // (slug is content identity per D-12/D-20; a title edit on a published post
+  // must not silently change the URL).
   const slugTouched = useRef(false);
   // eslint-disable-next-line react-hooks/incompatible-library -- RHF watch() is the documented API; React Compiler safely skips memoizing it
   const [titleValue, slugValue] = watch(["title", "slug"]);
@@ -281,10 +287,13 @@ export default function PostForm(props: PostFormProps) {
         <input
           id="slug"
           {...register("slug", {
-            // 05-07 — first blur marks the slug as user-owned: auto-derive
-            // stops (protects user-entered AND existing slugs). RHF merges
-            // this custom onBlur with its internal one.
-            onBlur: () => {
+            // 05-07 / WR-02 — ANY user edit (typing OR clearing to empty)
+            // marks the slug as user-owned: auto-derive stops. RHF merges
+            // this custom onChange with its internal one and fires it ONLY
+            // on real user input — programmatic setValue from the derive
+            // effect never trips it, and tabbing/clicking through the field
+            // (no input) must not either.
+            onChange: () => {
               slugTouched.current = true;
             },
           })}
