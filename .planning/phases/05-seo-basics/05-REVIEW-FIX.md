@@ -1,65 +1,53 @@
 ---
 phase: 05-seo-basics
-fixed_at: 2026-08-25T17:15:00Z
+fixed_at: 2026-08-25T20:22:01Z
 review_path: .planning/phases/05-seo-basics/05-REVIEW.md
 iteration: 1
-findings_in_scope: 3
-fixed: 3
+findings_in_scope: 2
+fixed: 2
 skipped: 0
 status: all_fixed
 ---
 
-# Phase 05: Code Review Fix Report
+# Phase 5: Code Review Fix Report (Gap-Closure 05-07 Scope)
 
-**Fixed at:** 2026-08-25T17:15:00Z
-**Source review:** .planning/phases/05-seo-basics/05-REVIEW.md
+**Fixed at:** 2026-08-25T20:22:01Z
+**Source review:** .planning/phases/05-seo-basics/05-REVIEW.md (committed 550089a)
 **Iteration:** 1
-**Scope:** critical only (user-selected `fix_scope: critical` — CR-01, CR-02, CR-03)
+**Fix scope:** critical_warning (user-selected — Critical + Warning only)
 
 **Summary:**
-- Findings in scope: 3 (Critical)
-- Fixed: 3
+- Findings in scope: 2 (0 Critical, 2 Warning)
+- Fixed: 2
 - Skipped: 0
-- Verification: `pnpm vitest run` green after every commit — final state 57 files / 590 tests passing (baseline 580; +10 new tests). `tsc --noEmit` reports zero errors in any modified file (pre-existing TailAdmin legacy errors in untouched files remain, unchanged).
+- Out of scope by user selection: IN-01, IN-02, IN-03, IN-04 (Info tier — not attempted)
+
+**Verification:**
+- Targeted suites after each fix: `src/components/editor` 15/15 green; `src/app/(admin)/dashboard/posts` 3/3 green
+- Full suite: 599/599 passed (baseline 595 + 4 new tests: 1 WR-01 surface pin + 3 WR-02 PostForm pins)
+- `tsc --noEmit`: exactly main's 4 documented pre-existing errors (`src/actions/__tests__/storage-settings.test.ts` TS18048 x4) — no new errors from the fix delta. (Note: the scratch worktree initially showed 8 extra TS2322 errors; those traced to the gitignored build-generated `next-env.d.ts` being absent from the fresh worktree, not to any fix file — reproducing the file made them vanish.)
+- WR-02 tests proven load-bearing: run against the pre-fix PostForm, the two new failure-mode tests fail (`expected '' to be 'hello-world'` / `expected 'hello-world' to be ''`); against the fix they pass.
 
 ## Fixed Issues
 
-### CR-01: Post canonical URLs derived as `/{slug}` — actual post route is `/blog/[slug]`
+### WR-01: `min-height: inherit` chain is broken — the contenteditable does not fill the 350px wrapper
 
-**Files modified:** `src/lib/seo/metadata.ts`, `src/lib/seo/__tests__/metadata.test.ts`, `src/lib/seo/__tests__/sitemap.test.ts`
-**Commit:** 5da67e1
-**Applied fix:** `buildPostMetadata` now derives the canonical as `/blog/${post.slug}` (doc comment updated to match). The two tests that pinned the wrong `/{slug}` path (metadata.test.ts:64-73) now expect `/blog/${slug}` and carry a CR-01 marker. Added a drift-guard cross-check in sitemap.test.ts asserting `canonicalBaseUrl + buildPostMetadata(...).alternates.canonical` equals `buildPostSitemapEntry(...).url` exactly — the metadata and sitemap derivations can no longer diverge silently. Consumer check: `/preview/[token]` spreads `buildPostMetadata` but overrides with `robots: {index:false, follow:false}` — noindex preview, canonical value immaterial for indexing; it now simply stays consistent with the real route. No preview change needed. `blog/[slug]/page.tsx:163` (`canonicalRel`) already used `/blog/` — untouched.
+**Files modified:** `src/components/editor/TiptapEditor.tsx`, `src/app/globals.css`, `src/components/editor/__tests__/tiptap-editor-surface.test.tsx`
+**Commit:** 657ff3e
+**Applied fix:** Verified the reviewer's premise against the installed `@tiptap/react@3.27.1` (`PureEditorContent.render()` spreads `...rest` onto a bare container `<div>`). Bridged the chain via `<EditorContent editor={editor} className="min-h-[inherit]" />` — the container now inherits the wrapper's computed `min-h-[350px]`, and the existing `.tiptap.ProseMirror { min-height: inherit }` globals.css rule resolves against the container instead of `auto`. The wrapper carries no responsive min-height variants (only `min-h-[350px]`), so the single `min-h-[inherit]` bridge suffices — the reviewer's speculative `sm:min-h-[inherit]` variant was unnecessary and omitted. The globals.css rule itself is unchanged (still correct once bridged); both files' comments now document the two-link chain so it is not re-broken. Extended `tiptap-editor-surface.test.tsx` with a DOM-chain pin: contenteditable -> parent container `DIV` carrying `min-h-[inherit]` -> grandparent wrapper carrying `min-h-[350px] prose` (passes; jsdom cannot compute CSS inheritance, so pixel-level rendering remains covered by the pending D2 human UAT walkthrough — **fixed: requires human verification** for the visual confirmation that the 350px white area is fully clickable).
 
-### CR-02: `savePost` update path nulls `publishedAt` on every edit — publish-date data loss
+### WR-02: `slugTouched`-on-blur defeats auto-derive for keyboard users and refills a slug the user just cleared
 
-**Files modified:** `src/actions/posts.ts`, `src/lib/permissions/post-transitions.ts`, `src/actions/__tests__/posts.test.ts`, `src/lib/permissions/__tests__/transitions.test.ts`
-**Commit:** 4d7a999
-**Applied fix:**
-- `savePost` update branch: `publishedAt: data.publishedAt ?? null` replaced with a conditional spread that includes the column ONLY when the payload explicitly provides it — the column is entirely absent from the UPDATE when PostForm omits the field (it always does), so the existing DB value survives; an explicit date (manual schedule path) still writes. The create branch's null default is intentionally preserved (nothing to preserve on create).
-- `transitionPost` (the R7 status funnel): when the target status is `published` and the post's `publishedAt` is null, the same UPDATE now stamps `publishedAt: new Date()` — a publish without a prior `setSchedule` can no longer leave a NULL publish date. An existing (scheduled or prior-publish) date is preserved verbatim.
-- Tests: both test files' db mocks now capture the `.set()`/`.values()` write payloads (`updateSetMock`/`insertValuesMock`). New coverage (6 tests): update omits `publishedAt` when payload omits it; update writes it when explicit; create still defaults null; transition stamps on publish-with-NULL; transition preserves an existing date (column absent from write); non-publish transitions never stamp.
-- Status note: this is a logic fix, but the behavior is pinned by the new unit tests asserting exact write payloads — verified beyond syntax level.
+**Files modified:** `src/app/(admin)/dashboard/posts/PostForm.tsx`, `src/app/(admin)/dashboard/posts/__tests__/PostForm.test.tsx` (new)
+**Commit:** e12cb59
+**Applied fix:** Moved the slug ownership signal from the `register("slug", { onBlur })` handler to `register("slug", { onChange })` and removed the blur handler entirely. RHF fires the merged custom `onChange` only on real user input — programmatic `setValue` from the derive effect never trips it — so: tab/click-through without typing no longer disables auto-derive, and select-all+Delete while still focused fires `onChange` once (field owned, no mid-interaction refill). Comments at both the ref and the register site updated to state the WR-02 rationale. PostForm had no test file; created `src/app/(admin)/dashboard/posts/__tests__/PostForm.test.tsx` following the existing BackupSettingsForm/SignInForm patterns (jsdom pragma, vi.hoisted action mocks for `@/actions/posts`, null stubs for EditorProvider/MediaPicker/TaxonomyPicker, real SeoPanel, QueryClientProvider wrapper) with three pins: (1) focus+blur without typing does not disable derive; (2) clearing while focused does not refill; (3) a user-typed slug is never overwritten by later title edits. Pins (1) and (2) were verified to FAIL against the pre-fix code before committing the fix.
 
-### CR-03: Stored XSS via unescaped JSON-LD `<script>` injection
+## Out of Scope (user selection)
 
-**Files modified:** `src/lib/seo/jsonld.ts`, `src/lib/seo/__tests__/jsonld.test.ts`, `src/app/(site)/blog/[slug]/page.tsx`, `src/app/(site)/layout.tsx`, `src/app/(site)/category/[slug]/page.tsx`, `src/app/(site)/tag/[slug]/page.tsx`, `src/app/(site)/author/[username]/page.tsx`
-**Commit:** cabf58a
-**Applied fix:** Added shared `jsonLdScript(obj)` helper in `src/lib/seo/jsonld.ts`: `JSON.stringify` followed by escaping the characters less-than, greater-than, ampersand, and the Unicode line (U+2028) / paragraph (U+2029) separators into their six-character JSON backslash-u escape-sequence forms. That escape form keeps the payload valid JSON that parses back to the identical string (unlike HTML entities, which would corrupt parsed values). All six JSON-LD injection sites across the codebase now route through it — the two the review cited (blog post page BlogPosting, site layout WebSite+Organization) plus four more sites found by grepping `application/ld+json` (category/tag BreadcrumbList, author Person — same XSS class via admin/editor/user-controlled names and bios). Grep confirms zero remaining raw stringify ld+json sites. New unit tests (3): a `</script><img onerror=...>` headline breakout is neutralized (no raw less-than/greater-than/ampersand in output); full round-trip `JSON.parse(jsonLdScript(x))` deep-equals `x` (escapes semantically inert); U+2028/U+2029 escaped and round-trip.
-- Note on new code: no new files created; `jsonLdScript` lives in the existing `src/lib/seo/jsonld.ts` as the review suggested.
-
-## Skipped Issues
-
-None — all 3 in-scope Critical findings were fixed.
-
-### Out of scope (fix_scope: critical — user-selected)
-
-The following REVIEW.md findings were NOT attempted per the scope override (recorded here for traceability):
-
-- **Warnings (9):** WR-01 (upsertSetting dead insert fallback), WR-02 (autosavePost skips storage sanitize), WR-03 (RSS CDATA breakout), WR-04 (post_seo.post_id not UNIQUE), WR-05 (listPosts not author-scoped), WR-06 (savePost no existence check), WR-07 (tagIds silently discarded), WR-08 (published-post edit never revalidates), WR-09 (sequential boot seeds, no isolation).
-- **Info (7):** IN-01 … IN-07 as listed in REVIEW.md.
+IN-01 (cryptic `.int()` Zod default), IN-02 (dead regex step in `deriveSlugFromTitle`), IN-03 (raw Zod defaults / `TOO_MANY_TAGS` in onInvalid toasts), IN-04 (placeholder CSS misses empty-heading-first case) — Info-tier findings excluded from this fix pass per the user's Critical+Warning scope selection. See 05-REVIEW.md for the recorded fix directions.
 
 ---
 
-_Fixed: 2026-08-25T17:15:00Z_
+_Fixed: 2026-08-25T20:22:01Z_
 _Fixer: Claude (gsd-code-fixer)_
 _Iteration: 1_
