@@ -7,6 +7,7 @@
 // [CITED: 04-RESEARCH.md Pattern 4 — useMutation + invalidate shape]
 // [CITED: 04-02-PLAN.md Task 3 — feature-image field now uses <MediaPicker> (closes Phase 3 UAT gap)]
 // [CITED: 05-06-PLAN.md — Publish/Submit-for-review buttons (UAT gap 1 publish half) + save toasts (UAT test 3)]
+// [CITED: 05-07-PLAN.md — loud validation (onInvalid toast + focus) + slug auto-derive (UAT re-run R1 cause B)]
 //
 // The client-component post create/edit form. Wires react-hook-form to the
 // shared postSchema via zodResolver (the SAME schema the Server Action parses —
@@ -35,12 +36,22 @@
 // has its own controlled API and doesn't accept RHF's register props; the native
 // input + Tailwind classes is the standard RHF wiring pattern. Phase 4 DASH-01
 // can swap back to a TailAdmin form kit component if desired.
-import { useState } from "react";
-import { useForm } from "react-hook-form";
+//
+// 05-07 (UAT re-run R1 cause B — "publish button nothing happen"): the three
+// handleSubmit call sites below (form onSubmit, Publish onClick, Submit-for-
+// review onClick) previously passed NO onInvalid callback — a Zod/RHF
+// validation failure (missing Category, bad slug) was a total silent no-op
+// before any mutation fired. Every site now passes the shared onInvalid
+// (error toast + focus/scroll to the first offending field). The slug field
+// also auto-derives from the title while the user has not typed a slug
+// (derive-on-empty, never overwrite — D-12/D-20: slug is content identity).
+import { useEffect, useRef, useState } from "react";
+import { useForm, type FieldErrors } from "react-hook-form";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import Image from "next/image";
 import { toast } from "sonner";
 import { EditorProvider } from "@/components/editor/EditorProvider";
+import { deriveSlugFromTitle } from "@/lib/slug/derive";
 import { postSchema, zodResolver, type PostSchemaInput } from "./schema-client";
 import { savePost, publishPost, submitForReview } from "@/actions/posts";
 import TaxonomyPicker from "./components/TaxonomyPicker";
@@ -97,6 +108,26 @@ export default function PostForm(props: PostFormProps) {
   // eslint-disable-next-line react-hooks/incompatible-library -- RHF watch() is the documented API; React Compiler safely skips memoizing it
   const featureImageValue = watch("featureImage");
 
+  // 05-07 — slug auto-derive (derive-on-empty, NEVER overwrite). slugTouched is
+  // set by the slug input's custom onBlur (merged into register below): once
+  // the user has interacted with the slug field, derivation stops — which also
+  // protects EXISTING slugs on /edit (slug is content identity per D-12/D-20;
+  // a title edit on a published post must not silently change the URL).
+  const slugTouched = useRef(false);
+  // eslint-disable-next-line react-hooks/incompatible-library -- RHF watch() is the documented API; React Compiler safely skips memoizing it
+  const [titleValue, slugValue] = watch(["title", "slug"]);
+  useEffect(() => {
+    if (slugTouched.current) return;
+    if (typeof slugValue === "string" && slugValue !== "") return; // never overwrite
+    const derived = deriveSlugFromTitle(typeof titleValue === "string" ? titleValue : "");
+    // Skip when nothing survives (empty or Bangla-only title): writing "" with
+    // shouldValidate would flag the pristine slug field as invalid on mount.
+    // A fully-Bangla title derives "" and the loud slug validation catches it
+    // on submit instead (toast + focus — D-20: strip, never transliterate).
+    if (derived === "") return;
+    setValue("slug", derived, { shouldValidate: true });
+  }, [titleValue, slugValue, setValue]);
+
   // D-26 + D-27 — savePost wrapped in useMutation; NOT optimistic on post save.
   // Invalidate the ["posts"] query key on success so any dashboard list refreshes.
   // The mutation inherits the Server Action's behavior 1:1 (no client-side
@@ -123,6 +154,28 @@ export default function PostForm(props: PostFormProps) {
     // mutate (not mutateAsync) — RHF's handleSubmit doesn't need to await;
     // mutation.isPending drives the button-disabled state instead.
     mutation.mutate(values);
+  };
+
+  // 05-07 — shared onInvalid, wired as the SECOND handleSubmit argument at all
+  // three submit paths (form onSubmit, Publish, Submit-for-review). Before
+  // this, a validation failure was a silent no-op — the core UAT R1 bug.
+  // toast.error carries the first field's message (e.g. "Category is
+  // required"); focus + scrollIntoView land on the offending element via its
+  // HTML id. Fields without an id (body/editor) degrade to toast-only.
+  const onInvalid = (fieldErrors: FieldErrors<PostSchemaInput>): void => {
+    const first = Object.entries(fieldErrors).find(([, v]) => v !== undefined);
+    if (!first) return;
+    const [key, value] = first;
+    const message =
+      value && typeof value === "object" && typeof (value as { message?: unknown }).message === "string"
+        ? (value as { message: string }).message
+        : "Please fix the highlighted fields";
+    toast.error(message);
+    const el = document.getElementById(key);
+    if (el) {
+      el.focus();
+      el.scrollIntoView({ block: "center" });
+    }
   };
 
   // 05-06 Task 3 — role-aware Publish / Submit-for-review. UX gating ONLY
@@ -205,7 +258,7 @@ export default function PostForm(props: PostFormProps) {
   const submitError = mutation.error?.message ?? null;
 
   return (
-    <form onSubmit={handleSubmit(onValid)} className="space-y-5">
+    <form onSubmit={handleSubmit(onValid, onInvalid)} className="space-y-5">
       <div>
         <label htmlFor="title" className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-400">
           Title
@@ -227,8 +280,15 @@ export default function PostForm(props: PostFormProps) {
         </label>
         <input
           id="slug"
-          {...register("slug")}
-          placeholder="url-safe-latin-hyphens"
+          {...register("slug", {
+            // 05-07 — first blur marks the slug as user-owned: auto-derive
+            // stops (protects user-entered AND existing slugs). RHF merges
+            // this custom onBlur with its internal one.
+            onBlur: () => {
+              slugTouched.current = true;
+            },
+          })}
+          placeholder="auto-fills from title — or type your own"
           className={`${INPUT_CLASS} ${errors.slug ? "border-error-500" : ""}`}
         />
         <p className="mt-1 text-xs text-gray-500">
@@ -355,7 +415,7 @@ export default function PostForm(props: PostFormProps) {
           <button
             type="button"
             disabled={anyPending}
-            onClick={handleSubmit(onPublishValid)}
+            onClick={handleSubmit(onPublishValid, onInvalid)}
             className="inline-flex items-center justify-center rounded-lg bg-brand-500 px-5 py-3.5 text-sm font-medium text-white shadow-theme-xs hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {publishMutation.isPending ? "Publishing…" : "Publish"}
@@ -365,7 +425,7 @@ export default function PostForm(props: PostFormProps) {
           <button
             type="button"
             disabled={anyPending}
-            onClick={handleSubmit(onSubmitReviewValid)}
+            onClick={handleSubmit(onSubmitReviewValid, onInvalid)}
             className="inline-flex items-center justify-center rounded-lg bg-brand-500 px-5 py-3.5 text-sm font-medium text-white shadow-theme-xs hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {submitReviewMutation.isPending ? "Submitting…" : "Submit for review"}
