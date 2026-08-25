@@ -3,7 +3,7 @@ status: pending
 phase: 05-seo-basics
 source: [05-VERIFICATION.md]
 started: 2026-07-07T04:30:00Z
-updated: 2026-08-25T20:49:32Z
+updated: 2026-08-26T04:15:00Z
 ---
 
 ## Current Test
@@ -27,6 +27,12 @@ note: |
   Server Component passes an inline onChange function prop to the client
   SchedulePicker → RSC serialization throws, edit page unrenderable. Fix = plan
   05-08 (wire picker to setSchedule action client-side, remove the function prop).
+  2026-08-26 post-05-08 re-test surfaced two new blockers — (a) client crash on
+  the posts edit page (tiptap#7849 destroyed-editor selector) and (b) publish
+  rejected media-library feature images with "Invalid url" (absolute-only image
+  schemas) — both root-caused and fixed by quick task 260826-5l0
+  (.planning/quick/260826-5l0-fix-two-phase-05-uat-r1-bugs-tiptap-v3-7/);
+  R1 live re-test still awaiting user response.
 
 ## Tests
 
@@ -206,3 +212,39 @@ result: pending
   missing:
     - "Remove the onChange prop from SchedulePicker's interface entirely; wire the flatpickr onChange to call the setSchedule server action directly from the client component (setSchedule(postId, dates[0])) with sonner success/error toasts matching the 05-06 toast pattern; decide clear-to-empty semantics (setSchedule requires a Date — ignore clears or toast guidance); delete the stub prop from posts/[id]/edit/page.tsx:99-103"
   debug_session: "orchestrator inline 2026-08-26 — direct Read of edit/page.tsx + SchedulePicker.tsx + actions grep; no agent needed (single 10-line root cause)"
+
+- truth: "The post edit page loads without a client crash after the editor mounts (React StrictMode destroy/remount cycle)"
+  status: failed
+  reason: "Post-05-08 re-test 2026-08-26: visiting /dashboard/posts/[id]/edit throws TypeError: Cannot read properties of null (reading 'can') and the page is replaced by the error boundary"
+  severity: blocker
+  test: R1
+  root_cause: "CONFIRMED: tiptap#7849 — @tiptap/core Editor.destroy() nulls the internal commandManager but leaves the instance non-null, and @tiptap/react 3.27.1 useEditorState re-invokes the unmemoized selector with the destroyed editor during React StrictMode's mount→remount cycle; the Toolbar selector guard (Toolbar.tsx ~L109) checked null only, so the destroyed editor passed it and can().undo() threw, bubbling to src/app/error.tsx (logged twice by the double effect). Upstream fix (PR #8015) is not in @tiptap/react 3.27.1."
+  artifacts:
+    - path: "src/components/editor/toolbar/Toolbar.tsx"
+      issue: "useEditorState selector guard checked null only — a destroyed editor passed it and can().undo() threw"
+    - path: "src/components/editor/TiptapEditor.tsx"
+      issue: "counts selector survived destroyed editors only implicitly (storage check) — no explicit guard"
+  missing:
+    - "Explicit null OR destroyed guards in both useEditorState selectors, bailing to the everything-off / zero-counts state"
+    - "jsdom regression test rendering Toolbar with a real destroyed Editor"
+  debug_session: ""
+  resolution: "FIXED by quick task 260826-5l0 — both selectors bail to their zero-states when destroyed; jsdom test renders Toolbar with a destroyed Editor"
+
+- truth: "Publishing a post with a media-library feature image succeeds (root-relative /api/media/<providerKey> URLs are valid image values)"
+  status: failed
+  reason: "Post-05-08 re-test 2026-08-26: publishing a post whose feature image was picked from the media library toasts 'Invalid url' — Zod rejects the root-relative /api/media/<providerKey> value"
+  severity: major
+  test: R1
+  root_cause: "CONFIRMED: MediaPicker.resolvePublicUrl emits root-relative /api/media/<providerKey> (correct portable convention — same-origin next/image optimization verified working live via GET /api/media/... 200), but featureImage/ogImage/defaultOgImage schemas used absolute-only Zod URL validation → 'Invalid url' toast on publish."
+  artifacts:
+    - path: "src/actions/posts-schema.ts"
+      issue: "featureImage (L38) and ogImage (L50) used z.string().url() — absolute-only, rejects media-library values"
+    - path: "src/lib/seo/validation.ts"
+      issue: "ogImage (L61) used z.string().url() — absolute-only"
+    - path: "src/actions/seo-settings-schema.ts"
+      issue: "defaultOgImage (L29) used z.string().url() — absolute-only (same rejection awaited a local media URL there)"
+  missing:
+    - "Shared image-URL schema accepting empty | absolute http(s) | root-relative, applied to the four picker-fed image fields"
+    - "canonicalUrl/canonical/canonicalBaseUrl/cdnBaseUrl fields staying absolute-only, pinned by failing-parse tests"
+  debug_session: ""
+  resolution: "FIXED by quick task 260826-5l0 — shared imageUrlSchema (src/lib/validation/image-url.ts) applied to the four image fields; canonicalUrl/canonical/canonicalBaseUrl/cdnBaseUrl still absolute-only, pinned by tests"
