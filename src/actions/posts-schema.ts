@@ -26,8 +26,13 @@ export const postSchema = z.object({
   // test, NOT by Zod (the schema is permissive here on purpose).
   body: z.any().optional(),
   excerpt: z.string().max(500).optional(), // D-21 manual excerpt; empty falls back to deriveExcerpt
-  // D-23: required category (one), tagIds capped at 8.
-  categoryId: z.number().int().positive("Category is required"),
+  // D-23: required category (one), tagIds capped at 8. Two error halves
+  // (05-07 / UAT re-run R1): the CONSTRUCTOR-level `error` covers the MISSING
+  // path — /dashboard/posts/new defaults categoryId to undefined, and Zod 4
+  // emits the constructor error there (the old default was the cryptic
+  // "Invalid input: expected number, received undefined"). The .positive()
+  // message only fires when a number IS provided but fails the check.
+  categoryId: z.number({ error: "Category is required" }).int().positive("Category is required"),
   tagIds: z.array(z.number().int().positive()).max(8, "TOO_MANY_TAGS"),
   // D-10: feature image may be a library image OR an external URL; optional.
   featureImage: z.string().url().optional().or(z.literal("")),

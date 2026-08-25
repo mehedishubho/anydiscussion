@@ -26,6 +26,10 @@
 //   - UAT 05 gap 1 (05-05): CharacterCount — storage-only extension powering the
 //     editor footer's live word/character count. Contributes NO schema output, so
 //     server-side generateHTML is unaffected.
+//   - UAT re-run R1 (05-07): Placeholder — decoration-only extension painting
+//     data-placeholder + is-empty on empty textblocks so the empty surface shows
+//     guidance text. Same server-safety class as CharacterCount: NO schema
+//     output, so server-side generateHTML is unaffected (round-trip parity gate).
 //
 // Tiptap v3.27.1 specifics (verified at install):
 //   - `@tiptap/extension-table` ships NAMED export `TableKit` (bundles Table +
@@ -45,6 +49,12 @@ import Link from "@tiptap/extension-link";
 import CodeBlock from "@tiptap/extension-code-block";
 import TextAlign from "@tiptap/extension-text-align";
 import CharacterCount from "@tiptap/extension-character-count";
+// UAT re-run R1 (05-07): Placeholder comes from @tiptap/extensions (the
+// monorepo packages/extension bundle) — NOT @tiptap/extension-placeholder,
+// which at 3.27.1 lives in tiptap's packages-deprecated folder and is a
+// re-export shim that peers on this exact package anyway. Root named export,
+// same 3.27.1 version line, one fewer (deprecated) package.
+import { Placeholder } from "@tiptap/extensions";
 
 export const editorExtensions = [
   StarterKit.configure({
@@ -78,4 +88,14 @@ export const editorExtensions = [
   // Default config: no schema output, so server-side generateHTML is unaffected
   // (the shared-array parity this file exists to protect stays intact).
   CharacterCount,
+  // UAT re-run R1 (05-07) — placeholder text on the empty surface. Decoration-
+  // only: paints is-empty + data-placeholder on empty textblocks (styled in
+  // globals.css); zero schema output, so server generateHTML is unaffected.
+  // showOnlyCurrent:false so the placeholder is visible on FIRST load WITHOUT
+  // the editor being focused (the UAT screenshot's empty unstyled surface);
+  // the CSS :first-child restriction keeps it to a single placeholder.
+  Placeholder.configure({
+    placeholder: "Write something…",
+    showOnlyCurrent: false,
+  }),
 ];
