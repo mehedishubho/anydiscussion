@@ -1,14 +1,14 @@
 ---
-status: complete
+status: pending
 phase: 05-seo-basics
 source: [05-VERIFICATION.md]
 started: 2026-07-07T04:30:00Z
-updated: 2026-08-24T23:50:00Z
+updated: 2026-08-25T19:35:00Z
 ---
 
 ## Current Test
 
-[testing complete]
+[awaiting re-run — see "Re-run (post gap-closure)" below]
 
 ## Tests
 
@@ -115,3 +115,22 @@ blocked: 0
   missing:
     - "Set the incoming-path request header in middleware.ts (NextResponse.next({ request: { headers } })) and extend matcher to public paths, OR read the path via a [...catchAll] route — planner to choose; keep the redirect call outside try/catch"
   debug_session: ""
+
+## Re-run (post gap-closure)
+
+Gap-closure plans 05-04/05-05/05-06 are merged, code review Criticals are fixed
+(commits 5da67e1, 4d7a999, cabf58a), suite is 590/590 green. Verification
+(05-VERIFICATION.md, 2026-08-25) reports status `human_needed`: all 8 SEO
+requirements SATISFIED in code, no code gaps — 3 runtime flows need live re-testing.
+
+### R1. Live publish flow re-run (covers original tests 2 + 3, gaps 1 + 2)
+expected: As an editor, open `/dashboard/posts/new` (or an existing draft). Body editor shows the WordPress-classic surface (Visual/Text tabs, toolbar, word-count footer) and accepts typing. Fill title + body, click Publish — a success toast appears. The post then: (a) appears in `/sitemap.xml` under `/blog/{slug}` (0.8/weekly), (b) appears in `/rss.xml` as an `<item>` with a correct `pubDate` (CR-02: publish stamps `publishedAt`), (c) its live page source at `/blog/{slug}` shows `<link rel="canonical" href=".../blog/{slug}">` (CR-01), matching `og:url`, and a `BlogPosting` JSON-LD script (CR-03-escaped). Save-draft also toasts.
+result: pending
+
+### R2. Live redirects re-run (covers original test 5, gap 4)
+expected: Dev server running, `redirects` row id 1 (`/old` → `/new`, 301) present in dev DB from the prior UAT (re-insert if the DB was reset). `curl -i http://localhost:3000/old` returns **308** with `Location: /new` (middleware maps 301→308). Unmatched path (e.g. `/nonexistent`) still renders the 404 UI.
+result: pending
+
+### R3. Sidebar SEO click-through (covers original test 4 gap)
+expected: In the dashboard, Settings submenu shows an `SEO` entry; clicking it navigates to `/dashboard/settings/seo` and the form loads (no URL typing).
+result: pending
