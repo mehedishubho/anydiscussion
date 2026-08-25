@@ -1,194 +1,186 @@
 ---
 phase: 05-seo-basics
-verified: 2026-07-07T04:30:00Z
+verified: 2026-08-25T15:20:07Z
 status: human_needed
-score: 5/5 must-haves verified at Phase 5 scope (1 sub-item deferred to Phase 6 per D-01)
+score: 5/5 must-haves verified
 behavior_unverified: 2
 overrides_applied: 0
+requirements:
+  SEO-01: satisfied
+  SEO-02: satisfied
+  SEO-03: satisfied
+  SEO-04: satisfied
+  SEO-05: satisfied
+  SEO-06: satisfied
+  SEO-07: satisfied
+  SEO-08: satisfied
 re_verification:
-  previous_status: none
-  previous_score: N/A
-  gaps_closed: []
+  previous_status: human_needed
+  previous_score: 5/5
+  gaps_closed:
+    - "SC-3 per-post BlogPosting JSON-LD: the prior deferral to Phase 6 (SITE-07) is RESOLVED — src/app/(site)/blog/[slug]/page.tsx now exists and injects blogPostingJsonLd via jsonLdScript (L177-194)"
+    - "Prior human items (UAT 2026-08-24, 05-UAT.md): test 1 (home HTML) PASS, test 4 (settings cache invalidation live) PASS — old behavior_unverified[0] DISCHARGED by live user confirmation"
+    - "UAT gaps 1-4 (publish UI, toasts, sidebar SEO entry, redirects blocker) closed at code level by plans 05-04/05/05/06 (verified below); live re-run outstanding — see human_verification"
   gaps_remaining: []
   regressions: []
-deferred:
-  - truth: "A published post page injects valid BlogPosting JSON-LD structured data (SC-3, per-post route)"
-    addressed_in: "Phase 6 — Public Frontend (SITE-07)"
-    evidence: "Phase 6 goal: 'single post (Cache Components + Suspense)'; SITE-07 = 'Single post page'. Phase 5 ships the blogPostingJsonLd builder + site-wide WebSite/Organization JSON-LD per D-01; the per-post /[slug] route that would render BlogPosting is Phase 6's scope."
 behavior_unverified_items:
-  - truth: "Settings changes become visible on the public site without a container restart (the cacheTag ↔ revalidateTag wiring)."
-    test: "Edit /dashboard/settings/seo as admin (change site title), save, then reload / in a browser."
-    expected: "The new <title> and JSON-LD render on the next request — no restart needed. Proves revalidateTag('seo-settings','max') actually invalidates the getSeoSettings 'use cache' snapshot."
-    why_human: "The 2-arg revalidateTag call is asserted in seo-settings.test.ts, but the actual cache-invalidation behavior at runtime is not exercised by any test. presence of the calls + unit test of the call shape cannot prove the cache refreshes end-to-end."
-  - truth: "app/not-found.tsx falls through to the 404 UI (does NOT crash) when the redirects table is missing or the lookup throws."
-    test: "Visit an unmatched path on a fresh environment without the redirects migration applied; then visit one with the table present but empty."
-    expected: "Both render the static 404 UI — the try/catch in RedirectChecker swallows the error and the component returns null."
-    why_human: "The graceful-degradation try/catch is present in code, but the actual runtime behavior (missing table vs. empty table vs. valid header) across environments is a state-dependent path no test exercises."
+  - truth: "A post published via the new Publish button appears in /sitemap.xml and /rss.xml on the next request (UI -> publishPost -> revalidatePath -> route refresh)"
+    test: "As an editor, publish a draft from /dashboard/posts/new (or the posts-list row action), then curl /sitemap.xml and /rss.xml"
+    expected: "The new /blog/{slug} entry (0.8/weekly) appears in the sitemap and one <item> appears in RSS on the next request — no restart. Success/error toasts fire on every step."
+    why_human: "The revalidatePath('/sitemap.xml') + ('/rss.xml') calls exist in publishPost (src/actions/posts.ts L363-364) and every UI element is wired, but the full cross-system loop (button -> action -> revalidation -> route output) is exercised by no test; UAT test 2 was blocked from verifying this before the fix landed and was never re-run."
+  - truth: "A redirects-table row (301/302) makes visiting old_path return a real HTTP 308/307 on the running server (middleware Node-runtime lookup)"
+    test: "On a running dev or production server with rows /old->/new (301) and /old2->/new2 (302) in the redirects table, curl -I /old and /old2; also curl -I /nonexistent"
+    expected: "308 -> /new and 307 -> /new2 respectively; /nonexistent returns 404 UI without crashing (T-05-08 graceful degradation)."
+    why_human: "src/middleware.ts L120-133 implements the lookup + status mapping and the executor live-verified it during 05-04 (curl table in 05-04-SUMMARY — executor evidence, not independent), but __tests__/middleware.test.ts covers ONLY the 4 auth branches; no test exercises the redirects branch, and the post-fix UAT re-run (test 5) has not happened."
 human_verification:
-  - test: "Run `pnpm dev`, open http://localhost:3000/ in a browser, view page source."
-    expected: "`<title>Any Discussion</title>` (or the seeded site.title) is present; two `<script type='application/ld+json'>` tags appear in the body — one WebSite (with potentialAction SearchAction), one Organization. Confirms SC-1 at the runtime-HTML level."
-    why_human: "generateMetadata + JSON-LD builders are unit-tested and the build registers the route, but the actual streamed HTML output is a runtime behavior grep/build cannot observe."
-  - test: "With at least one published post + page in the DB, curl http://localhost:3000/sitemap.xml and http://localhost:3000/rss.xml and http://localhost:3000/robots.txt."
-    expected: "sitemap.xml lists home (priority 1.0/daily) + the post (/blog/{slug}, 0.8/weekly) + the page (/{slug}, 0.5/monthly); no draft or soft-deleted rows. rss.xml returns application/rss+xml with one <item> per published post (full-text body in CDATA). robots.txt shows the allow/disallow list + sitemap pointer."
-    why_human: "The SQL filters (status='published' AND deletedAt IS NULL) are unit-tested with fixtures, but the actual DB query against real rows + the rendered XML output is a runtime check."
-  - test: "As an editor, create a post filling the four SEO panel fields (meta title, meta description, canonical URL, OG image), save, then inspect the post_seo row in the DB."
-    expected: "The post_seo row exists with the four fields populated (grapheme-valid inputs persist; grapheme-invalid inputs are logged and skipped without failing the save)."
-    why_human: "The upsertPostSeo safeParse logic is in code, but the live editor → DB row flow is a user-flow check."
-  - test: "As an admin, open /dashboard/settings/seo, edit the five fields, save, then reload / in a browser."
-    expected: "The home page <title> and JSON-LD update on the next request (the cacheTag invalidation works at runtime). Also covers behavior_unverified_items[0]."
-    why_human: "Build passes + the 2-arg revalidateTag call is asserted, but the actual cache-invalidation behavior end-to-end is a runtime invariant."
-  - test: "Visit an unmatched path (e.g. /nonexistent) on a running dev server; confirm the 404 UI renders. Then visit a path with a redirects row populated (manually insert one) and confirm the redirect fires."
-    expected: "Empty redirects table → 404 UI renders (no crash). Populated row → permanentRedirect/redirect fires for the configured newPath."
-    why_human: "Redirects table ships empty in v1; the x-invoke-path header + DB lookup + redirect behavior is a runtime path. Also covers behavior_unverified_items[1]."
+  - test: "Re-run UAT test 2/3 flow: as an editor, create a post in the rebuilt WordPress-classic editor (Visual/Text tabs, toolbar, live word-count footer), fill the 4 SEO panel fields, Publish, then curl /sitemap.xml, /rss.xml, and view the post page source"
+    expected: "Typing moves the live word count; save/publish show sonner toasts; the post page source shows <link rel=canonical> at /blog/{slug}, OG/Twitter tags from post_seo, and a <script type='application/ld+json'> BlogPosting block; sitemap lists /blog/{slug} (0.8/weekly); RSS contains one full-text <item>. Covers behavior_unverified[0] + the live editor + post_seo persistence through the real form (old human item 3)."
+    why_human: "Builders, middleware, actions, and the editor component are all unit/component-tested (590 green), but the live dashboard flow (typing -> RHF -> savePost -> post_seo row) and the final streamed HTML are runtime behaviors grep/tests at this level cannot observe."
+  - test: "Re-run UAT test 5: curl -I /old (301 row), /old2 (302 row), /nonexistent on the running server; insert a new row after boot and hit it within 5s"
+    expected: "308 -> /new, 307 -> /new2, 404 UI for unmatched; a row inserted after boot applies within the 5s TTL without restart. Covers behavior_unverified[1]."
+    why_human: "Middleware redirects branch has no unit test; only the auth branches are covered. Executor's live curl table is execution-time evidence, not an independent post-fix verification."
+  - test: "Admin opens /dashboard/settings/seo via the Settings submenu (not URL), edits a field, saves, reloads /"
+    expected: "Sidebar 'SEO' entry navigates to the page; save persists and the site-wide title/JSON-LD refresh on the next request."
+    why_human: "Sidebar entry (AppSidebar.tsx L93) and the page are code-verified; UAT test 4 confirmed the page works but reached it by URL (the sidebar entry shipped after that UAT). One live click-through closes it fully."
 ---
 
 # Phase 5: SEO Basics — Verification Report
 
 **Phase Goal:** Every public-facing route emits accurate, source-of-truth metadata so posts are indexable, shareable, and canonical-correct — sourced from `post_seo`/`settings`, including Bangla-aware validation and an RSS feed.
-**Verified:** 2026-07-07T04:30:00Z
+**Verified:** 2026-08-25T15:20:07Z
 **Status:** human_needed
-**Re-verification:** No — initial verification
-
-## Scope Boundary (D-01 — read this before reading SC-3 as a gap)
-
-Per the locked decision D-01, Phase 5 ships the SEO **engine + wiring on EXISTING `(site)` routes only** (site-wide layout + home + preview). The live per-post detail route (`/[slug]`) that would render `blogPostingJsonLd` + per-post `buildPostMetadata` is **Phase 6's scope (SITE-07)**. Therefore:
-
-- **SC-1** is met at the helper + existing-route level this phase (site-wide + home + preview). The preview route IS a per-post-metadata route wired this phase, proving the helper works on a real Next.js route.
-- **SC-3** (BlogPosting JSON-LD): the **builder** is verified + unit-tested; site-wide JSON-LD (WebSite + Organization) is rendered on the layout. BlogPosting injection on the individual post route is **deferred to Phase 6** — see the `deferred` section. This is NOT a gap.
+**Re-verification:** Yes — prior VERIFICATION.md (2026-07-07, human_needed, no gaps section) superseded by this pass, which additionally covers the UAT gap-closure plans 05-04..05-06 and the three review-critical fixes.
 
 ## Goal Achievement
 
-### Observable Truths (the 5 ROADMAP Success Criteria)
+### Observable Truths (the 5 ROADMAP Success Criteria + gap-closure truths)
 
 | # | Truth | Status | Evidence |
 |---|-------|--------|----------|
-| 1 | Each public route produces correct `<title>`, meta description, canonical, OG/Twitter via `generateMetadata` from `post_seo`/`settings` (canonical_url override else slug-derived). | ✓ VERIFIED (scope: existing routes per D-01) | `buildPostMetadata` (metadata.ts L85-121) resolves title/description/canonical (D-04 override)/ogImage (D-09 fallback)/openGraph.type="article"/twitter card — 30 unit assertions pass. `buildSiteMetadata` returns metadataBase + title template + OG type "website". Wiring: (site)/layout.tsx + (site)/page.tsx + (site)/preview/[token]/page.tsx each export async `generateMetadata` calling `getSeoSettings()` + the builders. Build passes under `cacheComponents:true` (landmine #4 cleared — 'use cache' correctly placed). Runtime HTML inspection is a human item (see Human Verification). |
-| 2 | `/sitemap.xml` lists every published post + managed page (per-type priority/changefreq); `/robots.txt` correct; both update via revalidation, not full rebuild. | ✓ VERIFIED | sitemap.ts (L34-61): queries published posts + pages (status='published' AND deletedAt IS NULL), returns [home (1.0/daily), ...posts (0.8/weekly), ...pages (0.5/monthly)]; pure helpers extracted. robots.ts (L23-33): userAgent '*', allow '/', disallow ['/preview/','/dashboard/','/signin','/signup','/forgot-password'], sitemap pointer. D-13 carry-forward confirmed: posts.ts L358-359 call `revalidatePath('/sitemap.xml')` + `revalidatePath('/rss.xml')` in publishPost; settings.ts L124-127 adds `/robots.txt`. 14 sitemap/robots unit tests pass. Build registers /sitemap.xml (ƒ Dynamic), /robots.txt (○ Static 15m revalidate). |
-| 3 | Published post page injects valid `BlogPosting` JSON-LD. | ✓ VERIFIED (builder + site-wide JSON-LD) — per-post route DEFERRED to Phase 6 per D-01 | `blogPostingJsonLd` (jsonld.ts L52-77) returns correct schema.org shape (@context, @type BlogPosting, headline, datePublished ISO 8601, author Person, publisher Organization, mainEntityOfPage WebPage @id). 16 jsonld unit assertions pass. Site-wide JSON-LD rendered on (site)/layout.tsx via real `<script type="application/ld+json" dangerouslySetInnerHTML>` (WebSite + Organization — Pitfall 2 mitigation). **Per-post BlogPosting injection on /[slug] is Phase 6 SITE-07** — see deferred section. |
-| 4 | Long Bangla meta description passes validation via byte/reasonable-char (grapheme) rule, not Latin limit. | ✓ VERIFIED (behaviorally proven) | validation.ts: `graphemeCount` uses `Intl.Segmenter(locale, {granularity:"grapheme"})` (L35-38); `seoMetaSchema` (L44-63) applies `.max()` byte/code-unit ceilings + grapheme `refine` (title ≤80, desc ≤200). validation.test.ts L44: "PASS: 59-grapheme Bangla metaDescription is accepted"; L60: "FAIL: 250-grapheme Latin metaDescription is rejected by the grapheme refine". 11 validation tests pass — this is the one truth with full behavioral evidence. |
-| 5 | RSS feed at `/rss.xml` publishes latest posts. | ✓ VERIFIED | rss.xml/route.ts (L33-86): `GET()` returns `Response` with `Content-Type: application/rss+xml; charset=utf-8`, RSS 2.0 XML with `<rss>`/`<channel>`/`<title>`/`<link>`/`<description>` + one `<item>` per latest published post. Each item: title, link, guid (isPermaLink), description, content:encoded (CDATA-wrapped `renderPostBody`), pubDate (RFC-822). `escapeXml` covers 5 special chars (T-05-04). RSS_LIMIT=30 cap with defensive slice. 14 RSS unit tests pass. Build registers /rss.xml (ƒ Dynamic). |
+| 1 | Each public route produces correct title/description/canonical/OG/Twitter via `generateMetadata`, sourced from `post_seo`/`settings`, respecting `canonical_url` override else slug-derived. | ✓ VERIFIED | All 16 `(site)` route files export `generateMetadata` calling `getSeoSettings()` + the Phase-5 builders (grep-verified, table below). `buildPostMetadata` (src/lib/seo/metadata.ts L87-124): D-04 override `seo?.canonicalUrl \|\| /blog/${post.slug}` (L97 — CR-01 fixed), D-09 OG chain `seo.ogImage -> featureImage -> defaultOgImage` (L99), article OG + twitter card logic (L106-122). Unit-tested in metadata.test.ts (CR-01 cases at L64-72) — all green in the 590-test run. |
+| 2 | `/sitemap.xml` lists every published post + managed page (per-type priority/changefreq); `/robots.txt` correct; both update without full rebuild. | ✓ VERIFIED | sitemap.ts L34-61: real Drizzle queries filtered `status='published' AND deletedAt IS NULL` (L44, L54); home 1.0/daily, posts 0.8/weekly, pages 0.5/monthly (L67-106). robots.ts L23-33: allow '/', disallow preview/dashboard/auth, sitemap pointer. Revalidation wired: publishPost revalidates `/sitemap.xml` + `/rss.xml` (posts.ts L363-364); saveSeoSettings revalidates sitemap/robots/rss (settings.ts). 14+ unit tests green. UAT test 2 confirmed live structure incl. published page entry. |
+| 3 | A published post page injects valid `BlogPosting` JSON-LD. | ✓ VERIFIED (deferral RESOLVED — route now exists) | `src/app/(site)/blog/[slug]/page.tsx` L177-194: real `<script type="application/ld+json">` with `jsonLdScript(blogPostingJsonLd({...}))` — headline/dates/author/publisher/mainEntityOfPage from jsonld.ts L73-98. Prior verification deferred this to Phase 6 (D-01); Phase 6 shipped the route, so the truth now holds in the codebase. XSS-escaped (CR-03). |
+| 4 | Long Bangla meta description passes byte/grapheme-aware validation, not Latin char limits. | ✓ VERIFIED (behaviorally proven) | validation.ts L35-38 `graphemeCount` via `Intl.Segmenter(locale, {granularity:"grapheme"})`; seoMetaSchema grapheme refines (L44-63, 80/200 limits). validation.test.ts: L44 "PASS: 59-grapheme Bangla metaDescription is accepted", L60 "FAIL: 250-grapheme Latin rejected" — both green in the suite run. Enforced server-side in savePost (safeParse, posts.ts L190) and surfaced in the editor SeoPanel. |
+| 5 | RSS feed at `/rss.xml` publishes latest posts. | ✓ VERIFIED | rss.xml/route.ts GET (L33-86): `Content-Type: application/rss+xml; charset=utf-8`, RSS 2.0 shape, published-only SQL filter, RSS_LIMIT=30, full-text body via renderPostBody in CDATA, escapeXml on 5 chars (L127-134), RFC-822 pubDate. 14 RSS unit tests green. UAT test 2 confirmed content-type live. |
+| 6 | (gap-closure 05-04) Redirects rows produce real HTTP 308/307; unmatched paths render 404 without crashing; no restart needed. | ⚠️ PRESENT_BEHAVIOR_UNVERIFIED | Code verified: src/middleware.ts `export const runtime = "nodejs"` (L59), whole-table 5s-TTL snapshot cache (L73-92), 301->308 / 302->307 mapping (L125), graceful try/catch (L128-132), broadened matcher (L162-168); not-found.tsx fallback reads `x-incoming-path` (L73) with redirects OUTSIDE try/catch (L91-99). Executor live-verified dev+prod during 05-04, but middleware.test.ts covers only the 4 auth branches — no test exercises the redirects branch, and the post-fix UAT re-run has not happened. → Human item 2. |
+| 7 | (gap-closure 05-05) WordPress-classic editor surface (tabs, ordered toolbar, min-height area, live word count) on every EditorProvider consumer. | ✓ VERIFIED (component-level) | TiptapEditor.tsx: Visual/Text tabs (L108-121), min-h-[350px] areas (L128, L137), `Words: N` footer from useEditorState (L64, L146), Text-tab setContent({emitUpdate:true}) pipe (L84-89). extensions.ts L76/L80: TextAlign(heading+paragraph) + CharacterCount pinned 3.27.1 (package.json). jsdom smoke tests (tiptap-editor-surface.test.tsx: tab swap, onChange fires, footer count updates) + round-trip align tests green in the suite. Live-dashboard confirmation folded into human item 1. |
+| 8 | (gap-closure 05-06) Role-aware Publish / Submit-for-review UI + toast feedback; publish operable without DB edits. | ✓ VERIFIED (code) — end-to-end loop ⚠️ see behavior_unverified[0] | PostForm.tsx: publishPost/submitForReview imports (L45), role/status-aware canPublish/canSubmit (L190-), brand-500 Publish + Submit buttons (L354-371), toast.success/error on every outcome (L114-159); PostRowActions.tsx (complete client component, toasts + invalidation); posts/page.tsx reads viewer role and renders row actions (L51-53, L106); sonner@2.0.8 Toaster mounted in AdminShell only (L71). Server chain unchanged and permission-gated (transitionPost -> requireCan). |
+| 9 | (gap-closure 05-04) SEO settings page reachable from the Settings submenu. | ✓ VERIFIED | AppSidebar.tsx L93 `{ name: "SEO", path: "/dashboard/settings/seo" }` between Storage and Backup; page trio shipped by 05-03; UAT test 4 confirmed the page + live cache invalidation work. Live click-through is human item 3 (sidebar shipped after the UAT). |
 
-**Score:** 5/5 truths verified at Phase 5 scope (1 sub-item deferred to Phase 6 per D-01; 2 behavior-unverified invariants routed to human verification).
+**Score:** 5/5 roadmap SCs verified (truths 6's runtime aspect and 8's end-to-end loop are the 2 behavior-unverified items routed to human; all code present and wired).
 
 ### Deferred Items
 
-| # | Item | Addressed In | Evidence |
-|---|------|-------------|----------|
-| 1 | SC-3 per-post: BlogPosting JSON-LD injection on the `/[slug]` published-post route | Phase 6 — Public Frontend (SITE-07) | Phase 6 goal explicitly names "single post (Cache Components + Suspense)"; SITE-07 = "Single post page". Phase 5 ships the `blogPostingJsonLd` builder + the site-wide WebSite/Organization JSON-LD (verified above); the per-post route is Phase 6's scope per D-01. The P5↔P6 seam is documented in 05-01-PLAN key_links. |
+None. The prior verification's single deferral (SC-3 per-post BlogPosting -> Phase 6) is resolved: `src/app/(site)/blog/[slug]/page.tsx` exists and injects the BlogPosting JSON-LD (verified above), so the item moved from `deferred` to VERIFIED.
 
 ### Required Artifacts
 
 | Artifact | Expected | Status | Details |
 |----------|----------|--------|---------|
-| `src/lib/seo/metadata.ts` | buildPostMetadata, buildPageMetadata, buildArchiveMetadata, buildSiteMetadata + interfaces | ✓ VERIFIED | All 4 builders exported (L85, L127, L149, L178); PostLike/PostSeoLike/PageLike/SeoSettings/ArchiveMetadataInput interfaces defined. |
-| `src/lib/seo/jsonld.ts` | blogPostingJsonLd, websiteJsonLd, organizationJsonLd | ✓ VERIFIED | All 3 builders exported (L52, L84, L104); plain schema.org objects, consumer JSON.stringify's. |
-| `src/lib/seo/validation.ts` | seoMetaSchema, graphemeCount, TITLE_MAX_GRAPHEMES, DESC_MAX_GRAPHEMES | ✓ VERIFIED | All exported (L18, L21, L35, L44); Intl.Segmenter-based; 80/200 grapheme limits per D-10. |
-| `src/lib/seo/settings.ts` | getSeoSettings with 'use cache' + cacheTag('seo-settings') | ✓ VERIFIED | L60-83: `"use cache"` directive (L61) + `cacheTag("seo-settings")` (L62); reads 5 keys with NEXT_PUBLIC_SITE_URL fallback. First Cache Components cached reader in repo. |
-| `src/db/schema.ts` | `redirects` pgTable (oldPath/newPath/statusCode/createdAt/updatedAt) | ✓ VERIFIED | L154-164: columns match spec; unique on old_path; ships empty per D-12. |
-| `src/db/migrations/0004_gigantic_black_tom.sql` | CREATE TABLE redirects DDL | ✓ VERIFIED | 9-line migration with old_path/new_path/status_code/created_at/updated_at + unique constraint. Generated by `pnpm db:generate` (not hand-written). |
-| `src/lib/storage/seed.ts` | seedSeoSettings seeding the 5 D-11 keys | ✓ VERIFIED | L79-: seedSeoSettings() inserts site.title, site.description, seo.default_og_image, site.canonical_base_url, seo.twitter_handle idempotently. |
-| `src/instrumentation.ts` | calls seedSeoSettings after seedStorageSettings | ✓ VERIFIED | L55: `await seedSeoSettings()` under the nodejs-runtime guard. |
-| `src/app/(site)/layout.tsx` | async generateMetadata + WebSite + Organization JSON-LD script tags | ✓ VERIFIED | L38-42 generateMetadata with 'use cache'; L58-81 two real `<script type="application/ld+json" dangerouslySetInnerHTML>` tags (NOT metadata.other — Pitfall 2). |
-| `src/app/(site)/page.tsx` | async generateMetadata (no static export) | ✓ VERIFIED | L17-21: async generateMetadata with 'use cache' calling getSeoSettings + buildSiteMetadata. |
-| `src/app/(site)/preview/[token]/page.tsx` | async generateMetadata preserving robots noindex | ✓ VERIFIED | L45-77: awaits params (Next 16), looks up post by token, returns buildPostMetadata + `robots: { index:false, follow:false }`. |
-| `src/app/sitemap.ts` | default async sitemap() + pure helpers | ✓ VERIFIED | L34-61 + buildHomeSitemapEntry/buildPostSitemapEntry/buildPageSitemapEntry (L67, L79, L95). |
-| `src/app/robots.ts` | default async robots() | ✓ VERIFIED | L23-33; disallow list + sitemap pointer; reads getSeoSettings. |
-| `src/app/rss.xml/route.ts` | GET() Route Handler + escapeXml + buildRssItem + RSS_LIMIT | ✓ VERIFIED | L33-86 + escapeXml (L127) + buildRssItem (L96) + RSS_LIMIT=30 (L23). |
-| `src/components/dashboard/posts/SeoPanel.tsx` | collapsible 4-field SEO section | ✓ VERIFIED | L53-132: metaTitle/metaDescription/canonicalUrl/ogImage inputs registered via prop spread; "use client" directive; mirrors PageForm pattern. |
-| `src/app/(admin)/dashboard/posts/PostForm.tsx` | renders `<SeoPanel>` | ✓ VERIFIED | L46 import; L233 `<SeoPanel register={register} errors={errors} />` after feature-image block. |
-| `src/actions/posts.ts` | upsertPostSeo block (safeParse) | ✓ VERIFIED | L162 call; L178-222 upsertPostSeo helper: seoMetaSchema.safeParse (L185, NOT .parse), select-by-postId → update-or-insert, runs after assertOwnsPost (T-05-06 inherited). |
-| `src/actions/posts-schema.ts` | metaTitle/metaDescription/ogImage/canonicalUrl optional fields | ✓ VERIFIED | L43-46: four optional fields with simple .max() caps (grapheme rule enforced server-side in savePost). |
-| `src/actions/settings.ts` | saveSeoSettings (admin gate FIRST + 2-arg revalidateTag) | ✓ VERIFIED | L100-131: `requireRole("admin")` at L105 (FIRST line, before parse/write — T-05-01); 2-arg `revalidateTag("seo-settings","max")` at L123 (landmine #5); revalidatePath('/', 'layout') + 3 SEO routes (L124-127). |
-| `src/actions/seo-settings-schema.ts` | pure Zod schema module (split for use-server constraint) | ✓ VERIFIED | L26-32: seoSettingsSchema; split from settings.ts because a "use server" file can only export async functions (mirrors storage-settings pattern). |
-| `src/app/(admin)/dashboard/settings/seo/{page,SeoSettingsForm,schema-client}.tsx` | admin-only settings page trio | ✓ VERIFIED | All 3 files exist; page.tsx is a Server Component (no "use client"); form uses RHF + zodResolver + useMutation (not optimistic). |
-| `src/app/not-found.tsx` | redirects-table lookup + permanentRedirect branch (Node runtime) | ✓ VERIFIED | L47-81 RedirectChecker async component in `<Suspense>` (L92-94); queries redirects by x-invoke-path; 301→permanentRedirect, 302→redirect OUTSIDE try/catch (NEXT_REDIRECT must propagate); try/catch graceful degradation (T-05-08). |
-| `src/lib/seo/__tests__/{shared-fixtures,metadata,jsonld,validation,sitemap,robots,rss}.test.ts` | full test suite | ✓ VERIFIED | All 7 files present; 330/330 vitest assertions pass across the whole suite. |
-| `src/actions/__tests__/seo-settings.test.ts` | MUST_NOT_BE_REACHED admin gate test | ✓ VERIFIED | L78-185: 6 assertions — non-admin FORBIDDEN before db.write (L88-111), 5-key write (L113), 2-arg revalidateTag (L128), revalidatePath routes (L144), Zod rejections (L160, L173). All pass. |
+| `src/lib/seo/metadata.ts` | 4 builders + interfaces | ✓ VERIFIED | buildPostMetadata (L87), buildPageMetadata (L130), buildArchiveMetadata (L152), buildSiteMetadata (L191); metadataBase-as-string documented for 'use cache' serializability. |
+| `src/lib/seo/jsonld.ts` | 3 Phase-5 builders + jsonLdScript | ✓ VERIFIED | blogPostingJsonLd (L73), websiteJsonLd (L105), organizationJsonLd (L125); jsonLdScript CR-03 helper (L30-37) escaping `< > &` U+2028/U+2029; + Phase-6 person/breadcrumb builders. |
+| `src/lib/seo/validation.ts` | seoMetaSchema, graphemeCount, limits | ✓ VERIFIED | L18/L21/L35/L44; Intl.Segmenter-based. |
+| `src/lib/seo/settings.ts` | getSeoSettings 'use cache' + cacheTag | ✓ VERIFIED | L60-83: `"use cache"` + `cacheTag("seo-settings")`, 5 keys, env fallback single-source (Pitfall 7). |
+| `src/app/sitemap.ts` / `robots.ts` / `rss.xml/route.ts` | 3 standalone SEO routes | ✓ VERIFIED | All real-DB, unit-tested, wired to getSeoSettings (see truths 2/5). |
+| `src/app/(site)/blog/[slug]/page.tsx` | generateMetadata + BlogPosting JSON-LD | ✓ VERIFIED | L66-91 + L177-194 (see truth 3). |
+| `src/actions/posts.ts` | upsertPostSeo + publish revalidation + CR-02 | ✓ VERIFIED | upsertPostSeo safeParse (L183-227); publishPost revalidation block (L356-373, 2-arg tags); CR-02 conditional publishedAt spread (L133-138). |
+| `src/lib/permissions/post-transitions.ts` | CR-02 stamp-on-publish | ✓ VERIFIED | L84-93: stamps `publishedAt: new Date()` when target=published and prior value null. |
+| `src/actions/settings.ts` | saveSeoSettings admin-first + revalidation | ✓ VERIFIED | requireRole("admin") FIRST; 5-key write; revalidateTag('seo-settings','max') + 4 revalidatePath. MUST_NOT_BE_REACHED test green. |
+| `src/middleware.ts` | Node-runtime redirects lookup | ✓ VERIFIED | runtime="nodejs", 5s TTL cache, 308/307 mapping, x-incoming-path overwrite, graceful catch (see truth 6). |
+| `src/db/schema.ts` | post_seo + redirects tables | ✓ VERIFIED | postSeo L112-120 (metaTitle/metaDescription/ogImage/canonicalUrl); redirects L197-207 (oldPath unique, statusCode 301/302). |
+| `src/components/dashboard/posts/SeoPanel.tsx` | 4-field collapsible SEO section | ✓ VERIFIED | Imported (PostForm L48) and rendered (L327); fields flow into savePost input. |
+| `src/app/(admin)/dashboard/settings/seo/{page,SeoSettingsForm,schema-client}.tsx` | admin-only settings trio | ✓ VERIFIED | Files present; UAT test 4 exercised the page live (PASS). |
+| `src/app/not-found.tsx` | RedirectChecker streamed fallback | ✓ VERIFIED | Reads x-incoming-path (L73), redirect outside try/catch (L91-99), separate Suspense boundaries. |
+| `src/components/editor/{extensions,TiptapEditor,toolbar/Toolbar}` + 2 pinned deps | WordPress-classic surface | ✓ VERIFIED | See truth 7; deps exact-pinned in package.json (`@tiptap/extension-text-align@3.27.1`, `@tiptap/extension-character-count@3.27.1`, `sonner@2.0.8`). |
+| `PostRowActions.tsx` + AdminShell Toaster + PostForm buttons | publish UI + toast channel | ✓ VERIFIED | See truth 8. |
+| `src/lib/seo/__tests__/*` + middleware/seo-settings/posts tests | full test coverage | ✓ VERIFIED | Part of the 57-file / 590-test green suite. |
 
 ### Key Link Verification
 
-| From | To | Via | Status | Details |
-|------|----|----|--------|---------|
-| getSeoSettings (lib/seo/settings.ts) | (site)/layout.tsx, (site)/page.tsx, (site)/preview, sitemap.ts, robots.ts, rss.xml/route.ts | direct import + await | ✓ WIRED | All 6 consumers import getSeoSettings and await it; canonicalBaseUrl flows everywhere from the single source (Pitfall 7). |
-| cacheTag('seo-settings') in getSeoSettings | revalidateTag('seo-settings','max') in saveSeoSettings | 2-arg revalidateTag call | ✓ WIRED | settings.ts L62 cacheTag ↔ settings.ts L123 revalidateTag (2-arg). seo-settings.test.ts L128-142 asserts the call shape. Runtime invalidation behavior → behavior_unverified. |
-| redirects table (schema.ts L154) | app/not-found.tsx RedirectChecker | db.select().from(schema.redirects).where(eq(oldPath)) | ✓ WIRED | not-found.tsx L55-59; try/catch wrapped; redirect calls outside the catch. |
-| seoMetaSchema (validation.ts) | savePost upsert + SeoPanel client form | safeParse server-side; zodResolver-equivalent client-side via postSchema | ✓ WIRED | posts.ts L185 safeParse; posts-schema.ts L43-46 client fields. Grapheme rule enforced server-side (D-10). |
-| renderPostBody (Phase 3) | rss.xml/route.ts | import + call on p.body | ✓ WIRED | rss.xml/route.ts L19 import, L57 call; CDATA defense-in-depth (T-05-02). |
-| publishPost revalidation | /sitemap.xml + /rss.xml | revalidatePath calls | ✓ WIRED | posts.ts L358-359 (D-13 carry-forward). |
-| SeoPanel ← PostForm | rendered after feature-image block | `<SeoPanel register={register} errors={errors} />` | ✓ WIRED | PostForm.tsx L233; imports at L46. |
-| saveSeoSettings ↔ settings/seo page | form mutation → action | useMutation calling saveSeoSettings | ✓ WIRED | SeoSettingsForm.tsx L22 import; page.tsx renders the form with initial values. |
+| From | To | Via | Status |
+|------|----|----|--------|
+| getSeoSettings | layout, home, blog/[slug], preview, sitemap, robots, rss, category/tag/author/search/about/contact/legal pages | import + await | ✓ WIRED (grep-verified across all 16 routes) |
+| cacheTag('seo-settings') | revalidateTag('seo-settings','max') in saveSeoSettings | 2-arg tag call | ✓ WIRED (settings.ts L62 ↔ action; asserted in seo-settings.test.ts L128) |
+| redirects table | middleware lookup + not-found fallback | db.select where oldPath | ✓ WIRED (middleware L82/L123; not-found L76-80) |
+| seoMetaSchema | savePost safeParse + SeoPanel | shared Zod | ✓ WIRED (posts.ts L190; PostForm L327) |
+| renderPostBody | rss.xml full-text | import + CDATA | ✓ WIRED (route.ts L19/L57/L115) |
+| publishPost | /sitemap.xml + /rss.xml + /blog/{slug} + tags | revalidatePath/2-arg revalidateTag | ✓ WIRED (posts.ts L356-373) |
+| Publish buttons / PostRowActions | publishPost/submitForReview -> transitionPost -> requireCan | useMutation call sites | ✓ WIRED (PostForm L45/L138/L152; PostRowActions L18/L30/L41) |
+| AppSidebar SEO entry | /dashboard/settings/seo | subItem link | ✓ WIRED (AppSidebar L93) |
+| jsonLdScript | all 6 JSON-LD injection sites | dangerouslySetInnerHTML | ✓ WIRED (layout x2, blog/[slug], category, tag, author — grep: zero raw stringify ld+json sites remain) |
 
 ### Data-Flow Trace (Level 4)
 
 | Artifact | Data Variable | Source | Produces Real Data | Status |
-|----------|---------------|--------|--------------------|----|
-| (site)/layout.tsx generateMetadata | `s` (SeoSettings) | getSeoSettings() → db.select from settings table (5 keys) | ✓ (DB query, env fallback) | ✓ FLOWING |
-| sitemap.ts | `publishedPosts` / `publishedPages` | db.select from posts/pages where status='published' AND deletedAt IS NULL | ✓ (real DB query) | ✓ FLOWING |
-| rss.xml/route.ts GET | `posts` | db.select from posts (published, non-deleted, limit 30) | ✓ (real DB query) | ✓ FLOWING |
-| SeoSettingsForm | `initial` | getSeoSettings() in page.tsx → passed as prop | ✓ (DB-sourced initial values) | ✓ FLOWING |
-| upsertPostSeo | `parsed.data` | seoMetaSchema.safeParse(input) → db.update/insert post_seo | ✓ (real upsert) | ✓ FLOWING |
+|----------|---------------|--------|--------------------|--------|
+| blog/[slug] generateMetadata | post/post_seo/author | getPostForPublic (Drizzle leftJoin) + getSeoSettings | ✓ real DB query | ✓ FLOWING |
+| sitemap.ts | publishedPosts/publishedPages | Drizzle select, published+non-deleted filter | ✓ | ✓ FLOWING |
+| rss.xml GET | posts | Drizzle select, limit 30, published-only | ✓ | ✓ FLOWING |
+| savePost -> post_seo | parsed.data | seoMetaSchema.safeParse -> insert/update | ✓ | ✓ FLOWING |
+| SeoSettingsForm | initial | getSeoSettings in page.tsx | ✓ | ✓ FLOWING |
 
 ### Behavioral Spot-Checks
 
 | Behavior | Command | Result | Status |
 |----------|---------|--------|--------|
-| Full vitest suite (330 tests) | `pnpm test --run` | 31 files, 330/330 pass | ✓ PASS |
-| Targeted seo-settings admin-gate test | `npx vitest run src/actions/__tests__/seo-settings.test.ts` | 1 file, 6/6 pass (incl. MUST_NOT_BE_REACHED) | ✓ PASS |
-| Targeted Bangla grapheme validation test (SEO-06) | `npx vitest run src/lib/seo/__tests__/validation.test.ts` | 1 file, 11/11 pass (Bangla passes, Latin fails) | ✓ PASS |
-| TypeScript typecheck | `pnpm tsc --noEmit` | exit 1 — **only** 4 pre-existing errors in src/actions/__tests__/storage-settings.test.ts (Phase 4 file); zero Phase 5 file errors | ✓ PASS (Phase 5 scope clean; pre-existing errors documented as out-of-scope in all 3 SUMMARYs) |
-| Next.js build under cacheComponents:true | `pnpm build` | exit 0; all SEO routes registered — `/` ◐ PPR, `/_not-found` ◐ PPR, `/robots.txt` ○ Static 15m, `/rss.xml` ƒ Dynamic, `/sitemap.xml` ƒ Dynamic, `/dashboard/settings/seo` ◐ PPR 15m | ✓ PASS (landmine #4 cleared) |
+| Full vitest suite | `pnpm vitest run` | 57 files, 590/590 passed (4.29s) | ✓ PASS |
+| Review-fix commits exist | `git log 5da67e1 4d7a999 cabf58a` | CR-01/CR-02/CR-03 commits present with exact hashes/messages | ✓ PASS |
+| Bangla grapheme validation (SC-4) | validation.test.ts L44/L60 in suite | Bangla-passes + Latin-fails both green | ✓ PASS |
+| CR-01 canonical fix pinned | metadata.test.ts L64-72 + sitemap.test.ts L177 drift guard | `/blog/${slug}` expected + metadata↔sitemap cross-check green | ✓ PASS |
+| CR-03 XSS escape round-trip | jsonld.test.ts describe "CR-03" (L91+) | breakout-neutralized + JSON.parse deep-equal green | ✓ PASS |
+| Middleware auth branches | `__tests__/middleware.test.ts` (4 tests) | green | ✓ PASS (note: redirects branch untested — see truth 6) |
 
-### Probe Execution
-
-Step 7c: SKIPPED — no `scripts/*/tests/probe-*.sh` probes declared for this phase (the phase verifies via vitest + build, both run above).
+Step 7c (probes): SKIPPED — no `scripts/*/tests/probe-*.sh` declared for this phase; verification runs via vitest + build (both evidenced).
 
 ### Requirements Coverage
 
 | Requirement | Source Plan | Description | Status | Evidence |
 |-------------|------------|-------------|--------|----------|
-| SEO-01 | 05-01, 05-03 | generateMetadata per public route from post_seo/settings | ✓ SATISFIED (at Phase 5 scope) | Builders verified + existing (site) routes wired + dashboard data-population surface (SeoPanel + saveSeoSettings) shipped. Per-post detail route is Phase 6 (deferred, not orphaned). |
-| SEO-02 | 05-02 | Dynamic sitemap.ts (posts+pages) + robots.ts | ✓ SATISFIED | sitemap.ts + robots.ts wired + unit-tested + revalidation paths confirmed. |
-| SEO-03 | 05-01 | JSON-LD BlogPosting schema per post | ✓ SATISFIED (builder) — per-post route DEFERRED | blogPostingJsonLd builder verified + site-wide JSON-LD (WebSite/Organization) rendered on layout. Per-post BlogPosting injection on /[slug] is Phase 6 SITE-07. |
-| SEO-04 | 05-01 | Canonical handling (override else slug) | ✓ SATISFIED | buildPostMetadata L94: `seo?.canonicalUrl || /${post.slug}` (D-04); unit-tested. |
-| SEO-05 | 05-01 | OG + Twitter card images (fallback chain) | ✓ SATISFIED | buildPostMetadata D-09 chain (seo.ogImage → featureImage → defaultOgImage); twitter card summary_large_image/summary logic; unit-tested. |
-| SEO-06 | 05-01, 05-03 | Bangla-aware meta validation (grapheme, not Latin) | ✓ SATISFIED | Intl.Segmenter grapheme rule; 11 validation tests pass incl. Bangla-passes + Latin-fails; live editor form wired (SeoPanel placeholder documents the grapheme rule). |
-| SEO-07 | 05-02 | RSS feed at /rss.xml | ✓ SATISFIED | rss.xml/route.ts GET handler; full-text via renderPostBody; 14 RSS tests pass. |
-| SEO-08 | 05-02 | Sitemap priority/changefreq per content type | ✓ SATISFIED | home 1.0/daily, posts 0.8/weekly, pages 0.5/monthly; unit-tested in sitemap.test.ts. |
+| SEO-01 | 05-01, 05-03, 05-04 | generateMetadata per public route from post_seo/settings | ✓ SATISFIED | All 16 (site) routes wired (truth 1); dashboard data side: SeoPanel + savePost upsert + settings/seo page + sidebar entry. |
+| SEO-02 | 05-02, 05-05, 05-06 | Dynamic sitemap.ts + robots.ts | ✓ SATISFIED | Truth 2; revalidation wired on publish + settings save. |
+| SEO-03 | 05-01 | JSON-LD BlogPosting per post | ✓ SATISFIED | Truth 3 — per-post route now delivers it (prior deferral resolved). |
+| SEO-04 | 05-01, 05-04 | Canonical override else slug-derived | ✓ SATISFIED | metadata.ts L97 (override || `/blog/{slug}`); unit + drift-guard tests; redirects runtime supports slug-change continuity (truth 6 code-verified). |
+| SEO-05 | 05-01 | OG + Twitter images with fallback chain | ✓ SATISFIED | metadata.ts L99/L116-122; unit-tested. |
+| SEO-06 | 05-01, 05-03, 05-05 | Bangla-aware meta validation | ✓ SATISFIED | Truth 4 — behavioral test evidence. |
+| SEO-07 | 05-02, 05-06 | RSS feed of published posts | ✓ SATISFIED | Truth 5; publish UI (05-06) makes posts reachable from the dashboard. |
+| SEO-08 | 05-02 | Sitemap priority/changefreq per type | ✓ SATISFIED | sitemap.ts L67-106 + tests. |
 
-No ORPHANED requirements — all 8 SEO IDs (SEO-01..08) are claimed by plans and satisfied at Phase 5's scope.
+No ORPHANED requirements — all 8 SEO IDs claimed by plans (05-01..05-06) and satisfied.
 
 ### Anti-Patterns Found
 
 | File | Line | Pattern | Severity | Impact |
 |------|------|---------|----------|--------|
-| src/app/sitemap.ts | 59 | `// Phase 6 TODO: append category/tag/author archive entries here (D-05).` | ℹ️ Info | NOT a debt marker — references formal follow-up work (Phase 6 + decision D-05). The extensibility seam is intentional; the TODO documents where Phase 6 adds archive entries. No action required. |
+| src/app/sitemap.ts | 59 | `// Phase 6 TODO: append category/tag/author archive entries here (D-05).` — Phase 6 is complete; comment is stale, but SC-2/SEO-02 never required archive entries (posts+pages only) | ℹ️ Info | Cosmetic; suggests updating the comment or adding archives in a later pass |
+| `__tests__/middleware.test.ts` | 69 | Test title "config.matcher gates dashboard + auth pages only" is stale — matcher has 5 entries since 05-04 (assertions use toContain, so still green) | ℹ️ Info | Cosmetic; title misleads about coverage — the redirects branch has NO test (tracked as behavior-unverified) |
+| src/app/rss.xml/route.ts | 115 | CDATA `]]>` breakout (WR-03, open by user decision) | ℹ️ Info | Edge-case feed malformation only; SC-5 holds for normal content |
+| src/actions/posts.ts | 99-170 | savePost update path has no revalidation (WR-08, open by user decision) | ℹ️ Info | Stale public page up to cache TTL on edits of published posts; publish path (the SC-2 concern) revalidates fully |
 
-No TBD/FIXME/XXX in any Phase 5 file. No placeholder/stub patterns in output paths. The single TODO references a Phase 6 decision (D-05) and is therefore acceptable per the debt-marker gate.
+No TBD/FIXME/XXX anywhere in phase files. The 9 Warnings + 7 Infos from 05-REVIEW.md remain open by explicit user decision (`fix_scope: critical` in 05-REVIEW-FIX.md) — none breaks a success criterion; the 3 Criticals are verified fixed in code (CR-01 metadata.ts L97, CR-02 posts.ts L133-138 + post-transitions.ts L84-93, CR-03 jsonld.ts L30-37 at all 6 injection sites).
 
 ### Security Invariants (Cross-Checked)
 
-| Invariant | Expected | Status | Evidence |
-|-----------|----------|--------|----------|
-| saveSeoSettings requireRole('admin') FIRST | Gate before any parse/DB write | ✓ VERIFIED | settings.ts L105 `await requireRole("admin")` is the first statement; seo-settings.test.ts L88-111 asserts FORBIDDEN is thrown before db.update/db.insert (MUST_NOT_BE_REACHED). |
-| savePost SEO writes inherit ownership | assertOwnsPost covers upsertPostSeo | ✓ VERIFIED | posts.ts L156-157 comment confirms; upsertPostSeo (L178) is called inside savePost after the step-1 ownership/permission gate. No new auth check needed (T-05-06). |
-| 2-arg revalidateTag | `revalidateTag('seo-settings', 'max')` not single-arg | ✓ VERIFIED | settings.ts L123; seo-settings.test.ts L128-142 asserts the second arg is 'max' (landmine #5). |
-| JSON-LD via real `<script dangerouslySetInnerHTML>` | NOT metadata.other | ✓ VERIFIED | (site)/layout.tsx L58-81 renders two real `<script type="application/ld+json">` tags with dangerouslySetInnerHTML (Pitfall 2 mitigation). |
-| not-found.tsx in Node runtime (not middleware) | Drizzle/pg NOT in edge middleware; no src/proxy.ts created | ✓ VERIFIED | No src/proxy.ts exists (confirmed). Root middleware.ts (62 lines) contains NO redirects/db/schema/drizzle/permanentRedirect references (confirmed by grep) — stays edge-runtime auth-only. not-found.tsx is a Server Component in Node runtime by default (landmine #2). RedirectChecker isolated in `<Suspense>` for Cache Components (landmine cleared during execution per 05-03-SUMMARY). |
-| seoMetaSchema.safeParse (NOT .parse) in savePost | Malformed SEO never fails the post save | ✓ VERIFIED | posts.ts L185 `seoMetaSchema.safeParse(...)`; L191-198 logs and returns on failure (defensive). |
-| escapeXml on 5 special chars in RSS | XML injection vector closed (T-05-04) | ✓ VERIFIED | rss.xml/route.ts L127-134; unit-tested in rss.test.ts. |
-| renderPostBody sanitize + CDATA in RSS | Stored-XSS via RSS body mitigated (T-05-02) | ✓ VERIFIED | rss.xml/route.ts L57 + L115 CDATA wrap; renderPostBody is the Phase 3 double-sanitize pipeline. |
+| Invariant | Status | Evidence |
+|-----------|--------|----------|
+| saveSeoSettings requireRole('admin') FIRST | ✓ VERIFIED | First statement; MUST_NOT_BE_REACHED test green |
+| upsertPostSeo inherits assertOwnsPost coverage | ✓ VERIFIED | Called inside savePost after step-1 gate (posts.ts L161-167) |
+| 2-arg revalidateTag everywhere | ✓ VERIFIED | settings.ts + posts.ts L368-373; asserted in tests |
+| JSON-LD XSS escape at every injection site | ✓ VERIFIED | jsonLdScript at all 6 sites; zero raw stringify ld+json remaining (grep) |
+| Redirects lookup degrades gracefully; DB stays out of edge runtime | ✓ VERIFIED | runtime="nodejs"; try/catch in both middleware and not-found; redirect calls outside catch |
+| seoMetaSchema.safeParse (not .parse) in savePost | ✓ VERIFIED | posts.ts L190 |
+| RSS XML escaping + sanitized body | ✓ VERIFIED | escapeXml + renderPostBody + CDATA |
 
 ### Human Verification Required
 
-5 items need human testing — see the `human_verification` list in frontmatter. Two of these are the behavior-unverified invariants (cache invalidation runtime, redirects graceful-degradation runtime); the other three are runtime-HTML / user-flow checks the build cannot observe.
+3 items need human testing (2 behavior-unverified truths are covered by items 1-2) — see the `human_verification` list in frontmatter. These are the post-gap-closure UAT re-runs: live publish flow -> sitemap/RSS/post-page HTML (UAT tests 2+3), live redirects 308/307 (UAT test 5), and the sidebar SEO click-through (UAT test 4 completion). Everything code-checkable has been checked and passes.
 
 ### Gaps Summary
 
-**No gaps found.** All 5 ROADMAP success criteria are met at Phase 5's scope boundary (D-01). All 22+ required artifacts exist, are substantive (no stubs), and are wired. All 8 key links are connected. All 8 SEO requirements are satisfied (SEO-03's per-post route wiring is explicitly deferred to Phase 6 SITE-07, not a gap). All security invariants are verified in code. The full vitest suite (330 tests) passes; the build passes under `cacheComponents:true`.
+**No code gaps found.** All 5 ROADMAP success criteria are verified in the codebase with unit-test behavioral evidence; the prior SC-3 deferral is resolved (the /blog/[slug] route now injects BlogPosting JSON-LD); all UAT gap-closure deliverables (05-04 middleware redirects, 05-05 editor surface, 05-06 publish UI + toasts, sidebar entry) are present, substantive, and wired; the 3 review Criticals are fixed at the cited lines with tests; the full suite is green at exactly the claimed 590/590 across 57 files; all 8 SEO requirements are satisfied with no orphans.
 
-The phase is routed to **human_needed** solely because runtime/behavioral aspects require human eyes: the actual streamed HTML output, the live editor/admin dashboard flows, the cache-invalidation behavior end-to-end, and the redirects-check runtime behavior. These are inherent to a metadata-heavy phase where build-passing + unit tests prove the logic but not the final rendered output.
+The phase routes to **human_needed** solely because the gap-closure work (05-04..05-06) landed AFTER the 2026-08-24 UAT that motivated it, and the live re-verification of those fixes — publish a post from the UI and watch it appear in sitemap/RSS, fire a redirect from a redirects row, click the sidebar SEO entry — has not yet been re-run by a human. Two cross-system runtime invariants (publish->feeds loop, middleware redirect firing) have no test coverage and are flagged `behavior_unverified`.
 
 ---
 
-_Verified: 2026-07-07T04:30:00Z_
+_Verified: 2026-08-25T15:20:07Z_
 _Verifier: Claude (gsd-verifier)_
