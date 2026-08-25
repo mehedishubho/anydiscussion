@@ -87,6 +87,10 @@ const navItems: NavItem[] = [
     subItems: [
       // Plan 04-05 ships the Storage route; the link is admin-gated here.
       { name: "Storage", path: "/dashboard/settings/storage" },
+      // Plan 05-03 shipped the SEO route (D-11); this entry closes the Phase 5 UAT
+      // test 4 navigation gap (page was reachable by URL only). UX-only gate —
+      // saveSeoSettings re-checks requireRole('admin') FIRST server-side.
+      { name: "SEO", path: "/dashboard/settings/seo" },
       // Plan 08-04 ships the Backup route; admin-only (BACKUP-05). UX-only gate — the Server
       // Actions re-check requireRole('admin') FIRST (CLAUDE.md "never rely on UI hiding alone").
       { name: "Backup", path: "/dashboard/settings/backup" },

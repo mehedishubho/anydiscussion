@@ -15,7 +15,9 @@ vi.mock("better-auth/cookies", () => ({
 import { getSessionCookie } from "better-auth/cookies";
 
 // Import the middleware AFTER the mock is registered so it picks up the mock.
-const { middleware, config } = await import("../middleware");
+// (src/middleware.ts since Plan 05-04 — the file must sit in src/ for Next's
+// functions-config-manifest discovery to see its runtime export.)
+const { middleware, config } = await import("../src/middleware");
 
 function makeReq(pathname: string) {
   return new NextRequest(new URL(pathname, "http://localhost:3000"));

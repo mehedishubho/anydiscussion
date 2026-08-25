@@ -47,6 +47,16 @@ const nextConfig: NextConfig = {
   },
     
     turbopack: {
+      // Workspace root — pinned to THIS project directory (wherever the config
+      // lives). Without it, Turbopack walks up for lockfile boundaries and can
+      // infer the WRONG root when this checkout is nested inside another
+      // checkout (git worktrees under .claude/worktrees/ detect the parent
+      // repo's pnpm-workspace.yaml). Symptom observed in Next 16.2.9 dev:
+      // middleware.ts compiles + registers in
+      // .next/dev/server/middleware-manifest.json but the dev router-server
+      // never INVOKES it. Remedy per Next's own build warning: set
+      // turbopack.root. Harmless in the main checkout (root === repo root).
+      root: __dirname,
       rules: {
         '*.svg': {
           loaders: ['@svgr/webpack'],

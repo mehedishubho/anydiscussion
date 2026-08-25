@@ -9,10 +9,15 @@
 // matches, it calls permanentRedirect (301 → 308 permanent) or redirect
 // (302 → 307 temporary) to the configured new_path.
 //
-// CRITICAL — Node runtime, NOT middleware (landmine #2): this file runs in the
-// Node.js runtime by default. middleware.ts / proxy.ts are edge-runtime and
-// CANNOT run Drizzle/pg queries. Do NOT add this lookup to middleware.ts, and
-// do NOT create src/proxy.ts (Pitfall 5 — does not exist).
+// CRITICAL — runtime split (landmine #2, UPDATED by Plan 05-04): this file runs
+// in the Node.js runtime. src/middleware.ts runs the PRIMARY redirects lookup
+// directly (it declares `export const runtime = "nodejs"` — Next 16.2.9 Node
+// middleware — because the default edge sandbox cannot run Drizzle/pg).
+// The RedirectChecker below is the graceful STREAMED FALLBACK: it only fires for
+// paths that slip past middleware (e.g. a route that calls notFound() itself),
+// and under Cache Components its redirect can only become a client-side meta
+// refresh — the HTTP status has already flushed with the static 404 shell. Do
+// NOT create src/proxy.ts (Pitfall 5 — does not exist).
 //
 // Cache Components architecture: the dynamic redirect-check (headers() + DB) is
 // isolated inside a <Suspense> boundary so the 404 UI stays in the static
@@ -21,7 +26,14 @@
 // Suspense keeps the root layout + 404 UI static while the redirect-check streams.
 //
 // T-05-08: the DB lookup is wrapped in try/catch — a missing table, query error,
-// or missing x-invoke-path header falls through gracefully (no redirect → 404).
+// or missing x-incoming-path header falls through gracefully (no redirect → 404).
+//
+// Header source: `x-incoming-path` is set by src/middleware.ts on every
+// matched request (NextResponse.next({ request: { headers } })). This works
+// self-hosted (Coolify). The previous header name (see middleware.ts history)
+// was a Vercel-INTERNAL header that never exists on this runtime, so
+// incomingPath was always null and populated redirects rows were silently
+// ignored (that was the Phase 5 UAT test 5 blocker).
 //
 // Forward-compatibility (D-12): the redirects table ships EMPTY in v1. This
 // wiring is ready for the SETT-03 v2 redirects-manager UI. No seed data needed.
@@ -56,7 +68,9 @@ async function RedirectChecker(): Promise<null> {
 
   try {
     const headerList = await headers();
-    const incomingPath = headerList.get("x-invoke-path");
+    // x-incoming-path — set by src/middleware.ts (self-hosted-safe; the
+    // previous name was a Vercel-internal header, always null on this runtime).
+    const incomingPath = headerList.get("x-incoming-path");
 
     if (incomingPath) {
       const [match] = await db
