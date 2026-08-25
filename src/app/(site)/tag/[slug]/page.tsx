@@ -18,7 +18,7 @@ import { notFound } from "next/navigation";
 import { z } from "zod";
 import { getSeoSettings } from "@/lib/seo/settings";
 import { buildArchiveMetadata } from "@/lib/seo/metadata";
-import { breadcrumbListJsonLd } from "@/lib/seo/jsonld";
+import { breadcrumbListJsonLd, jsonLdScript } from "@/lib/seo/jsonld";
 import { Suspense } from "react";
 import { PostCardGridSkeleton } from "@/components/site/skeletons";
 import {
@@ -161,9 +161,11 @@ async function TagArchiveContent({
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
+      {/* jsonLdScript (CR-03) — tag names are admin/editor input; escape
+          post-stringify so no </script> breakout is possible. */}
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumb) }}
+        dangerouslySetInnerHTML={{ __html: jsonLdScript(breadcrumb) }}
       />
       <ArchiveList
         posts={cards}

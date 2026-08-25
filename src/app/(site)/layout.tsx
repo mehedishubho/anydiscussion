@@ -25,7 +25,7 @@ import React from "react";
 import Script from "next/script";
 import { getSeoSettings } from "@/lib/seo/settings";
 import { buildSiteMetadata } from "@/lib/seo/metadata";
-import { websiteJsonLd, organizationJsonLd } from "@/lib/seo/jsonld";
+import { websiteJsonLd, organizationJsonLd, jsonLdScript } from "@/lib/seo/jsonld";
 import SiteHeader from "@/components/site/SiteHeader";
 import SiteFooter from "@/components/site/SiteFooter";
 import Analytics from "@/components/site/Analytics";
@@ -84,12 +84,12 @@ export default async function SiteLayout({
       {/* Site-wide JSON-LD — WebSite (with SearchAction) + Organization.
           Pitfall 2: JSON-LD MUST be a real <script type="application/ld+json"> —
           the Metadata API explicitly excludes <script> tags. Rendered in the body
-          (valid per Google docs). The payload is JSON.stringify'd server-side from
-          trusted DB data; no script execution surface (T-05-01 mitigation). */}
+          (valid per Google docs). Serialized via jsonLdScript (CR-03 — escapes
+          <, >, & post-stringify so no </script> breakout is possible). */}
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: JSON.stringify(
+          __html: jsonLdScript(
             websiteJsonLd({
               canonicalBaseUrl: s.canonicalBaseUrl,
               siteTitle: s.siteTitle,
@@ -101,7 +101,7 @@ export default async function SiteLayout({
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: JSON.stringify(
+          __html: jsonLdScript(
             organizationJsonLd({
               canonicalBaseUrl: s.canonicalBaseUrl,
               siteTitle: s.siteTitle,

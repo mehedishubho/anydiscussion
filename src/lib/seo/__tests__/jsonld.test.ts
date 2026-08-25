@@ -12,6 +12,7 @@ import {
   organizationJsonLd,
   personJsonLd,
   breadcrumbListJsonLd,
+  jsonLdScript,
 } from "../jsonld";
 import { fakePost, fakeSettings } from "./shared-fixtures";
 
@@ -84,6 +85,49 @@ describe("SEO-03 / D-03: blogPostingJsonLd — schema.org BlogPosting shape", ()
     expect(ld2.author.name).toBe("Any Discussion");
     expect(ld2.image).toBeUndefined();
     expect(ld2.publisher.logo).toBeUndefined();
+  });
+});
+
+describe("CR-03: jsonLdScript — safe serialization for dangerouslySetInnerHTML", () => {
+  const BS = String.fromCharCode(92); // backslash — escapes below read as text, not syntax
+  const LS = String.fromCharCode(0x2028); // Unicode line separator
+  const PS = String.fromCharCode(0x2029); // Unicode paragraph separator
+
+  it("emits no raw <, >, or & — a </script> payload cannot terminate the script element", () => {
+    const out = jsonLdScript({
+      headline: "Breaking</script><img src=x onerror=alert(document.cookie)>",
+    });
+    expect(out).not.toContain("<");
+    expect(out).not.toContain(">");
+    expect(out).not.toContain("&");
+    // The breakout sequence is neutralized as JSON escape text.
+    expect(out).toContain(`${BS}u003c/script${BS}u003e${BS}u003cimg`);
+  });
+
+  it("round-trips: JSON.parse(jsonLdScript(x)) deep-equals x (escapes are semantically inert)", () => {
+    const payload = blogPostingJsonLd({
+      title: 'A & B <script> "quoted" </script>',
+      description: "desc with < & > chars",
+      image: null,
+      datePublished: new Date("2026-06-15T10:00:00Z"),
+      dateModified: new Date("2026-06-20T12:00:00Z"),
+      authorName: null,
+      canonicalUrl: "https://example.com/a&b",
+      publisherName: "Any Discussion",
+      publisherLogo: null,
+    });
+    expect(JSON.parse(jsonLdScript(payload))).toEqual(payload);
+  });
+
+  it("escapes U+2028/U+2029 line separators", () => {
+    const text = `before${LS}mid${PS}end`;
+    const out = jsonLdScript({ text });
+    expect(out).not.toContain(LS);
+    expect(out).not.toContain(PS);
+    expect(out).toContain(`${BS}u2028`);
+    expect(out).toContain(`${BS}u2029`);
+    // And still valid JSON parsing back to the original separators.
+    expect(JSON.parse(out).text).toBe(text);
   });
 });
 

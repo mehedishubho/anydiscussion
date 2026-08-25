@@ -36,7 +36,7 @@ import { Suspense } from "react";
 import { SinglePostSkeleton } from "@/components/site/skeletons";
 import { renderPostBody } from "@/lib/post-render";
 import { buildPostMetadata, type PostLike } from "@/lib/seo/metadata";
-import { blogPostingJsonLd } from "@/lib/seo/jsonld";
+import { blogPostingJsonLd, jsonLdScript } from "@/lib/seo/jsonld";
 import { getSeoSettings } from "@/lib/seo/settings";
 import { getPostForPublic } from "@/lib/queries/posts";
 import { deriveReadingTime } from "@/lib/reading-time";
@@ -171,12 +171,13 @@ async function PostPageContent({ params }: PostPageProps) {
       <div className="lg:grid lg:grid-cols-[1fr_220px] lg:gap-12">
         <article className="mx-auto w-full max-w-3xl">
           {/* BlogPosting JSON-LD — real <script> per Phase 5 Pitfall 2 (the
-              Metadata API explicitly excludes <script> tags). Stringified from
-              trusted DB-derived data; no script execution surface. */}
+              Metadata API explicitly excludes <script> tags). Serialized via
+              jsonLdScript (CR-03): title/excerpt are author-controlled, and raw
+              JSON.stringify would not stop a </script> breakout in the headline. */}
           <script
             type="application/ld+json"
             dangerouslySetInnerHTML={{
-              __html: JSON.stringify(
+              __html: jsonLdScript(
                 blogPostingJsonLd({
                   title: post.title,
                   description: post.excerpt || settings.siteDescription,

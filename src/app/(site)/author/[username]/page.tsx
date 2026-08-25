@@ -25,7 +25,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getSeoSettings } from "@/lib/seo/settings";
 import { buildArchiveMetadata } from "@/lib/seo/metadata";
-import { personJsonLd } from "@/lib/seo/jsonld";
+import { personJsonLd, jsonLdScript } from "@/lib/seo/jsonld";
 import { getUserByUsername, listAuthorPosts } from "@/lib/queries/users";
 import { toPostCardProps, type PostCardJoinedRow } from "@/lib/post-card";
 import PostCard from "@/components/site/PostCard";
@@ -128,10 +128,12 @@ async function AuthorPageContent({ params, searchParams }: AuthorPageProps) {
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-10">
-      {/* Person JSON-LD — Pitfall 2: real <script type="application/ld+json">. */}
+      {/* Person JSON-LD — Pitfall 2: real <script type="application/ld+json">.
+          jsonLdScript (CR-03) — user.name/bio are user-controlled; escape
+          post-stringify so no </script> breakout is possible. */}
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(authorJsonLd) }}
+        dangerouslySetInnerHTML={{ __html: jsonLdScript(authorJsonLd) }}
       />
 
       {/* BIO HEADER (SITE-06 / D-11) — name, avatar, bio from AUTH-08. */}

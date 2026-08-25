@@ -4,14 +4,37 @@
 // [CITED: 05-RESEARCH.md Pitfall 2 — JSON-LD via real <script>, NOT metadata.other]
 //
 // PURE builders returning plain objects (NOT stringified). The consumer
-// (page/layout Server Component) does `JSON.stringify(...)` and injects via
-// `<script type="application/ld+json" dangerouslySetInnerHTML>`. This is the only
-// Next.js-16-supported path for JSON-LD — the Metadata API explicitly excludes
-// `<script>` tags (05-RESEARCH.md "Unsupported Metadata" table).
+// (page/layout Server Component) serializes via `jsonLdScript(...)` (below) and
+// injects via `<script type="application/ld+json" dangerouslySetInnerHTML>`.
+// This is the only Next.js-16-supported path for JSON-LD — the Metadata API
+// explicitly excludes `<script>` tags (05-RESEARCH.md "Unsupported Metadata" table).
 //
 // No imports beyond TypeScript types — the builders return plain schema.org objects.
 //
 // Server-only — NO "use client" directive.
+
+/**
+ * Serialize a JSON-LD payload for safe injection into
+ * `<script type="application/ld+json" dangerouslySetInnerHTML={{ __html: ... }}>`.
+ *
+ * CR-03 (stored XSS): `JSON.stringify` does NOT escape `<` or `>` — a post title
+ * like `Breaking</script><img src=x onerror=alert(document.cookie)>` would
+ * terminate the script element early and execute the injected markup on the
+ * public page (author-supplied input, editor-published). Escaping as JSON
+ * `\uXXXX` escape sequences keeps the payload VALID JSON that parses back to the
+ * identical string (HTML entities like `&lt;` would corrupt the parsed value).
+ * `&` is escaped the same way (defense-in-depth), and U+2028/U+2029 (JS
+ * string-literal terminators for pre-ES2019 parsers) per the standard
+ * safe-stringify pattern.
+ */
+export function jsonLdScript(obj: unknown): string {
+  return JSON.stringify(obj)
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
+    .replace(/&/g, "\\u0026")
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029");
+}
 
 /** Input for the per-post BlogPosting builder. */
 export interface BlogPostingInput {
