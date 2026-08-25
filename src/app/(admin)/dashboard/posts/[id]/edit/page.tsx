@@ -14,6 +14,14 @@
 // 05-06: reads the session to pass the viewer's role + the post's current status
 // into PostForm for the UX-ONLY Publish / Submit-for-review gating (UAT gap 1
 // publish half — initialStatus hides Publish on already-published posts).
+//
+// 05-08: deleted the inline no-op onChange stub prop on SchedulePicker — a function
+// value in a Client Component's props throws at RSC serialization time on EVERY
+// render of this page (the 05-UAT R1 re-test blocker). The picker now persists via
+// its own direct client-side setSchedule call and receives ONLY serializable props
+// (postId, publishedAt, initialTimezone). The sidebar Publish card is additionally
+// hidden from authors (UX-only — Phase 3 D-15 makes setSchedule editor/admin-only;
+// the action's requireCan gate stays the authority).
 import { getPost } from "@/actions/posts";
 import { getSetting } from "@/actions/settings";
 import { getPostTagIds } from "@/actions/tags";
@@ -87,23 +95,27 @@ export default async function EditPostPage({ params }: EditPostPageProps) {
 
         {/* Sidebar — scheduling + preview (Slice D) */}
         <div className="space-y-6">
-          <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] lg:p-6">
-            <h3 className="mb-5 text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-              Publish
-            </h3>
-            <SchedulePicker
-              postId={post.id}
-              publishedAt={
-                post.publishedAt ? new Date(post.publishedAt) : null
-              }
-              onChange={() => {
-                // The onChange handler is wired client-side; the actual setSchedule
-                // action is called from the client component on blur or a save button.
-                // This prop is required by the SchedulePicker interface.
-              }}
-              initialTimezone={timezone ?? undefined}
-            />
-          </div>
+          {/* 05-08 — Publish card hidden from authors: Phase 3 D-15 makes setSchedule
+              editor/admin-only (requireCan({post:["publish"]}) rejects authors with
+              FORBIDDEN server-side). UX-only hide, same pattern as 05-06's Publish
+              button; the action remains the authority. */}
+          {role !== "author" && (
+            <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] lg:p-6">
+              <h3 className="mb-5 text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                Publish
+              </h3>
+              {/* ONLY serializable props — a function prop here throws at RSC
+              serialization time on every render (05-UAT R1 blocker; pinned by
+              __tests__/edit-page-rsc-boundary.test.ts). */}
+              <SchedulePicker
+                postId={post.id}
+                publishedAt={
+                  post.publishedAt ? new Date(post.publishedAt) : null
+                }
+                initialTimezone={timezone ?? undefined}
+              />
+            </div>
+          )}
           <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] lg:p-6">
             <h3 className="mb-5 text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
               Preview
