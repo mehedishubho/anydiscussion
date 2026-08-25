@@ -14,6 +14,9 @@ vi.mock("@/lib/permissions", () => ({
 
 // Mock @/lib/db — transitionPost selects current post + updates status.
 const selectLimitMock = vi.fn();
+// CR-02: capture the .set() payload so tests can assert whether publishedAt
+// is stamped (publish with NULL date) or omitted (already set / non-publish).
+const updateSetMock = vi.fn();
 vi.mock("@/lib/db", () => ({
   db: {
     select: vi.fn(() => ({
@@ -22,7 +25,10 @@ vi.mock("@/lib/db", () => ({
       })),
     })),
     update: vi.fn(() => ({
-      set: vi.fn(() => ({ where: vi.fn(async () => ({ success: true })) })),
+      set: (v: unknown) => {
+        updateSetMock(v);
+        return { where: vi.fn(async () => ({ success: true })) };
+      },
     })),
   },
   schema: { posts: { id: "id", status: "status", updatedAt: "updated_at" } },
@@ -86,6 +92,39 @@ describe("AUTH-05: transitionPost status-transition policy (D-13/D-14/D-15)", ()
       requireCanMock.mockRejectedValue(new Error("FORBIDDEN"));
       selectLimitMock.mockResolvedValue([{ status: "pending_review" }]);
       await expect(transitionPost(1, "published")).rejects.toThrow("FORBIDDEN");
+    });
+  });
+
+  describe("CR-02: publishing stamps publishedAt when it was never set", () => {
+    beforeEach(() => {
+      assertOwnsPostMock.mockResolvedValue(sessionFor("editor"));
+      requireCanMock.mockResolvedValue(sessionFor("editor"));
+    });
+
+    it("stamps publishedAt when transitioning to published with a NULL date", async () => {
+      selectLimitMock.mockResolvedValue([{ status: "pending_review", publishedAt: null }]);
+      await transitionPost(1, "published");
+      expect(updateSetMock).toHaveBeenCalledTimes(1);
+      const payload = updateSetMock.mock.calls[0][0] as Record<string, unknown>;
+      expect(payload.status).toBe("published");
+      expect(payload.publishedAt).toBeInstanceOf(Date);
+    });
+
+    it("preserves an existing publishedAt (scheduled / prior publish) verbatim", async () => {
+      const scheduled = new Date("2026-08-01T08:00:00Z");
+      selectLimitMock.mockResolvedValue([{ status: "draft", publishedAt: scheduled }]);
+      await transitionPost(1, "published");
+      const payload = updateSetMock.mock.calls[0][0] as Record<string, unknown>;
+      // The column must be absent from the write — the scheduled date survives.
+      expect("publishedAt" in payload).toBe(false);
+    });
+
+    it("does NOT stamp publishedAt on non-publish transitions", async () => {
+      selectLimitMock.mockResolvedValue([{ status: "draft", publishedAt: null }]);
+      await transitionPost(1, "pending_review");
+      const payload = updateSetMock.mock.calls[0][0] as Record<string, unknown>;
+      expect(payload.status).toBe("pending_review");
+      expect("publishedAt" in payload).toBe(false);
     });
   });
 });

@@ -30,6 +30,8 @@ const {
   selectPostMock,
   insertMock,
   updateMock,
+  updateSetMock,
+  insertValuesMock,
   revalidatePathMock,
   revalidateTagMock,
 } = vi.hoisted(() => ({
@@ -46,6 +48,10 @@ const {
   selectPostMock: vi.fn(),
   insertMock: vi.fn(),
   updateMock: vi.fn(),
+  // CR-02: capture the .set() / .values() payloads so tests can assert on
+  // exactly which columns a write touches (publishedAt preservation).
+  updateSetMock: vi.fn(),
+  insertValuesMock: vi.fn(),
   revalidatePathMock: vi.fn(),
   revalidateTagMock: vi.fn(),
 }));
@@ -112,10 +118,16 @@ vi.mock("@/lib/db", () => {
         from: vi.fn(() => chainableSelect()),
       })),
       insert: vi.fn(() => ({
-        values: vi.fn(() => ({ returning: (...a: unknown[]) => insertMock(...a) })),
+        values: (v: unknown) => {
+          insertValuesMock(v);
+          return { returning: (...a: unknown[]) => insertMock(...a) };
+        },
       })),
       update: vi.fn(() => ({
-        set: vi.fn(() => ({ where: (...a: unknown[]) => updateMock(...a) })),
+        set: (v: unknown) => {
+          updateSetMock(v);
+          return { where: (...a: unknown[]) => updateMock(...a) };
+        },
       })),
     },
     schema: {
@@ -281,6 +293,49 @@ describe("T-03-01 / Pitfall #1: every posts.ts mutating action calls requireCan/
     });
     await expect(submitForReview(7)).rejects.toThrow("FORBIDDEN");
     expect(transitionPostMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("CR-02: savePost update path preserves publishedAt (publish-date data loss)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    assertOwnsPostMock.mockResolvedValue(adminSession());
+    validateSlugMock.mockReturnValue({ valid: true });
+    assertUniqueSlugMock.mockResolvedValue(undefined);
+    deriveExcerptMock.mockReturnValue("auto-excerpt");
+    sanitizeBeforeStoreMock.mockImplementation((s: string) => s);
+    sanitizeBeforeRenderMock.mockImplementation((s: string) => s);
+    postSchemaParseMock.mockImplementation((input) => input);
+    // upsertPostSeo: no existing post_seo row → the INSERT path (not UPDATE).
+    selectPostMock.mockResolvedValue([]);
+    insertMock.mockResolvedValue(undefined);
+    updateMock.mockResolvedValue(undefined);
+  });
+
+  it("OMITS publishedAt from the UPDATE set when the payload omits it (PostForm never sends it)", async () => {
+    await savePost({ id: 7, title: "T", slug: "t", categoryId: 1, tagIds: [] });
+    expect(updateSetMock).toHaveBeenCalledTimes(1);
+    const setPayload = updateSetMock.mock.calls[0][0] as Record<string, unknown>;
+    // The column must be entirely absent from the write — an explicit
+    // publishedAt: null would wipe the publish date on every edit-save.
+    expect("publishedAt" in setPayload).toBe(false);
+  });
+
+  it("writes publishedAt when the payload explicitly includes it (manual schedule path)", async () => {
+    const when = new Date("2026-08-15T09:00:00Z");
+    await savePost({ id: 7, title: "T", slug: "t", categoryId: 1, tagIds: [], publishedAt: when });
+    expect(updateSetMock).toHaveBeenCalledTimes(1);
+    const setPayload = updateSetMock.mock.calls[0][0] as Record<string, unknown>;
+    expect(setPayload.publishedAt).toBe(when);
+  });
+
+  it("still defaults publishedAt to null on CREATE (no prior value to preserve)", async () => {
+    insertMock.mockReturnValue([{ id: 42 }]);
+    await savePost({ title: "T", slug: "t", categoryId: 1, tagIds: [] });
+    // First insert call is the posts row (upsertPostSeo may insert post_seo after).
+    const values = insertValuesMock.mock.calls[0][0] as Record<string, unknown>;
+    expect(values.status).toBe("draft"); // sanity: this is the posts insert
+    expect(values.publishedAt).toBeNull();
   });
 });
 

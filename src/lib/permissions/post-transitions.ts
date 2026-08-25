@@ -76,9 +76,19 @@ export async function transitionPost(
     throw new Error(`INVALID_TRANSITION:${post.status}→${target}`);
   }
 
-  // 5. Apply.
+  // 5. Apply. CR-02 — publishing always stamps publishedAt when it was never
+  //    set (a publish without a prior setSchedule must not leave a NULL publish
+  //    date: the post page's visible date, og:publishedTime, and RSS pubDate
+  //    all depend on it). An existing publishedAt (scheduled or a prior publish
+  //    after unpublish) is preserved verbatim.
   await db
     .update(schema.posts)
-    .set({ status: target, updatedAt: new Date() })
+    .set({
+      status: target,
+      updatedAt: new Date(),
+      ...(target === "published" && !post.publishedAt
+        ? { publishedAt: new Date() }
+        : {}),
+    })
     .where(eq(schema.posts.id, postId));
 }

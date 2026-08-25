@@ -130,7 +130,12 @@ export async function savePost(input: SavePostInput) {
         excerpt,
         categoryId: data.categoryId,
         featureImage: data.featureImage ?? null,
-        publishedAt: data.publishedAt ?? null,
+        // CR-02 — preserve the existing publishedAt when the payload omits it.
+        // PostForm never sends the field, so the old `data.publishedAt ?? null`
+        // nulled the publish date on EVERY edit-save of a published post
+        // (visible date, og:publishedTime, RSS pubDate, and NULLS FIRST DESC
+        // feed ordering all degraded). An explicitly provided date still writes.
+        ...(data.publishedAt !== undefined ? { publishedAt: data.publishedAt } : {}),
         updatedAt: new Date(),
       })
       .where(eq(schema.posts.id, input.id));
