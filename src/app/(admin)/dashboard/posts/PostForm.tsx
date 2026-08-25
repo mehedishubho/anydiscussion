@@ -6,6 +6,7 @@
 // [CITED: 04-CONTEXT.md D-27 — NOT optimistic on post save (high-stakes + revalidation needs server confirmation)]
 // [CITED: 04-RESEARCH.md Pattern 4 — useMutation + invalidate shape]
 // [CITED: 04-02-PLAN.md Task 3 — feature-image field now uses <MediaPicker> (closes Phase 3 UAT gap)]
+// [CITED: 05-06-PLAN.md — Publish/Submit-for-review buttons (UAT gap 1 publish half) + save toasts (UAT test 3)]
 //
 // The client-component post create/edit form. Wires react-hook-form to the
 // shared postSchema via zodResolver (the SAME schema the Server Action parses —
@@ -41,7 +42,7 @@ import Image from "next/image";
 import { toast } from "sonner";
 import { EditorProvider } from "@/components/editor/EditorProvider";
 import { postSchema, zodResolver, type PostSchemaInput } from "./schema-client";
-import { savePost } from "@/actions/posts";
+import { savePost, publishPost, submitForReview } from "@/actions/posts";
 import TaxonomyPicker from "./components/TaxonomyPicker";
 import MediaPicker from "@/components/dashboard/media/MediaPicker";
 import SeoPanel from "@/components/dashboard/posts/SeoPanel";
@@ -59,6 +60,15 @@ interface PostFormProps {
   initialCategoryId?: number;
   initialTagIds?: number[];
   initialFeatureImage?: string;
+  /**
+   * 05-06 — viewer role, passed from the server pages (getSession). Drives the
+   * UX-ONLY Publish / Submit-for-review button gating; the server chain
+   * (publishPost -> transitionPost -> requireCan + TRANSITIONS) is the
+   * authority (Pitfall #1 — never trust UI hiding).
+   */
+  role?: "admin" | "editor" | "author";
+  /** 05-06 — current post status (edit page only); hides Publish on published posts. */
+  initialStatus?: "draft" | "pending_review" | "published";
 }
 
 export default function PostForm(props: PostFormProps) {
@@ -115,12 +125,84 @@ export default function PostForm(props: PostFormProps) {
     mutation.mutate(values);
   };
 
+  // 05-06 Task 3 — role-aware Publish / Submit-for-review. UX gating ONLY
+  // (T-05-12): publishPost -> assertOwnsPost + transitionPost ->
+  // requireCan({post:["publish"]}) + the TRANSITIONS table is the authority —
+  // authors are double-blocked server-side even if the client gating is bypassed.
+  // Status flips are NOT optimistic (D-27 — high-stakes, server-confirmed).
+  const [currentStatus, setCurrentStatus] = useState<PostFormProps["initialStatus"]>(
+    props.initialStatus,
+  );
+
+  const publishMutation = useMutation({
+    mutationFn: (postId: number) => publishPost(postId),
+    onSuccess: () => {
+      toast.success("Published");
+      setCurrentStatus("published");
+      void queryClient.invalidateQueries({ queryKey: ["posts"] });
+    },
+    onError: (err: Error) => {
+      // The save already succeeded ("Post saved" fired); only the transition
+      // failed — the post REMAINS SAVED as a draft (stated semantics).
+      toast.error(err.message);
+    },
+  });
+
+  const submitReviewMutation = useMutation({
+    mutationFn: (postId: number) => submitForReview(postId),
+    onSuccess: () => {
+      toast.success("Submitted for review");
+      setCurrentStatus("pending_review");
+      void queryClient.invalidateQueries({ queryKey: ["posts"] });
+    },
+    onError: (err: Error) => {
+      toast.error(err.message);
+    },
+  });
+
+  // Save-then-act chains: RHF validation + savePost run exactly like the save
+  // path (same mutation — same toasts + ["posts"] invalidation), then the
+  // per-call onSuccess hands the SAVED id to publishPost/submitForReview.
+  // savePost returns { id } — created id on the new-post path, input.id on edit.
+  const onPublishValid = (values: PostSchemaInput) => {
+    mutation.mutate(values, {
+      onSuccess: (data) => {
+        if (data?.id != null) publishMutation.mutate(data.id);
+      },
+    });
+  };
+
+  const onSubmitReviewValid = (values: PostSchemaInput) => {
+    mutation.mutate(values, {
+      onSuccess: (data) => {
+        if (data?.id != null) submitReviewMutation.mutate(data.id);
+      },
+    });
+  };
+
+  // UX-only gating (server re-checks everything):
+  // - editor/admin + draft/pending_review (or a new post): Publish — on
+  //   pending_review the same button doubles as "approve and publish".
+  // - author + draft (or a new post): Submit for review. Authors NEVER see
+  //   Publish (they lack post:publish; TRANSITIONS excludes it too).
+  // - already-published posts (initialStatus/currentStatus "published"): no
+  //   Publish button — a re-publish would be an INVALID_TRANSITION anyway.
+  const canPublish =
+    (props.role === "admin" || props.role === "editor") &&
+    (currentStatus === undefined ||
+      currentStatus === "draft" ||
+      currentStatus === "pending_review");
+  const canSubmitForReview =
+    props.role === "author" &&
+    (currentStatus === undefined || currentStatus === "draft");
+
+  const anyPending = mutation.isPending || publishMutation.isPending || submitReviewMutation.isPending;
+
   // RHF still owns the featureImage value — the picker calls setValue('featureImage', url).
   // The hidden register call keeps the field in the form schema; the visible UI is the
   // "Select image" button + thumbnail preview below.
 
   const submitError = mutation.error?.message ?? null;
-  const isSubmitting = mutation.isPending;
 
   return (
     <form onSubmit={handleSubmit(onValid)} className="space-y-5">
@@ -257,13 +339,38 @@ export default function PostForm(props: PostFormProps) {
         >
           Cancel
         </button>
+        {/* Save draft — neutral secondary (brand-500 is reserved for the
+            Publish/Submit primary per the 05-06 button conventions). */}
         <button
           type="submit"
-          disabled={isSubmitting}
-          className="inline-flex items-center justify-center rounded-lg bg-brand-500 px-5 py-3.5 text-sm font-medium text-white shadow-theme-xs hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-50"
+          disabled={anyPending}
+          className="inline-flex items-center justify-center rounded-lg bg-white px-5 py-3.5 text-sm font-medium text-gray-700 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-gray-800 dark:text-gray-400 dark:ring-gray-700"
         >
-          {isSubmitting ? "Saving…" : "Save draft"}
+          {mutation.isPending ? "Saving…" : "Save draft"}
         </button>
+        {/* Publish (editor/admin) or Submit for review (author) — brand-500
+            primary, type="button" so RHF validation runs through each one's
+            own handleSubmit wrapper before the save-then-act chain. */}
+        {canPublish && (
+          <button
+            type="button"
+            disabled={anyPending}
+            onClick={handleSubmit(onPublishValid)}
+            className="inline-flex items-center justify-center rounded-lg bg-brand-500 px-5 py-3.5 text-sm font-medium text-white shadow-theme-xs hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {publishMutation.isPending ? "Publishing…" : "Publish"}
+          </button>
+        )}
+        {canSubmitForReview && (
+          <button
+            type="button"
+            disabled={anyPending}
+            onClick={handleSubmit(onSubmitReviewValid)}
+            className="inline-flex items-center justify-center rounded-lg bg-brand-500 px-5 py-3.5 text-sm font-medium text-white shadow-theme-xs hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {submitReviewMutation.isPending ? "Submitting…" : "Submit for review"}
+          </button>
+        )}
       </div>
     </form>
   );

@@ -10,9 +10,14 @@
 // Slice D (Plan 03-04): pre-fetches site.timezone via getSetting for SchedulePicker's
 // initialTimezone prop (D-14 — instant first-paint, no flash of an unresolved label),
 // and wires SchedulePicker + PreviewLink into the editor sidebar.
+//
+// 05-06: reads the session to pass the viewer's role + the post's current status
+// into PostForm for the UX-ONLY Publish / Submit-for-review gating (UAT gap 1
+// publish half — initialStatus hides Publish on already-published posts).
 import { getPost } from "@/actions/posts";
 import { getSetting } from "@/actions/settings";
 import { getPostTagIds } from "@/actions/tags";
+import { getSession } from "@/lib/auth/server";
 import PostForm from "../../PostForm";
 import SchedulePicker from "../../components/SchedulePicker";
 import PreviewLink from "../../components/PreviewLink";
@@ -49,6 +54,12 @@ export default async function EditPostPage({ params }: EditPostPageProps) {
     notFound();
   }
 
+  // 05-06 — viewer role for PostForm's UX-only Publish / Submit gating. The
+  // AuthGate already guaranteed a session; Server Actions re-check regardless.
+  const session = await getSession();
+  const role =
+    (session?.user.role as "admin" | "editor" | "author" | null) ?? undefined;
+
   return (
     <div>
       <PageBreadcrumb pageTitle="Edit Post" />
@@ -67,6 +78,10 @@ export default async function EditPostPage({ params }: EditPostPageProps) {
             initialCategoryId={post.categoryId ?? undefined}
             initialTagIds={tagIds}
             initialFeatureImage={post.featureImage ?? undefined}
+            role={role}
+            initialStatus={
+              post.status as "draft" | "pending_review" | "published"
+            }
           />
         </div>
 

@@ -5,10 +5,16 @@
 // Server Component — calls listPosts() and renders into the existing AppSidebar/
 // AppHeader chrome via the (admin)/layout.tsx AuthGate → AdminShell wrapper.
 // The "New Post" button links to /dashboard/posts/new (the lazy-loaded editor page).
+//
+// 05-06: reads the viewer's role via getSession and renders PostRowActions
+// (Publish / Submit-for-review link-buttons) in the Actions cell next to Edit —
+// the list-side half of the UAT gap 1 publish wiring.
 import Link from "next/link";
 import { listPosts } from "@/actions/posts";
+import { getSession } from "@/lib/auth/server";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 import { Table, TableHeader, TableBody, TableRow, TableCell } from "@/components/ui/table";
+import PostRowActions from "./components/PostRowActions";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
@@ -39,6 +45,12 @@ export default async function PostsListPage() {
     // this catch means the session lacks post:read or the DB is unreachable.
     loadError = err instanceof Error ? err.message : "Failed to load posts";
   }
+
+  // 05-06 — viewer role for PostRowActions' UX-ONLY Publish / Submit gating.
+  // Server Actions re-check every capability (Pitfall #1).
+  const session = await getSession();
+  const role =
+    (session?.user.role as "admin" | "editor" | "author" | null) ?? undefined;
 
   return (
     <div>
@@ -88,12 +100,17 @@ export default async function PostsListPage() {
                       {post.updatedAt ? new Date(post.updatedAt).toLocaleDateString() : "—"}
                     </TableCell>
                     <TableCell className="px-4 py-3 text-right">
-                      <Link
-                        href={`/dashboard/posts/${post.id}/edit`}
-                        className="text-sm font-medium text-brand-500 hover:text-brand-600"
-                      >
-                        Edit
-                      </Link>
+                      {/* 05-06 — Publish / Submit-for-review row action next to
+                          Edit; renders nothing when role+status don't qualify. */}
+                      <div className="flex items-center justify-end gap-3">
+                        <PostRowActions postId={post.id} status={post.status} role={role} />
+                        <Link
+                          href={`/dashboard/posts/${post.id}/edit`}
+                          className="text-sm font-medium text-brand-500 hover:text-brand-600"
+                        >
+                          Edit
+                        </Link>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}

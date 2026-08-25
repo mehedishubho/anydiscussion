@@ -8,15 +8,26 @@
 // + the lazy-loaded Tiptap editor. The editor's JS never enters the (site)
 // bundle: the dynamic({ssr:false}) import is the runtime guard, ESLint
 // no-restricted-imports is the static guard (PERF-02 prep).
+//
+// 05-06: reads the session to pass the viewer's role into PostForm for the
+// UX-ONLY Publish / Submit-for-review button gating (UAT gap 1 publish half).
 import PostForm from "../PostForm";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
+import { getSession } from "@/lib/auth/server";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "New Post | Any Discussion",
 };
 
-export default function NewPostPage() {
+export default async function NewPostPage() {
+  // The (admin) layout's AuthGate already redirected unauthenticated users,
+  // so the session is present here; the Server Actions re-check every
+  // capability regardless (Pitfall #1 — UI gating is never authoritative).
+  const session = await getSession();
+  const role =
+    (session?.user.role as "admin" | "editor" | "author" | null) ?? undefined;
+
   return (
     <div>
       <PageBreadcrumb pageTitle="New Post" />
@@ -24,7 +35,7 @@ export default function NewPostPage() {
         <h3 className="mb-5 text-lg font-semibold text-gray-800 dark:text-white/90">
           Create a new post
         </h3>
-        <PostForm />
+        <PostForm role={role} />
       </div>
     </div>
   );
