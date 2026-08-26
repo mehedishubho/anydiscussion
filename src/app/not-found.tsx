@@ -10,14 +10,14 @@
 // (302 → 307 temporary) to the configured new_path.
 //
 // CRITICAL — runtime split (landmine #2, UPDATED by Plan 05-04): this file runs
-// in the Node.js runtime. src/middleware.ts runs the PRIMARY redirects lookup
-// directly (it declares `export const runtime = "nodejs"` — Next 16.2.9 Node
-// middleware — because the default edge sandbox cannot run Drizzle/pg).
+// in the Node.js runtime. src/proxy.ts runs the PRIMARY redirects lookup
+// directly (Next 16 proxy files default to the Node.js runtime — the `runtime`
+// config export is not available in proxy files — because the default edge
+// sandbox cannot run Drizzle/pg).
 // The RedirectChecker below is the graceful STREAMED FALLBACK: it only fires for
-// paths that slip past middleware (e.g. a route that calls notFound() itself),
+// paths that slip past proxy (e.g. a route that calls notFound() itself),
 // and under Cache Components its redirect can only become a client-side meta
-// refresh — the HTTP status has already flushed with the static 404 shell. Do
-// NOT create src/proxy.ts (Pitfall 5 — does not exist).
+// refresh — the HTTP status has already flushed with the static 404 shell.
 //
 // Cache Components architecture: the dynamic redirect-check (headers() + DB) is
 // isolated inside a <Suspense> boundary so the 404 UI stays in the static
@@ -28,7 +28,7 @@
 // T-05-08: the DB lookup is wrapped in try/catch — a missing table, query error,
 // or missing x-incoming-path header falls through gracefully (no redirect → 404).
 //
-// Header source: `x-incoming-path` is set by src/middleware.ts on every
+// Header source: `x-incoming-path` is set by src/proxy.ts on every
 // matched request (NextResponse.next({ request: { headers } })). This works
 // self-hosted (Coolify). The previous header name (see middleware.ts history)
 // was a Vercel-INTERNAL header that never exists on this runtime, so
@@ -68,7 +68,7 @@ async function RedirectChecker(): Promise<null> {
 
   try {
     const headerList = await headers();
-    // x-incoming-path — set by src/middleware.ts (self-hosted-safe; the
+    // x-incoming-path — set by src/proxy.ts (self-hosted-safe; the
     // previous name was a Vercel-internal header, always null on this runtime).
     const incomingPath = headerList.get("x-incoming-path");
 

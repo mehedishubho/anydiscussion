@@ -52,10 +52,10 @@ const nextConfig: NextConfig = {
       // infer the WRONG root when this checkout is nested inside another
       // checkout (git worktrees under .claude/worktrees/ detect the parent
       // repo's pnpm-workspace.yaml). Symptom observed in Next 16.2.9 dev:
-      // middleware.ts compiles + registers in
-      // .next/dev/server/middleware-manifest.json but the dev router-server
-      // never INVOKES it. Remedy per Next's own build warning: set
-      // turbopack.root. Harmless in the main checkout (root === repo root).
+      // proxy.ts (the Next 16 rename of middleware.ts) compiles + registers in
+      // .next/dev/server/middleware-manifest.json and, with turbopack.root set,
+      // the dev router-server INVOKES it correctly. Remedy per Next's own build
+      // warning: set turbopack.root. Harmless in the main checkout (root === repo root).
       root: __dirname,
       rules: {
         '*.svg': {

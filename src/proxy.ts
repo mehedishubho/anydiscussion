@@ -1,11 +1,11 @@
-// src/middleware.ts
-// [CITED: better-auth/docs/integrations/next.mdx — Next.js middleware; RESEARCH.md Pattern 4]
+// src/proxy.ts
+// [CITED: better-auth/docs/integrations/next.mdx — Next.js proxy; RESEARCH.md Pattern 4]
 // LOCATION NOTE (Plan 05-04): this file MUST live in src/, not the repo root.
 // Next 16.2.9's functions-config-manifest discovery derives its scan directory
-// from the app dir's parent (src/app → src/), so a REPO-ROOT middleware.ts is
+// from the app dir's parent (src/app → src/), so a REPO-ROOT proxy.ts is
 // never analyzed there — its runtime export is missed and production servers
 // (which load Node middleware ONLY via functions-config-manifest.json) skip it
-// entirely. Turbopack's bundler still compiles a root middleware.ts, which made
+// entirely. Turbopack's bundler still compiles a root proxy.ts, which made
 // this failure mode silent (bundle exists, never invoked in prod).
 //
 // *** UX-ONLY auth gate — NOT authoritative RBAC (Pitfall #4) ***
@@ -16,34 +16,34 @@
 // The auth branches below exist purely for UX (don't render the dashboard shell
 // to logged-out users) — never as a security boundary.
 //
-// Why middleware.ts and not proxy.ts: Under Next.js 16.2.9 + Turbopack, proxy.ts
-// is compiled into the middleware bundle but NEVER registered in
-// middleware-manifest.json (manifest stays empty: "middleware":{}), so Next.js
-// routes zero requests through the proxy. Renaming to middleware.ts (the
-// deprecated-but-battle-tested filename) fixes the registration — the manifest
-// now contains all 4 matchers. Next.js 16 still fully supports middleware.ts
-// (build output labels it "ƒ Proxy (Middleware)"). Filed as an observation here,
-// not a Next.js bug report.
+// Why proxy.ts (Next 16 rename of middleware.ts): the "middleware" file convention
+// is deprecated in Next.js 16; the file was renamed to proxy.ts and the exported
+// function to `proxy()` (codemod: npx @next/codemod@canary middleware-to-proxy).
+// The build output labels it "ƒ Proxy (Middleware)" and registers it in
+// middleware-manifest.json. The previous branch-A note claiming proxy.ts failed to
+// register predated the `turbopack.root` fix in next.config.ts (see that file's
+// comment) — with root set, proxy.ts compiles AND registers, so we use the
+// supported proxy convention.
 //
-// ── NODE runtime (Plan 05-04 deviation, Rule 1) ───────────────────────────────
-// `export const runtime = "nodejs"` below is REQUIRED. This middleware runs the
-// redirects-table lookup (D-12 slug-change SEO continuity) directly, and
-// Drizzle/pg cannot execute in the edge sandbox the middleware defaults to.
-// Next 16.2.9 compiles a nodejs-runtime middleware to .next/server/middleware.js
-// (functions-config-manifest.json lists /_middleware with runtime:"nodejs") and
-// runs it in the Node server process, pre-routing.
+// ── NODE runtime ──────────────────────────────────────────────────────────────
+// Proxy files DEFAULT to the Node.js runtime in Next.js 16 (the `runtime` config
+// option is NOT available in proxy files — setting it throws). This is exactly
+// what we need: the redirects-table lookup (D-12 slug-change SEO continuity)
+// below runs directly, and Drizzle/pg cannot execute in the edge sandbox the
+// middleware used to default to. Next compiles a nodejs-runtime proxy to
+// .next/server/middleware.js and runs it in the Node server process, pre-routing.
 //
 // WHY the lookup lives HERE and not only in not-found.tsx (Phase 5 UAT test 5
 // root cause, verified live): under cacheComponents (PPR) the 404 route's static
 // shell — including its HTTP STATUS — flushes BEFORE the RedirectChecker
 // <Suspense> hole streams. A redirect thrown inside that hole can only become a
 // client-side <meta refresh> (curl sees 404/200 + meta tag, never a 3xx). A
-// middleware-level check runs before any rendering starts, so it returns a REAL
+// proxy-level check runs before any rendering starts, so it returns a REAL
 // HTTP 308/307 — which is what crawlers need for slug-change signal transfer.
 // The not-found.tsx RedirectChecker is kept as a graceful streamed fallback.
 //
 // T-05-09 (anti-spoof): the x-incoming-path header is OVERWRITTEN on every
-// matched request below — a client-supplied value never survives middleware. A
+// matched request below — a client-supplied value never survives proxy. A
 // spoofed header could only influence the fallback checker, whose target must
 // already have an admin-created DB row — impact bounded.
 //
@@ -54,9 +54,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionCookie } from "better-auth/cookies";
 import { db, schema } from "@/lib/db";
-
-// REQUIRED for the Drizzle/pg redirect lookup above — see the header comment.
-export const runtime = "nodejs";
 
 // ── Redirects snapshot cache ─────────────────────────────────────────────────
 // The matcher below matches every public page request, so without a cache each
@@ -91,7 +88,7 @@ async function getRedirectRows(): Promise<RedirectSnapshotRow[]> {
   return redirectSnapshot.rows;
 }
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const sessionCookie = getSessionCookie(request);
   const isAuthPage =
@@ -144,7 +141,7 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   // Match dashboard paths + auth pages. Exclude _next/static, _next/image, favicon
-  // (Next handles those before the middleware runs). NOTE: (admin)/(site)/(auth) are
+  // (Next handles those before the proxy runs). NOTE: (admin)/(site)/(auth) are
   // ROUTE GROUPS (parentheses) — they do NOT appear in the URL (R6).
   // NOTE: /reset-password is intentionally NOT in this list. It is reached via an
   // email reset link by a logged-out user carrying a token in the URL query param.
@@ -152,7 +149,7 @@ export const config = {
   // resetPassword endpoint (POST /reset-password). Adding it here would break the
   // flow for a user with a stale session cookie from another device/tab.
   //
-  // The fifth entry (negative lookahead) extends middleware to ALL public page
+  // The fifth entry (negative lookahead) extends proxy to ALL public page
   // paths so the redirects-table check above runs for them — the standard "run
   // on all pages, skip assets" pattern. It excludes framework internals
   // (_next/static, _next/image), favicon.ico, api/ routes, and file-extension-like
