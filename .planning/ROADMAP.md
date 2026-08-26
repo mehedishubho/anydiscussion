@@ -21,7 +21,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 4: Dashboard Chrome** - TailAdmin wired to real data (posts, taxonomy, media, users, pages) + Storage Settings (Cloudinary/push-CDN providers), RHF+Zod, TanStack Query, demo cleanup (completed 2026-07-05)
 - [x] **Phase 5: SEO Basics** - generateMetadata per route, dynamic sitemap + robots, JSON-LD, canonical, OG/Twitter cards, RSS (completed 2026-07-06)
 - [x] **Phase 6: Public Frontend** - Home/blog/archive, category/tag/author archives, single post (Cache Components + Suspense), search, About/Contact/legal, dark mode (completed 2026-07-07)
-- [ ] **Phase 7: Performance & Deploy** - Lighthouse/CWV pass, bundle-budget audit, revalidation audit end-to-end, auth rate limiting, Coolify staging, Dokploy, self host
+- [x] **Phase 7: Performance & Deploy** - Lighthouse/CWV pass, bundle-budget audit, revalidation audit end-to-end, auth rate limiting, Coolify staging, Dokploy, self host (completed 2026-08-26)
 - [x] **Phase 8: Backup & Disaster Recovery** - Configurable multi-destination backups (local default/Google Drive/R2), schedule + retention, automated restore-drill with alerting, Backup Settings dashboard page (completed 2026-07-30)
 
 ## Phase Details
@@ -264,7 +264,7 @@ Plans:
   4. Auth endpoints (sign-in, password reset) are rate-limited. (Backup scheduling moved to Phase 8.)
   5. The app deploys to staging on Coolify via git-push with managed SSL, build-vs-runtime env secrets correctly separated, and the single-instance ISR scaling cliff (multi-replica needs a shared Redis cache handler) documented for v2.
 
-**Plans**: 3/5 plans executed
+**Plans**: 5/5 plans complete
 
 Plans:
 
@@ -282,11 +282,11 @@ Plans:
 
 **Wave 4** *(blocked on Waves 1-3 — needs Dockerfile + rate-limit code + revalidation fixes deployed together)*
 
-- [ ] 07-04-PLAN.md — Ops + deploy slice (autonomous: false): operator runbooks (docs/operations/umami-deploy.md + coolify-deploy.md + dns-email-deliverability.md) + Coolify production deploy with managed SSL (reframed from "staging" per D-32) + secret non-leakage verification (D-21) + Umami service deploy with mandatory default-password change (Pitfall 5) + publish→visible end-to-end on real stack (Pitfall #3 closure) + DKIM/SPF/DMARC DNS records + real-inbox test for password-reset AND email-verification (D-33 closes AUTH-06/07 debt). Covers PERF-06 deploy + ANAL-02 + D-33.
+- [x] 07-04-PLAN.md — Ops + deploy slice (autonomous: false): operator runbooks (docs/operations/umami-deploy.md + coolify-deploy.md + dns-email-deliverability.md) + Coolify production deploy with managed SSL (reframed from "staging" per D-32) + secret non-leakage verification (D-21) + Umami service deploy with mandatory default-password change (Pitfall 5) + publish→visible end-to-end on real stack (Pitfall #3 closure) + DKIM/SPF/DMARC DNS records + real-inbox test for password-reset AND email-verification (D-33 closes AUTH-06/07 debt). Covers PERF-06 deploy + ANAL-02 + D-33.
 
 **Wave 5** *(blocked on Wave 4 — needs live production URL to audit)*
 
-- [ ] 07-05-PLAN.md — Perf audit + ISR docs slice (autonomous: false): lighthouserc.json with the four INP-correct thresholds (Performance ≥ 0.9, LCP ≤ 2500, **INP ≤ 200** via `interaction-to-next-paint` NOT deprecated `max-potential-fid`, CLS ≤ 0.1) + `@lhci/cli` install + Lighthouse CI run against production + manual DevTools audit of every (site) route per D-08 + docs/adr/0001-isr-single-instance-scaling.md (cacheHandler singular, not deprecated name) + README.md ISR scaling section. Covers PERF-01 + D-28/D-29/D-30.
+- [x] 07-05-PLAN.md — Perf audit + ISR docs slice (autonomous: false): lighthouserc.json with the four INP-correct thresholds (Performance ≥ 0.9, LCP ≤ 2500, **INP ≤ 200** via `interaction-to-next-paint` NOT deprecated `max-potential-fid`, CLS ≤ 0.1) + `@lhci/cli` install + Lighthouse CI run against production + manual DevTools audit of every (site) route per D-08 + docs/adr/0001-isr-single-instance-scaling.md (cacheHandler singular, not deprecated name) + README.md ISR scaling section. Covers PERF-01 + D-28/D-29/D-30.
 
 **Pitfalls owned:** #3 (publish→visible verified on real stack), #6 (document single-replica ISR scaling cliff before adding a second Coolify replica), R2 op-count/sharp-CPU cost monitoring + billing alerts, Coolify build-vs-runtime env secret separation.
 **Research flag:** LOW — Coolify staging deploy + env-handling verification (backup/ops strategy moved to Phase 8).
