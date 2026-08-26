@@ -13,6 +13,7 @@
 // it has no server-only deps so it is safe to bundle both ways).
 
 import { z } from "zod";
+import { imageUrlSchema } from "@/lib/validation/image-url";
 
 /** Max grapheme clusters for a meta title (Latin ~50-60 fit; Bangla ~50-70). */
 export const TITLE_MAX_GRAPHEMES = 80;
@@ -58,7 +59,9 @@ export const seoMetaSchema = z.object({
       `Description exceeds ${DESC_MAX_GRAPHEMES} grapheme clusters (Google may truncate)`,
     )
     .optional(),
-  ogImage: z.string().url().optional().or(z.literal("")),
+  // Shared image-URL contract (quick 260826-5l0): ogImage accepts media-library
+  // root-relative URLs; canonicalUrl must stay an absolute full URL (SEO contract).
+  ogImage: imageUrlSchema.optional(),
   canonicalUrl: z.string().url().optional().or(z.literal("")),
 });
 

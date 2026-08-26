@@ -81,7 +81,9 @@ export function TiptapEditor({ value, onChange, editable = true }: TiptapEditorP
   const counts = useEditorState({
     editor,
     selector: ({ editor: e }) => {
-      if (!e) return { words: 0, characters: 0 };
+      // tiptap#7849 (quick 260826-5l0): explicit destroyed-editor guard — this
+      // previously survived only by accident via the storage check.
+      if (!e || e.isDestroyed) return { words: 0, characters: 0 };
       const storage = e.storage.characterCount;
       return {
         words: storage ? storage.words() : 0,

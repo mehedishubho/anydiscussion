@@ -11,6 +11,7 @@
 // Server-action-adjacent — this file has NO "use server" or "use client"
 // directive; it is a pure schema module imported by both sides.
 import { z } from "zod";
+import { imageUrlSchema } from "@/lib/validation/image-url";
 
 // D-20: manual URL-safe Latin + hyphens. Same regex as src/lib/slug/index.ts.
 export const SLUG_REGEX = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -34,8 +35,10 @@ export const postSchema = z.object({
   // message only fires when a number IS provided but fails the check.
   categoryId: z.number({ error: "Category is required" }).int().positive("Category is required"),
   tagIds: z.array(z.number().int().positive()).max(8, "TOO_MANY_TAGS"),
-  // D-10: feature image may be a library image OR an external URL; optional.
-  featureImage: z.string().url().optional().or(z.literal("")),
+  // D-10: feature image may be a library image (root-relative /api/media/<key>),
+  // an external http(s) URL, or empty; optional. Shared imageUrlSchema contract
+  // (quick 260826-5l0 — Phase 05 UAT R1 "Invalid url" fix).
+  featureImage: imageUrlSchema.optional(),
   // D-14: publishedAt stored as UTC; display timezone is site-configured (Asia/Dhaka v1).
   publishedAt: z.date().optional(),
   status: z.enum(["draft", "pending_review", "published"]).optional(),
@@ -47,7 +50,8 @@ export const postSchema = z.object({
   // while the server applies the script-agnostic refine (D-10 shared-schema rule).
   metaTitle: z.string().max(255).optional(),
   metaDescription: z.string().max(600).optional(),
-  ogImage: z.string().url().optional().or(z.literal("")),
+  ogImage: imageUrlSchema.optional(),
+  // Canonicals must stay absolute full URLs (SEO contract) — never imageUrlSchema.
   canonicalUrl: z.string().url().optional().or(z.literal("")),
 });
 
