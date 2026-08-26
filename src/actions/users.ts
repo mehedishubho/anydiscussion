@@ -20,6 +20,12 @@ import { db, schema } from "@/lib/db";
 import { eq, count } from "drizzle-orm";
 import { log } from "@/lib/log";
 import { requireCan, getSessionOrThrow } from "@/lib/permissions";
+import {
+  USER_DELETE_DIGESTS,
+  USER_DELETE_ERROR_MESSAGES,
+  userUpdateSchema,
+  type UserDeleteDigest,
+} from "./users-schema";
 
 // The admin plugin exposes its endpoints FLAT on `auth.api` (verified at runtime
 // against better-auth@1.6.23 — auth.api.admin is undefined; there is NO nested
@@ -290,6 +296,9 @@ export async function listUsers() {
  * @param input  Patch object. `role` is ignored on the self-edit path.
  * @throws Error("UNAUTHORIZED") when no session.
  * @throws Error("FORBIDDEN") when a non-admin attempts a cross-user edit.
+ * @throws Error("INVALID_INPUT") when the input fails userUpdateSchema
+ *         (Plan 07-07 / WR-05 — empty name, >2000-char bio, avatar outside the
+ *         imageUrlSchema contract, or a non-enum role value).
  */
 export async function updateUser(
   userId: string,
@@ -303,17 +312,27 @@ export async function updateUser(
   const session = await getSessionOrThrow();
   const isSelf = session.user.id === userId;
 
+  if (!isSelf) {
+    // Cross-user edit — admin-only. MUST fire BEFORE any db.write (T-04-12).
+    await requireCan({ user: ["update"] });
+  }
+
+  // WR-05: Zod input gate AFTER the session/permission gates, BEFORE the patch
+  // build / db.update. The FULL input (role included) is parsed — the cross-user
+  // path persists `role`, so an unvalidated string there would flow straight to
+  // the DB column. Role-stripping for self-edits happens on the PARSED data
+  // below, preserving T-04-11's graceful degradation for valid enum values.
+  const parsed = userUpdateSchema.safeParse(input);
+  if (!parsed.success) {
+    throw new Error("INVALID_INPUT");
+  }
+
   // Self-edit strips `role` (T-04-11 — no self-promotion). Destructure `role`
   // out of safeInput so it can NEVER reach the bio/avatar patch; the explicit
   // `!isSelf` guard below is the second layer of defense. We do NOT throw on a
   // self-edit role attempt — graceful degradation (UI hides the field; server
   // strips it; no error surfaced to the user).
-  const { role, ...safeInput } = input;
-
-  if (!isSelf) {
-    // Cross-user edit — admin-only. MUST fire BEFORE any db.write (T-04-12).
-    await requireCan({ user: ["update"] });
-  }
+  const { role, ...safeInput } = parsed.data;
 
   // Persist ALL fields (name + AUTH-08 bio/avatar + cross-user role) via a single
   // db.update on schema.user. Per the PLAN <action> step 3 alternative path: the
@@ -387,6 +406,29 @@ export async function updateUser(
 // ============================================================
 
 /**
+ * deleteUserGuardError — build a guard Error carrying a stable `digest`
+ * (Plan 07-07 / CR-02 leg 2, 07-VERIFICATION gap #6).
+ *
+ * LOCAL helper, deliberately NOT exported (a "use server" file may only export
+ * async functions — the digest constants + message map live in the pure sibling
+ * ./users-schema, imported by both this action and the UsersTable client).
+ *
+ * WHY the digest: React's production flight serializer emits digest-only error
+ * chunks (emitErrorChunk stringifies { digest } — verified in the installed
+ * dist), so the readable .message below never reaches the client in production
+ * builds, but the digest DOES. UsersTable maps err.digest → the friendly copy
+ * via USER_DELETE_ERROR_MESSAGES. The message still exists on the thrown
+ * instance (dev flights forward it; server logs keep it).
+ */
+function deleteUserGuardError(digest: UserDeleteDigest): Error & { digest: UserDeleteDigest } {
+  const err = new Error(
+    USER_DELETE_ERROR_MESSAGES[digest],
+  ) as Error & { digest: UserDeleteDigest };
+  err.digest = digest;
+  return err;
+}
+
+/**
  * deleteUser — admin-gated, GUARDED destructive user removal (owner decision
  * 2026-08-24, revising D-08's disable-only policy).
  *
@@ -410,13 +452,19 @@ export async function updateUser(
  *      readable thrown error. The admin-plugin endpoint cascades the user's
  *      sessions/accounts on the auth side.
  *
+ * Each of the five guard failures throws an error carrying a stable `digest`
+ * (SELF_DELETE / USER_NOT_FOUND / LAST_ADMIN / USER_HAS_POSTS / DELETE_FAILED —
+ * Plan 07-07 / CR-02): digests survive production flight serialization, so
+ * UsersTable can render the friendly copy client-side; the thrown .message is
+ * dev-flight/server-log material only.
+ *
  * @param userId Target user id.
  * @throws Error("FORBIDDEN") when the role lacks user:delete (admin-only).
- * @throws Error("You cannot delete your own account.") on self-delete.
- * @throws Error("User not found.") when the target row does not exist.
- * @throws Error("Cannot delete the last remaining admin. Promote another admin first.")
- * @throws Error("This user still has posts. Reassign or delete their posts first.")
- * @throws Error("Failed to delete user — please try again.") when removeUser rejects.
+ * @throws Error + digest SELF_DELETE on self-delete.
+ * @throws Error + digest USER_NOT_FOUND when the target row does not exist.
+ * @throws Error + digest LAST_ADMIN for the last remaining admin.
+ * @throws Error + digest USER_HAS_POSTS while the target still has posts.
+ * @throws Error + digest DELETE_FAILED when removeUser rejects.
  */
 export async function deleteUser(userId: string) {
   // T-Q-01 — permission check FIRST (Pitfall #1). requireCan already returns
@@ -427,7 +475,7 @@ export async function deleteUser(userId: string) {
   // self-delete test: countResult is mocked to throw MUST_NOT_BE_REACHED).
   if (session.user.id === userId) {
     log.error("deleteUser blocked — self-delete");
-    throw new Error("You cannot delete your own account.");
+    throw deleteUserGuardError(USER_DELETE_DIGESTS.SELF_DELETE);
   }
 
   // Fetch the target's role (needed to decide whether the last-admin guard
@@ -438,7 +486,7 @@ export async function deleteUser(userId: string) {
     .where(eq(schema.user.id, userId));
   if (!target) {
     log.error("deleteUser blocked — target not found", { userId });
-    throw new Error("User not found.");
+    throw deleteUserGuardError(USER_DELETE_DIGESTS.USER_NOT_FOUND);
   }
 
   // T-Q-02 — last-admin guard. Exact createFirstAdmin count pattern; only when
@@ -450,7 +498,7 @@ export async function deleteUser(userId: string) {
       .where(eq(schema.user.role, "admin"));
     if (Number(adminRow?.n ?? 0) <= 1) {
       log.error("deleteUser blocked — last remaining admin", { userId });
-      throw new Error("Cannot delete the last remaining admin. Promote another admin first.");
+      throw deleteUserGuardError(USER_DELETE_DIGESTS.LAST_ADMIN);
     }
   }
 
@@ -464,7 +512,7 @@ export async function deleteUser(userId: string) {
     .where(eq(schema.posts.authorId, userId));
   if (Number(postRow?.n ?? 0) > 0) {
     log.error("deleteUser blocked — user still has posts", { userId });
-    throw new Error("This user still has posts. Reassign or delete their posts first.");
+    throw deleteUserGuardError(USER_DELETE_DIGESTS.USER_HAS_POSTS);
   }
 
   // T-Q-04 (260824-qtu) — logging follows RESOLUTION, not assumption: "user
@@ -484,6 +532,6 @@ export async function deleteUser(userId: string) {
     return result;
   } catch (err) {
     log.error("deleteUser failed", { userId, err: String(err) });
-    throw new Error("Failed to delete user — please try again.");
+    throw deleteUserGuardError(USER_DELETE_DIGESTS.DELETE_FAILED);
   }
 }

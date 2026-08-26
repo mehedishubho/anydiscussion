@@ -452,7 +452,11 @@ describe("DASH-04 / D-09 / D-11: updateUser — self-edit + admin cross-user edi
       session: { id: "sess-self" },
     });
 
-    await updateUser("self-1", { name: "Me", bio: "my bio", avatar: "cdn.example.com/me.png" });
+    // Plan 07-07 / WR-05 fixture fix: the avatar here was previously the
+    // scheme-less "cdn.example.com/me.png", which imageUrlSchema REJECTS —
+    // updateUser gained Zod validation in 07-07, so the fixture must use a
+    // value the media-picker contract actually accepts (absolute https URL).
+    await updateUser("self-1", { name: "Me", bio: "my bio", avatar: "https://cdn.example.com/me.png" });
 
     // requireCan was NOT called for the self-edit path (the action short-circuits).
     expect(requireCanMock).not.toHaveBeenCalled();
@@ -514,6 +518,131 @@ describe("DASH-04 / D-09 / D-11: updateUser — self-edit + admin cross-user edi
     expect(updateSetWhere).toHaveBeenCalled();
     expect(revalidatePathMock).not.toHaveBeenCalled();
     expect(revalidateTagMock).not.toHaveBeenCalled();
+  });
+
+  // ============================================================
+  // Plan 07-07 / WR-05 — Zod input validation for updateUser. The action
+  // previously persisted whatever arrived: length-unlimited name/bio, ANY
+  // avatar string (scheme-less hosts like the pre-fix fixture above, and
+  // javascript: URLs — both outside the imageUrlSchema contract every other
+  // image field obeys), and on the cross-user path ANY role string. These
+  // tests pin the INVALID_INPUT contract: userUpdateSchema.safeParse fires
+  // AFTER the session/permission gates, BEFORE the patch build / db.update.
+  // ============================================================
+  describe("Plan 07-07 / WR-05: updateUser validates input via Zod (INVALID_INPUT)", () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+      // Default: requireCan DENIES; cross-user tests override to admin-allow.
+      requireCanMock.mockImplementation(() => {
+        throw new Error("FORBIDDEN");
+      });
+      // Default session: admin editing target-1 (cross-user). Self-edit tests
+      // override with a session whose id matches the target userId.
+      getSessionOrThrowMock.mockResolvedValue({
+        user: { id: "admin-1", role: "admin" },
+        session: { id: "sess-1" },
+      });
+      updateSetWhere.mockResolvedValue(undefined);
+      countResult.mockResolvedValue([{ username: "target-user" }]);
+      revalidatePathMock.mockReturnValue(undefined);
+      revalidateTagMock.mockReturnValue(undefined);
+    });
+
+    it("self-edit with an EMPTY name throws INVALID_INPUT BEFORE db.update", async () => {
+      getSessionOrThrowMock.mockResolvedValue({
+        user: { id: "self-1", role: "author" },
+        session: { id: "sess-self" },
+      });
+      updateSetWhere.mockImplementation(() => {
+        throw new Error("MUST_NOT_BE_REACHED");
+      });
+
+      await expect(updateUser("self-1", { name: "" })).rejects.toThrow("INVALID_INPUT");
+      expect(updateSetWhere).not.toHaveBeenCalled();
+    });
+
+    it("self-edit with a SCHEME-LESS avatar throws INVALID_INPUT (imageUrlSchema contract)", async () => {
+      getSessionOrThrowMock.mockResolvedValue({
+        user: { id: "self-1", role: "author" },
+        session: { id: "sess-self" },
+      });
+      updateSetWhere.mockImplementation(() => {
+        throw new Error("MUST_NOT_BE_REACHED");
+      });
+
+      await expect(
+        updateUser("self-1", { avatar: "cdn.example.com/me.png" }),
+      ).rejects.toThrow("INVALID_INPUT");
+      expect(updateSetWhere).not.toHaveBeenCalled();
+    });
+
+    it("self-edit with a javascript: avatar throws INVALID_INPUT", async () => {
+      getSessionOrThrowMock.mockResolvedValue({
+        user: { id: "self-1", role: "author" },
+        session: { id: "sess-self" },
+      });
+      updateSetWhere.mockImplementation(() => {
+        throw new Error("MUST_NOT_BE_REACHED");
+      });
+
+      await expect(
+        updateUser("self-1", { avatar: "javascript:alert(1)" }),
+      ).rejects.toThrow("INVALID_INPUT");
+      expect(updateSetWhere).not.toHaveBeenCalled();
+    });
+
+    it("bio longer than 2000 characters throws INVALID_INPUT", async () => {
+      getSessionOrThrowMock.mockResolvedValue({
+        user: { id: "self-1", role: "author" },
+        session: { id: "sess-self" },
+      });
+      updateSetWhere.mockImplementation(() => {
+        throw new Error("MUST_NOT_BE_REACHED");
+      });
+
+      await expect(
+        updateUser("self-1", { bio: "b".repeat(2001) }),
+      ).rejects.toThrow("INVALID_INPUT");
+      expect(updateSetWhere).not.toHaveBeenCalled();
+    });
+
+    it("admin cross-user update with an INVALID role value throws INVALID_INPUT AFTER the permission gate", async () => {
+      // Simulates a forged client (TS types prevent legit callers from sending
+      // this) — the value must die at the Zod gate, not reach patch.role.
+      requireCanMock.mockResolvedValue({ user: { id: "admin-1", role: "admin" } });
+      updateSetWhere.mockImplementation(() => {
+        throw new Error("MUST_NOT_BE_REACHED");
+      });
+      const forged = { role: "superadmin" } as unknown as Parameters<typeof updateUser>[1];
+
+      await expect(updateUser("target-1", forged)).rejects.toThrow("INVALID_INPUT");
+      // Ordering: the cross-user permission gate fired FIRST (T-04-12 stays intact)...
+      expect(requireCanMock).toHaveBeenCalledWith({ user: ["update"] });
+      // ...and the write never happened.
+      expect(updateSetWhere).not.toHaveBeenCalled();
+    });
+
+    it("EMPTY avatar string is ALLOWED (the media-picker cleared state — imageUrlSchema accepts \"\")", async () => {
+      getSessionOrThrowMock.mockResolvedValue({
+        user: { id: "self-1", role: "author" },
+        session: { id: "sess-self" },
+      });
+
+      await expect(updateUser("self-1", { avatar: "" })).resolves.not.toThrow();
+      expect(updateSetWhere).toHaveBeenCalled();
+    });
+
+    it("valid https avatar + name + bio still persist (regression pin after the fixture fix)", async () => {
+      getSessionOrThrowMock.mockResolvedValue({
+        user: { id: "self-1", role: "author" },
+        session: { id: "sess-self" },
+      });
+
+      await expect(
+        updateUser("self-1", { name: "Me", bio: "my bio", avatar: "https://cdn.example.com/me.png" }),
+      ).resolves.not.toThrow();
+      expect(updateSetWhere).toHaveBeenCalled();
+    });
   });
 });
 
@@ -663,9 +792,32 @@ describe("DASH-04: deleteUser — guarded destructive removal (owner decision 20
       throw new Error("MUST_NOT_BE_REACHED");
     });
 
-    await expect(deleteUser("self-1")).rejects.toThrow(
-      "You cannot delete your own account.",
-    );
+    // Plan 07-07 / CR-02 (gap #6): each guard error also carries a stable
+    // `digest` — React's production flight serializer forwards digests (never
+    // err.message), so the digest is what the dashboard's friendly-copy map
+    // branches on (UsersTable → users-schema.ts). The message still exists on
+    // the thrown instance (dev flights + server logs); the digest is the
+    // production-surviving contract.
+    await expect(deleteUser("self-1")).rejects.toMatchObject({
+      message: "You cannot delete your own account.",
+      digest: "SELF_DELETE",
+    });
+    expect(removeUserMock).not.toHaveBeenCalled();
+  });
+
+  // Plan 07-07 / CR-02 — the target-not-found guard carries USER_NOT_FOUND.
+  it("target-not-found guard: rejects with 'User not found.' + digest USER_NOT_FOUND before any auth call", async () => {
+    requireCanMock.mockResolvedValue({ user: { id: "admin-1", role: "admin" } });
+    // Target-role fetch returns no row → the not-found guard fires.
+    countResult.mockResolvedValueOnce([]);
+    removeUserMock.mockImplementation(() => {
+      throw new Error("MUST_NOT_BE_REACHED");
+    });
+
+    await expect(deleteUser("missing-user")).rejects.toMatchObject({
+      message: "User not found.",
+      digest: "USER_NOT_FOUND",
+    });
     expect(removeUserMock).not.toHaveBeenCalled();
   });
 
@@ -678,9 +830,10 @@ describe("DASH-04: deleteUser — guarded destructive removal (owner decision 20
       throw new Error("MUST_NOT_BE_REACHED");
     });
 
-    await expect(deleteUser("target-1")).rejects.toThrow(
-      "Cannot delete the last remaining admin. Promote another admin first.",
-    );
+    await expect(deleteUser("target-1")).rejects.toMatchObject({
+      message: "Cannot delete the last remaining admin. Promote another admin first.",
+      digest: "LAST_ADMIN",
+    });
     expect(removeUserMock).not.toHaveBeenCalled();
   });
 
@@ -694,9 +847,10 @@ describe("DASH-04: deleteUser — guarded destructive removal (owner decision 20
       throw new Error("MUST_NOT_BE_REACHED");
     });
 
-    await expect(deleteUser("target-1")).rejects.toThrow(
-      "This user still has posts. Reassign or delete their posts first.",
-    );
+    await expect(deleteUser("target-1")).rejects.toMatchObject({
+      message: "This user still has posts. Reassign or delete their posts first.",
+      digest: "USER_HAS_POSTS",
+    });
     expect(removeUserMock).not.toHaveBeenCalled();
   });
 
@@ -800,9 +954,10 @@ describe("REGRESSION 260824-qtu: middleware-gated admin endpoints receive forwar
     // The live failure mode: the gated endpoint rejects with an opaque APIError.
     removeUserMock.mockRejectedValueOnce(new Error("APIError UNAUTHORIZED"));
 
-    await expect(deleteUser("target-1")).rejects.toThrow(
-      "Failed to delete user — please try again.",
-    );
+    await expect(deleteUser("target-1")).rejects.toMatchObject({
+      message: "Failed to delete user — please try again.",
+      digest: "DELETE_FAILED",
+    });
     // The failure is observable in the server log with the target id.
     expect(logErrorMock).toHaveBeenCalledWith(
       "deleteUser failed",

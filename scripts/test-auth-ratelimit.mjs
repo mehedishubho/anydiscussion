@@ -241,17 +241,23 @@ async function httpCheck() {
     return { status: "passed", detail: `retry-after=${fourth.retryAfter}` };
   } finally {
     try {
-      if (process.platform === "win32") {
-        // execSync, NOT spawn (WR-06, Plan 07-06): a spawned taskkill child
-        // leaves an open libuv async handle that races process.exit teardown —
-        // observed 2026-08-26: the harness printed "Result: PASS (exit 0)" and
-        // THEN crashed in node's src\win\async.c ("!(handle->flags &
-        // UV_HANDLE_CLOSING)", pnpm exit 3221226505) while the taskkill child
-        // had not yet killed the server (orphan held the port). execSync blocks
-        // until the tree-kill completes: no dangling handle, no orphan.
-        execSync(`taskkill /pid ${server.pid} /f /t`, { stdio: "ignore" });
-      } else {
-        process.kill(-server.pid, "SIGTERM");
+      // WR-04 (Plan 07-07 / 07-REVIEW): guard the cleanup kill with a pid
+      // existence check — a failed spawn leaves server.pid undefined, and the
+      // unguarded kill would attempt taskkill/negative-pid on undefined and
+      // log predictable noise on both platform paths.
+      if (server.pid) {
+        if (process.platform === "win32") {
+          // execSync, NOT spawn (WR-06, Plan 07-06): a spawned taskkill child
+          // leaves an open libuv async handle that races process.exit teardown —
+          // observed 2026-08-26: the harness printed "Result: PASS (exit 0)" and
+          // THEN crashed in node's src\win\async.c ("!(handle->flags &
+          // UV_HANDLE_CLOSING)", pnpm exit 3221226505) while the taskkill child
+          // had not yet killed the server (orphan held the port). execSync blocks
+          // until the tree-kill completes: no dangling handle, no orphan.
+          execSync(`taskkill /pid ${server.pid} /f /t`, { stdio: "ignore" });
+        } else {
+          process.kill(-server.pid, "SIGTERM");
+        }
       }
     } catch (err) {
       // WR-06 (Plan 07-06 / 07-REVIEW): a bare ESRCH from a non-leader child
@@ -317,9 +323,15 @@ async function main() {
     console.log(`  FAIL:HTTP CHECK FAILED: ${httpResult.reason}\n`);
     if (structural.passed) {
       console.log("  NOTE: Structural check passed - HTTP failure may be env-specific.\n");
-    } else {
-      process.exitCode = 1;
     }
+    // WR-04 (Plan 07-07 / 07-REVIEW): the failure exit is UNCONDITIONAL. The
+    // previous shape set exitCode=1 only when the structural check ALSO failed,
+    // so an HTTP regression with a passing structural check printed FAIL but
+    // exited 0 — and the summary line printed "Result: PASS (exit 0)" directly
+    // contradicting the FAIL line above it. Any automation consuming the exit
+    // code would have certified a broken limiter. Exit 0 remains ONLY for
+    // "passed" and "skipped".
+    process.exitCode = 1;
   }
 
   console.log("-- Summary --");

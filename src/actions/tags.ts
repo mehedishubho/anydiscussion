@@ -11,6 +11,11 @@
 // D-20: createTag/updateTag call assertUniqueSlug(slug, 'tags').
 // D-08: softDeleteTag sets deletedAt (never hard-deletes).
 //
+// Plan 07-07 / WR-05: createTag/updateTag parse input via Zod (tagSchema /
+// tagUpdateSchema in ./taxonomy-schema) AFTER requireCan and BEFORE slug
+// validation — empty/oversize names throw Error("INVALID_INPUT") instead of
+// reaching the DB.
+//
 // Server-only — top directive mandatory for Server Actions.
 "use server";
 import { revalidatePath, revalidateTag } from "next/cache";
@@ -19,6 +24,7 @@ import { asc, eq, isNull } from "drizzle-orm";
 import { log } from "@/lib/log";
 import { requireCan } from "@/lib/permissions";
 import { assertUniqueSlug, validateSlug } from "@/lib/slug";
+import { tagSchema, tagUpdateSchema } from "./taxonomy-schema";
 
 interface TagInput {
   name: string;
@@ -27,14 +33,20 @@ interface TagInput {
 
 export async function createTag(input: TagInput) {
   await requireCan({ taxonomy: ["create"] }); // FIRST (Pitfall #1)
-  const slugCheck = validateSlug(input.slug);
+  // WR-05: validate AFTER the permission gate, BEFORE slug validation / DB write.
+  const parsed = tagSchema.safeParse(input);
+  if (!parsed.success) {
+    throw new Error("INVALID_INPUT");
+  }
+  const data = parsed.data;
+  const slugCheck = validateSlug(data.slug);
   if (!slugCheck.valid) {
     throw new Error(`INVALID_SLUG:${slugCheck.reason ?? ""}`);
   }
-  await assertUniqueSlug(input.slug, "tags");
+  await assertUniqueSlug(data.slug, "tags");
   const [row] = await db
     .insert(schema.tags)
-    .values({ name: input.name, slug: input.slug })
+    .values({ name: data.name, slug: data.slug })
     .returning({ id: schema.tags.id, slug: schema.tags.slug });
 
   // D-25 / Pitfall #3 / #7 — revalidate AFTER permission gate AND DB write.
@@ -43,7 +55,7 @@ export async function createTag(input: TagInput) {
   // NO per-tag cacheTag (only categoryId/authorId branches add per-entity tags), so
   // revalidateTag("posts-list", "max") is the only tag-axis invalidation needed.
   // Template: src/actions/posts.ts:325-375.
-  revalidatePath(`/tag/${row?.slug ?? input.slug}`);
+  revalidatePath(`/tag/${row?.slug ?? data.slug}`);
   revalidatePath("/blog");
   revalidatePath("/");
   revalidatePath("/archive");
@@ -77,12 +89,20 @@ export async function getPostTagIds(postId: number): Promise<number[]> {
 
 export async function updateTag(id: number, input: Partial<TagInput>) {
   await requireCan({ taxonomy: ["update"] }); // FIRST (Pitfall #1)
-  if (input.slug) {
-    const slugCheck = validateSlug(input.slug);
+  // WR-05: validate AFTER the permission gate, BEFORE slug validation / DB write.
+  // A PRESENT-BUT-EMPTY name now throws INVALID_INPUT — previously the truthiness
+  // spread below silently DROPPED it.
+  const parsed = tagUpdateSchema.safeParse(input);
+  if (!parsed.success) {
+    throw new Error("INVALID_INPUT");
+  }
+  const data = parsed.data;
+  if (data.slug) {
+    const slugCheck = validateSlug(data.slug);
     if (!slugCheck.valid) {
       throw new Error(`INVALID_SLUG:${slugCheck.reason ?? ""}`);
     }
-    await assertUniqueSlug(input.slug, "tags", id);
+    await assertUniqueSlug(data.slug, "tags", id);
   }
 
   // Fetch the current slug BEFORE the write so we can revalidate the OLD public URL
@@ -96,15 +116,17 @@ export async function updateTag(id: number, input: Partial<TagInput>) {
   await db
     .update(schema.tags)
     .set({
-      ...(input.name ? { name: input.name } : {}),
-      ...(input.slug ? { slug: input.slug } : {}),
+      // `!== undefined` (NOT truthiness) — defense in depth behind the Zod gate
+      // (WR-05): presence drives the patch, no validated value is silently dropped.
+      ...(data.name !== undefined ? { name: data.name } : {}),
+      ...(data.slug !== undefined ? { slug: data.slug } : {}),
     })
     .where(eq(schema.tags.id, id));
 
   // D-25 / Pitfall #3 / #7 — revalidate AFTER permission gate AND DB write.
   if (existing?.slug) revalidatePath(`/tag/${existing.slug}`);
-  if (input.slug && input.slug !== existing?.slug) {
-    revalidatePath(`/tag/${input.slug}`);
+  if (data.slug && data.slug !== existing?.slug) {
+    revalidatePath(`/tag/${data.slug}`);
   }
   revalidatePath("/blog");
   revalidatePath("/");

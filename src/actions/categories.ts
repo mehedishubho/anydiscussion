@@ -11,6 +11,11 @@
 // D-20: createCategory/updateCategory call assertUniqueSlug(slug, 'categories').
 // D-08: softDeleteCategory sets deletedAt (never hard-deletes).
 //
+// Plan 07-07 / WR-05: createCategory/updateCategory parse input via Zod
+// (categorySchema / categoryUpdateSchema in ./taxonomy-schema) AFTER requireCan
+// and BEFORE slug validation — empty/oversize names and >1000-char descriptions
+// throw Error("INVALID_INPUT") instead of reaching the DB.
+//
 // Server-only — top directive mandatory for Server Actions.
 "use server";
 import { revalidatePath, revalidateTag } from "next/cache";
@@ -19,6 +24,7 @@ import { asc, eq, isNull } from "drizzle-orm";
 import { log } from "@/lib/log";
 import { requireCan } from "@/lib/permissions";
 import { assertUniqueSlug, validateSlug } from "@/lib/slug";
+import { categorySchema, categoryUpdateSchema } from "./taxonomy-schema";
 
 interface CategoryInput {
   name: string;
@@ -28,17 +34,23 @@ interface CategoryInput {
 
 export async function createCategory(input: CategoryInput) {
   await requireCan({ taxonomy: ["create"] }); // FIRST (Pitfall #1)
-  const slugCheck = validateSlug(input.slug);
+  // WR-05: validate AFTER the permission gate, BEFORE slug validation / DB write.
+  const parsed = categorySchema.safeParse(input);
+  if (!parsed.success) {
+    throw new Error("INVALID_INPUT");
+  }
+  const data = parsed.data;
+  const slugCheck = validateSlug(data.slug);
   if (!slugCheck.valid) {
     throw new Error(`INVALID_SLUG:${slugCheck.reason ?? ""}`);
   }
-  await assertUniqueSlug(input.slug, "categories");
+  await assertUniqueSlug(data.slug, "categories");
   const [row] = await db
     .insert(schema.categories)
     .values({
-      name: input.name,
-      slug: input.slug,
-      description: input.description ?? null,
+      name: data.name,
+      slug: data.slug,
+      description: data.description ?? null,
     })
     .returning({ id: schema.categories.id, slug: schema.categories.slug });
 
@@ -48,7 +60,7 @@ export async function createCategory(input: CategoryInput) {
   // (via listArchive({categoryId}) + listCategoriesWithCounts). Both mechanisms must fire.
   // Template: src/actions/posts.ts:325-375 (publishPost). 2-arg revalidateTag, concrete
   // literal paths (never "/category/[slug]" route-pattern strings).
-  revalidatePath(`/category/${row?.slug ?? input.slug}`);
+  revalidatePath(`/category/${row?.slug ?? data.slug}`);
   revalidatePath("/blog");
   revalidatePath("/");
   revalidatePath("/archive");
@@ -73,12 +85,20 @@ export async function listCategories() {
 
 export async function updateCategory(id: number, input: Partial<CategoryInput>) {
   await requireCan({ taxonomy: ["update"] }); // FIRST (Pitfall #1)
-  if (input.slug) {
-    const slugCheck = validateSlug(input.slug);
+  // WR-05: validate AFTER the permission gate, BEFORE slug validation / DB write.
+  // A PRESENT-BUT-EMPTY name now throws INVALID_INPUT — previously the truthiness
+  // spread below silently DROPPED it, turning a "rename to nothing" into a no-op.
+  const parsed = categoryUpdateSchema.safeParse(input);
+  if (!parsed.success) {
+    throw new Error("INVALID_INPUT");
+  }
+  const data = parsed.data;
+  if (data.slug) {
+    const slugCheck = validateSlug(data.slug);
     if (!slugCheck.valid) {
       throw new Error(`INVALID_SLUG:${slugCheck.reason ?? ""}`);
     }
-    await assertUniqueSlug(input.slug, "categories", id);
+    await assertUniqueSlug(data.slug, "categories", id);
   }
 
   // Fetch the current slug BEFORE the write so we can revalidate the OLD public URL
@@ -93,9 +113,12 @@ export async function updateCategory(id: number, input: Partial<CategoryInput>) 
   await db
     .update(schema.categories)
     .set({
-      ...(input.name ? { name: input.name } : {}),
-      ...(input.slug ? { slug: input.slug } : {}),
-      ...(input.description !== undefined ? { description: input.description } : {}),
+      // `!== undefined` (NOT truthiness) — defense in depth behind the Zod gate:
+      // a field's PRESENCE drives the patch, so no value that survived validation
+      // can be silently dropped (WR-05).
+      ...(data.name !== undefined ? { name: data.name } : {}),
+      ...(data.slug !== undefined ? { slug: data.slug } : {}),
+      ...(data.description !== undefined ? { description: data.description } : {}),
     })
     .where(eq(schema.categories.id, id));
 
@@ -104,8 +127,8 @@ export async function updateCategory(id: number, input: Partial<CategoryInput>) 
   // the existing URL must refresh (name/description change OR 404-on-rename), and
   // the new URL must be primed for the next request. Template: src/actions/posts.ts:325-375.
   if (existing?.slug) revalidatePath(`/category/${existing.slug}`);
-  if (input.slug && input.slug !== existing?.slug) {
-    revalidatePath(`/category/${input.slug}`);
+  if (data.slug && data.slug !== existing?.slug) {
+    revalidatePath(`/category/${data.slug}`);
   }
   revalidatePath("/blog");
   revalidatePath("/");

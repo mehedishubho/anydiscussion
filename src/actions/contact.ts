@@ -43,26 +43,43 @@ const FALLBACK_RECIPIENT = "admin@anydiscussion.com";
  *   - Honeypot tripped (bot) → silently succeed WITHOUT sending (the bot
  *     thinks it worked; D-07).
  *
- * Throws on:
- *   - Invalid input (Zod parse failure) — the client form validates first, but
- *     the server re-validates per CLAUDE.md ("never trust the client shape").
- *   - Rate-limit exceeded → `Error("RATE_LIMITED")`. The client form maps this
- *     to a friendly "Too many messages — please try again later" message.
- *   - Rate-limit backend unreachable (Redis outage) → `Error("RATE_LIMITED")`
- *     as well — fail-closed, consistent with the auth limiter's documented
- *     T-07-02-06 policy (WR-01: @upstash/ratelimit 2.0.8 slidingWindow has no
- *     catch around safeEval, so Redis errors PROPAGATE out of limit(); this
- *     action catches and maps them to the same public contract).
+ * Returns an error STATE (never throws) on:
+ *   - Invalid input (Zod safeParse failure) → `{ ok: false, error: "INVALID_INPUT" }` —
+ *     the client form validates first, but the server re-validates per CLAUDE.md
+ *     ("never trust the client shape").
+ *   - Rate-limit exceeded → `{ ok: false, error: "RATE_LIMITED" }`. The client
+ *     form maps this to a friendly "Too many messages — please try again later"
+ *     message.
+ *   - Rate-limit backend unreachable (Redis outage) → the SAME returned
+ *     RATE_LIMITED state — fail-closed, consistent with the auth limiter's
+ *     documented T-07-02-06 policy (WR-01: @upstash/ratelimit 2.0.8 slidingWindow
+ *     has no catch around safeEval, so Redis errors PROPAGATE out of limit();
+ *     this action catches and maps them to the same public contract).
+ *
+ * WHY RETURNED STATES AND NOT THROWN ERRORS (07-REVIEW CR-02 / 07-VERIFICATION
+ * gap #6): React's production flight serializer emits digest-only error chunks
+ * (react-server-dom-webpack emitErrorChunk in the installed dist stringifies
+ * `{ digest }` only), so a thrown Server Action error's .message NEVER reaches
+ * the client in production builds — returned values always do. Mirrors
+ * subscribeNewsletter (src/actions/newsletter.ts:198-205), the repo's reference
+ * returned-state shape for public actions.
  *
  * @param input  shape matching {@link ContactInput} (parsed by contactSchema).
- * @returns      `{ ok: true }` on success (real or honeypot-tripped).
+ * @returns      `{ ok: true }` on success (real or honeypot-tripped);
+ *               `{ ok: false, error: "RATE_LIMITED" | "INVALID_INPUT" }` on the
+ *               defined public failure paths.
  */
 export async function submitContact(
   input: unknown,
-): Promise<{ ok: true }> {
+): Promise<{ ok: true } | { ok: false; error: "RATE_LIMITED" | "INVALID_INPUT" }> {
   // 1. Validate via the shared Zod schema (Pitfall #1 — never trust the client
-  //    shape; same schema reused on both sides per CLAUDE.md). Throws on invalid.
-  const data = contactSchema.parse(input);
+  //    shape; same schema reused on both sides per CLAUDE.md). safeParse → a
+  //    returned INVALID_INPUT state instead of a thrown ZodError (CR-02).
+  const parsed = contactSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: "INVALID_INPUT" };
+  }
+  const data = parsed.data;
 
   // 2. Honeypot — silent succeed WITHOUT sending (D-07). Bots auto-fill hidden
   //    fields named "website"/"url"; a real user leaves it blank. Returning ok
@@ -82,7 +99,7 @@ export async function submitContact(
   //    src/lib/rate-limit/upstash-ioredis-adapter.ts).
   //    WR-01 (Plan 07-06): a Redis outage makes limit() REJECT (@upstash/
   //    ratelimit 2.0.8 rethrows non-NOSCRIPT errors from safeEval) — caught
-  //    here and mapped to the same RATE_LIMITED contract (fail-closed,
+  //    here and mapped to the same returned RATE_LIMITED state (fail-closed,
   //    consistent with the auth limiter's T-07-02-06 policy) instead of
   //    surfacing a raw internal error on the public form.
   const headerList = await headers();
@@ -93,10 +110,10 @@ export async function submitContact(
     ({ success } = await contactFormLimiter.limit(ip));
   } catch {
     // Redis unreachable — fail closed under the documented public contract.
-    throw new Error("RATE_LIMITED");
+    return { ok: false, error: "RATE_LIMITED" };
   }
   if (!success) {
-    throw new Error("RATE_LIMITED");
+    return { ok: false, error: "RATE_LIMITED" };
   }
 
   // 4. Read recipient from settings (admin-configurable via the dashboard).

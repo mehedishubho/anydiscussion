@@ -1,5 +1,13 @@
 # Coolify Production Deploy Runbook
 
+> **STATUS: SUPERSEDED (owner decision 2026-07-29).** Production deploys are
+> **MANUAL** — the Docker/Coolify git-push pipeline described in this runbook is
+> **local-dev dry-run material**. Sections 5 (runtime env vars) and 6 (Redis
+> service) are RETAINED as the production env-var reference. The full revision
+> for the manual flow rides the owner's post-app-completion deploy review
+> (07-REVIEW WR-07; recorded in MEMORY.md "Deploy approach: manual, no Docker
+> in prod").
+
 Production deployment of the Any Discussion blog on Coolify. This runbook covers
 the git-push deploy model, runtime secret injection, the Redis managed service,
 and the two build-time decisions the operator MUST resolve before the first
@@ -14,7 +22,9 @@ successful production build (build-needs-DB and the bundle-size gate threshold).
 > builds and deploys directly to production at https://anydiscussion.com. The
 > Docker build-step gates (GATE 1 lint + GATE 2 bundle-size) are therefore the
 > ONLY automated pre-production safety net -- they must pass inside the builder
-> stage before the runtime image is copied.
+> stage before the runtime image is copied. (Per the SUPERSEDED banner above,
+> this git-push pipeline now describes the local-dev dry-run flow, not the
+> manual production deploy.)
 
 ## Prerequisites
 
@@ -122,10 +132,17 @@ static/ISR by default), so it is the fallback, not the default.
 
 ### 4. OPEN DECISION B -- Bundle-size gate threshold (resolve before first deploy)
 
+> **RESOLVED — 1000 KB applied** (owner-accepted override recorded in
+> 07-VERIFICATION.md). The Dockerfile GATE 2 `RUN` line
+> (`node scripts/check-bundle-size.mjs --max-gz-kb=1000`) and the
+> `check-bundle` script in `package.json` both run with the 1000 threshold;
+> baseline is ~749 KB gzipped. Path (a) below was taken; the threshold is no
+> longer an open decision. The section body is retained as the decision record.
+
 **Problem.** GATE 2 of the Dockerfile builder stage runs:
 
 ```
-node scripts/check-bundle-size.mjs --max-gz-kb=100
+node scripts/check-bundle-size.mjs --max-gz-kb=1000
 ```
 
 `scripts/check-bundle-size.mjs` sums the GZIPPED size of EVERY `.js` file under
@@ -133,9 +150,10 @@ node scripts/check-bundle-size.mjs --max-gz-kb=100
 build when the total exceeds the threshold. Next.js does not route-group-separate
 the chunks directory: a single production build emits roughly 48 chunks totalling
 roughly 749 KB gzipped, which includes the `(admin)` dashboard, the Tiptap
-editor, and the public `(site)` chunks together. Against the 100 KB threshold,
-GATE 2 currently FAILS on a clean production build -- it is not measuring a
-leak, it is measuring the combined admin + editor + site output.
+editor, and the public `(site)` chunks together. Against the original 100 KB
+threshold, GATE 2 FAILED on a clean production build -- it was not measuring a
+leak, it was measuring the combined admin + editor + site output (hence the
+recorded 1000 KB resolution above).
 
 What GATE 2 is designed to catch (and does catch) is a CATASTROPHIC leak: e.g.
 Tiptap or TailAdmin accidentally imported into a `(site)` entry, inflating the
@@ -149,21 +167,20 @@ import. GATE 2 is the coarse size backstop.
 
 **Resolution paths (the operator chooses one before the first deploy):**
 
-**(a) RECOMMENDED for v1 -- Raise the threshold to a realistic total budget.**
+**(a) CHOSEN -- Raise the threshold to a realistic total budget (APPLIED).**
 Set GATE 2's threshold to a budget that admits the legitimate combined output
 while still catching a catastrophic regression. A budget in the range of
 **1000 KB gzipped** (1 MB) is realistic for a combined admin/editor/site Next.js
-build. Two ways to apply it:
+build. Applied in both places:
 
-   - Edit the `RUN` line in the Dockerfile builder stage to pass the budget:
+   - The `RUN` line in the Dockerfile builder stage passes the budget:
      `RUN node scripts/check-bundle-size.mjs --max-gz-kb=1000`
-   - OR edit the `check-bundle` script in `package.json` (currently
-     `--max-gz-kb=100`) to match, and have the Dockerfile call `pnpm check-bundle`
-     (or keep the explicit `--max-gz-kb` flag in the Dockerfile).
+   - The `check-bundle` script in `package.json` matches:
+     `node scripts/check-bundle-size.mjs --max-gz-kb=1000`.
 
-   Record the chosen budget and the baseline gzipped total (the script prints it)
-   so a future regression that pushes the total materially above baseline still
-   trips the gate.
+   The budget and the baseline gzipped total (~749 KB; the script prints it) are
+   recorded here and in 07-VERIFICATION.md so a future regression that pushes
+   the total materially above baseline still trips the gate.
 
 **(b) Rescope the gate to public chunks only.** Restrict
 `check-bundle-size.mjs` to chunks that are actually loaded by `(site)` routes
@@ -171,10 +188,11 @@ build. Two ways to apply it:
 This is more work and more fragile (chunk names are hashed), and GATE 1 already
 precisely guards cross-group leaks, so it is not recommended for v1.
 
-> Decision for v1: use path (a). Raise the GATE 2 threshold to a realistic total
-> budget (suggested 1000 KB gzipped) and record the baseline. GATE 1 remains the
-> precise `(site)` -> `(admin)` leak guard. Do NOT lower the threshold back to
-> 100 KB without first rescoping the script, or every production build will fail.
+> Decision RECORDED: path (a) taken -- the GATE 2 threshold is 1000 KB gzipped
+> (applied in the Dockerfile `RUN` line and `package.json`'s `check-bundle`;
+> baseline ~749 KB). GATE 1 remains the precise `(site)` -> `(admin)` leak guard.
+> Do NOT lower the threshold back to 100 KB without first rescoping the script,
+> or every production build will fail.
 
 ### 5. Inject runtime environment variables
 
@@ -187,6 +205,8 @@ with the commands noted.
 |----------|-------------------------|-------|
 | `DATABASE_URL` | `postgresql://<user>:<pw>@<postgres-host>:5432/<db>` | Managed Postgres internal hostname (Coolify network). |
 | `REDIS_URL` | `redis://<redis-internal-host>:6379` | Coolify Redis managed service (section 6). Internal only. |
+| `TRUSTED_PROXY_CIDR` | The Coolify proxy's internal-network CIDR (e.g. the docker-network range `172.16.0.0/12`); comma-separate multiple ranges | **REQUIRED for production behind the appending proxy** (07-06 IP-trust fix). Better Auth `trustedProxies` — which chain entries the app may strip to find the real client IP. Unset means every multi-value `X-Forwarded-For` request resolves to a null client IP, collapsing ALL auth traffic into ONE shared 3-per-15-minutes bucket (a trivial unauthenticated site-wide sign-in/password-reset lockout). An over-broad CIDR matching every hop produces the same collapse. Verify after deploy via the through-the-proxy curl procedure in `scripts/test-auth-ratelimit.mjs`'s SKIP instructions ("AFTER DEPLOY - per-environment IP-trust verification"). |
+| `TRUSTED_XFF_HOP_COUNT` | Empty/absent = `1` (single appending proxy). Set `2` when Cloudflare (orange-cloud) or any second appending proxy fronts the Coolify proxy | Keys the public contact/newsletter form limiters (`src/lib/rate-limit`, `getClientIpFromXff`) on the client IP as observed by the outermost trusted proxy. Too LOW a value shares form buckets site-wide (over-limiting); too HIGH a value keys on client-supplied spoofable chain entries (misconfiguration — treat as such). Post-deploy check: two different clients must land in DIFFERENT form buckets. |
 | `BETTER_AUTH_SECRET` | `openssl rand -base64 32` (>=32 chars) | High-entropy session secret. Never reuse across envs. |
 | `BETTER_AUTH_URL` | `https://anydiscussion.com` | Production base URL, no trailing slash. |
 | `BETTER_AUTH_TRUSTED_ORIGINS` | `https://anydiscussion.com,https://www.anydiscussion.com` | Comma-separated CSRF/origin allowlist (D-21). |
@@ -241,19 +261,27 @@ min on sign-in, password-reset, email-verification -- see `src/lib/auth/index.ts
 
 ### V1. Local Docker build dry-run (before pushing to Coolify)
 
-From the repo root, with the two open decisions resolved (DATABASE_URL/REDIS_URL
-reachable at build time, GATE 2 threshold raised):
+From the repo root, with Decision A satisfied (DATABASE_URL reachable at build
+time; GATE 2's 1000 KB threshold is already applied in the Dockerfile):
 
 ```
 docker build -t anydiscussion-test \
   --build-arg NEXT_PUBLIC_SITE_URL=https://anydiscussion.com \
-  --build-arg NEXT_PUBLIC_CDN_URL=https://cdn.anydiscussion.com .
+  --build-arg NEXT_PUBLIC_CDN_URL=https://cdn.anydiscussion.com \
+  --build-arg DATABASE_URL=postgresql://<user>:<pw>@<host>:5432/<db> .
 ```
+
+`DATABASE_URL` is a declared Dockerfile ARG in the builder stage (Decision A
+path (a) made it required for the prerendering build) — supply it as a build
+arg for the dry-run. Note that `REDIS_URL` has NO Dockerfile ARG: the ioredis
+`lazyConnect` singleton makes the build survive without it, so it is never a
+`docker build` flag; an operator who wants it present at build time supplies it
+via the Coolify build-time environment per Decision A, not via a build arg.
 
 Confirm:
 - GATE 1 (`pnpm lint --max-warnings 0`) passes -- no cross-group import warnings.
-- GATE 2 (`node scripts/check-bundle-size.mjs --max-gz-kb=<budget>`) passes and
-  prints the baseline gzipped total.
+- GATE 2 (`node scripts/check-bundle-size.mjs --max-gz-kb=1000`) passes and
+  prints the baseline gzipped total (~749 KB).
 - The build completes and produces `.next/standalone`.
 
 ### V2. Secret non-leakage (D-21) -- MANDATORY
@@ -269,6 +297,9 @@ Node/container env) should appear. If ANY runtime secret appears, the Dockerfile
 is wrong -- abort and revisit Plan 07-01 before pushing.
 
 ### V3. Production build + SSL provisioning
+
+(Local-dev dry-run flow per the SUPERSEDED banner — production deploys are
+manual per the owner's 2026-07-29 decision.)
 
 1. Push to main: `git push origin main`.
 2. Watch the Coolify build log. Confirm both GATE 1 and GATE 2 run inside the
@@ -288,10 +319,12 @@ Visit `https://anydiscussion.com` and confirm:
 
 ### V5. Redis reachable from the runtime
 
-Check the Next.js container logs for the ioredis connection succeeding (no
-repeated `[redis] connection error` warnings). If Redis is unreachable, auth
-fails closed (sign-in blocked) per T-07-02-06 -- safer for brute-force, but the
-rate limiter is effectively down until Redis is reachable.
+Check the Next.js container logs for the STRUCTURED `redis connection error`
+entries (error level, emitted by the app logger from the ioredis singleton's
+error listener — same output in dev and production). A healthy deploy shows
+NONE of these entries. During a Redis outage they repeat, and auth fails closed
+(sign-in blocked) per T-07-02-06 -- safer for brute-force, but the rate limiter
+is effectively down until Redis is reachable.
 
 ### V6. Rate-limit enforcement
 
@@ -334,10 +367,13 @@ which Coolify rebuilds and redeploys:
   resolved -- provide `DATABASE_URL` as a Coolify build-time env var (section 3,
   path a). The redis `lazyConnect` fix (commit `7999254`) is the precedent for
   this build-time-connection class of problem.
-- **GATE 2 fails with `total gzipped JS ~749 KB exceeds 100 KB threshold`:** open
-  decision B was not resolved -- raise the threshold to a realistic budget
-  (section 4, path a; e.g. `--max-gz-kb=1000`). Do NOT treat this as a leak; GATE
-  1 is the real leak guard.
+- **GATE 2 fails with `total gzipped JS ~749 KB exceeds 100 KB threshold`:** the
+  build ran with the ORIGINAL 100 KB threshold -- decision B is RESOLVED at 1000
+  KB (section 4), and both the Dockerfile `RUN` line and `package.json`'s
+  `check-bundle` already pass `--max-gz-kb=1000`. If you still see the 100 KB
+  message, the build is using a stale Dockerfile/package.json -- pull the current
+  branch. Do NOT treat a plain over-baseline total as a leak; GATE 1 is the real
+  leak guard.
 - **GATE 2 fails after a real regression:** if the total jumps well above the
   recorded baseline (e.g. baseline 750 KB, now 1.4 MB), a genuine leak or bloat
   occurred. Inspect the script's top-10 largest-chunks output and look for
@@ -353,6 +389,14 @@ which Coolify rebuilds and redeploys:
   runtime. Confirm the Redis managed service is running and `REDIS_URL` points at
   the internal hostname. Rate limiting intentionally fails closed when Redis is
   down (T-07-02-06).
+- **Sign-in/reset rate-limited SITE-WIDE after 3 attempts for everyone (shared
+  auth bucket):** `TRUSTED_PROXY_CIDR` is unset or over-broad (section 5 row) —
+  every multi-value XFF request resolves to a null client IP, so ALL visitors
+  share one 3-per-15-minutes bucket and any 3 attempts lock out the whole site.
+  Same symptom class as Redis-down, but login works again exactly 15 minutes
+  after the last attempt from ANYONE. Set the proxy's internal-network CIDR and
+  re-verify with the through-the-proxy curl procedure in
+  `scripts/test-auth-ratelimit.mjs`'s SKIP instructions.
 - **Homepage is blank / 500 after deploy:** the build may have prerendered
   against a DB that had no data, or `DATABASE_URL` at runtime differs from the
   build-time value. Confirm the runtime `DATABASE_URL` points at the production

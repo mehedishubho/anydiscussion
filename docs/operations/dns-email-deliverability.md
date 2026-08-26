@@ -116,7 +116,7 @@ step 8 after the inbox test passes.
 
 ### 6. Real-inbox test -- password-reset email
 
-1. Visit `https://anydiscussion.com/forget-password`.
+1. Visit `https://anydiscussion.com/forgot-password`.
 2. Enter the email address of a REAL inbox you control (Gmail or Outlook primary
    inbox -- not a throwaway). Use an address that is a registered user, OR an
    unknown address (Better Auth returns the same response either way due to
@@ -188,7 +188,7 @@ The Resend dashboard shows the mail-sending domain status as **Verified**.
 
 ### V3. Password-reset email in primary inbox
 
-The password-reset email triggered at `/forget-password` arrived in the PRIMARY
+The password-reset email triggered at `/forgot-password` arrived in the PRIMARY
 inbox (not spam) of the test email provider. Capture a screenshot or the email
 headers showing `Authentication-Results: ... spf=pass dkim=pass dmarc=pass`.
 
@@ -242,6 +242,9 @@ If a DNS record was published incorrectly:
   send error (check the server logs for the structured
   `{level:"error", msg:"email send failed"}` line). The helper logs and does not
   throw (fire-and-forget per R8), so a send failure shows only in logs.
-- **Rate limit blocks the test:** the `/forget-password` endpoint is rate-limited
+- **Rate limit blocks the test:** the Better Auth API endpoint behind the
+  `/forgot-password` page is `/api/auth/forget-password` — the page route and
+  the API endpoint differ by that letter pair (07-REVIEW WR-02; this runbook
+  previously conflated them). The endpoint is rate-limited
   to 3 requests / 15 min (`src/lib/auth/index.ts` `rateLimit.customRules`). If
   you hit the limit during testing, wait 15 minutes or test from a different IP.
