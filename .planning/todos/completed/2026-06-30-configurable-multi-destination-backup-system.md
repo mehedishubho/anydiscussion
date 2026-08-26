@@ -2,6 +2,7 @@
 created: 2026-06-30T20:50:35.748Z
 title: Configurable multi-destination backup system
 area: database
+resolves_phase: 8
 files:
   - .planning/REQUIREMENTS.md (PERF-05 SUPERSEDED → BACKUP-01..05, new Backup & Disaster Recovery group)
   - .planning/ROADMAP.md (new Phase 8 — Backup & Disaster Recovery; backups removed from Phase 7)
@@ -16,6 +17,8 @@ The backup/restore system was originally **Phase 7 (Performance & Deploy)** work
 ## Solution
 
 > **STATUS (2026-07-02): ROADMAP MUTATION APPLIED.** This todo is now reflected in `.planning/ROADMAP.md` (new Phase 8) and `.planning/REQUIREMENTS.md` (BACKUP-01..05; PERF-05 superseded). Phase 8 depends on Phase 7 (runtime environment + `lib/storage` abstraction). Backup tooling selection + Google Drive OAuth caveat remain open for Phase 8 research.
+
+> **RESOLVED (2026-08-27): delivered by Phase 8.** All 5 plans executed (08-01..08-05): multi-destination engine (local default / Google Drive w/ OAuth / R2 + media sync), settings-driven schedule + retention, `/dashboard/settings/backup` admin UI (08-04), automated restore-drill with failure email on cron (08-05, BACKUP-04). Tooling selected via research: pg_dump/pg_restore wrappers. Verification passed 22/22 (08-VERIFICATION.md); live-stack portions deferred to the Phase 7 production-deploy gate.
 
 Build a configurable backup system for Phase 8. All knobs below are **settings-driven (configurable)**, not hardcoded:
 
