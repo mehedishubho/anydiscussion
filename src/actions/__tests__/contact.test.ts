@@ -93,6 +93,7 @@ describe("Plan 07-07 / CR-02 (gap #6): submitContact — returned-state contract
 
   it("schema-invalid input (missing message) → { ok: false, error: 'INVALID_INPUT' }; limiter + sendEmail NEVER called", async () => {
     const { message: _message, ...withoutMessage } = validInput();
+    void _message; // discarded on purpose — building the schema-invalid variant
 
     const result = await submitContact(withoutMessage);
 
