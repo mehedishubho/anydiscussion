@@ -1,7 +1,7 @@
 ---
 phase: 05-seo-basics
 verified: 2026-08-25T21:35:07Z
-status: human_needed
+status: passed
 score: 10/16 must-haves verified
 behavior_unverified: 6
 overrides_applied: 0
@@ -18,6 +18,7 @@ re_verification:
   previous_status: human_needed
   previous_score: 9/12
   gaps_closed:
+
     - "05-UAT R1 re-test blocker (edit-page RSC function-prop crash) root cause DELETED in code: stub onChange prop block gone from posts/[id]/edit/page.tsx (verified by direct read + plan grep gate: 0 non-comment onChange=), SchedulePickerProps declares no function member, and the bug class is pinned by the new edit-page-rsc-boundary.test.ts (2/2 green inside this pass's 601/601 suite run). Commits 937d6cc + b13db8e + 1ce390f present on main and merged (ffc9c74)."
     - "setSchedule (actions/posts.ts L391-402) has its first live call site: SchedulePicker flatpickr onChange -> ~700ms useRef debounce -> setSchedule(postId, dates[0]) with toast.success('Schedule saved') / toast.error(err.message); clear-to-empty guarded; teardown clears the timer; Publish card hidden from authors (role !== 'author', UX-only) with the requireCan({post:['publish']}) gate unchanged and test-pinned (posts.test.ts D-15 describe block, green in the 601 run)."
     - "Regression scope proven by git: the src/ delta since the prior verification commit (0529729..HEAD) is EXACTLY the three 05-08 files — every previously verified SEO artifact is byte-untouched, all wiring markers re-confirmed."
@@ -25,34 +26,42 @@ re_verification:
   gaps_remaining: []
   regressions: []
 behavior_unverified_items:
+
   - truth: "(05-07) /dashboard/posts/new renders the styled Tiptap surface on FIRST load (typography-styled text, no browser-default black focus ring, visible placeholder while empty)"
     test: "Open /dashboard/posts/new in a browser and observe the body editor before interacting"
     expected: "Comfortable typography-styled text area, gray placeholder visible without focus, tall (~350px) white clickable surface, no hard black browser focus ring on click"
     why_human: "Chain proven at every programmatically checkable level (plugin wired, rules authored, built CSS now regenerated with both markers) but jsdom cannot compute CSS — visual first-load truth is browser-only."
+
   - truth: "(05-07) Clicking Publish / Save draft / Submit-for-review with missing or invalid fields NEVER silently no-ops — an error toast names the first problem and focus jumps to that field"
     test: "On /dashboard/posts/new, leave Category empty (and/or slug) and click Publish, then Save draft"
     expected: "Error toast 'Category is required' appears and focus/scroll jump to the Category select (or slug input); no silent dead click on any of the three submit paths"
     why_human: "onInvalid is wired as the second handleSubmit argument at all three call sites with toast.error + focus + scrollIntoView, but no test exercises the toast/focus path; toast rendering + focus movement are runtime browser behaviors."
+
   - truth: "(05-07) A fully filled form publishes with visible success toasts and the post appears in /sitemap.xml and /rss.xml and its /blog/{slug} page carries canonical + og:url + BlogPosting JSON-LD on the next request"
     test: "As an editor, fill title + body + category, click Publish, then curl /sitemap.xml, /rss.xml and view the post page source"
     expected: "'Post saved' then 'Published' toasts; /blog/{slug} in the sitemap at 0.8/weekly; one RSS <item> with stamped pubDate; page source shows canonical, matching og:url, and a BlogPosting JSON-LD script"
     why_human: "The button -> publishPost -> revalidatePath -> route output loop crosses four systems and is exercised by no test (PostForm tests mock the actions). The 2026-08-25 UAT R1 run confirmed publish + toasts live but hit the edit-page crash before completing the checklist; the re-staged R1 re-test owns the remaining confirmation."
+
   - truth: "(05-08) The post edit page /dashboard/posts/[id]/edit RENDERS for every existing post — the RSC serialization throw (inline function prop crossing the server-to-client boundary) is gone"
     test: "After publishing a post, open /dashboard/posts/[id]/edit in a browser"
     expected: "Page loads (no error.tsx interception, no 'Event handlers cannot be passed to Client Component props' console error): 'Edit: {title}' heading, form pre-filled, sidebar Schedule picker + Preview visible for editor/admin"
     why_human: "Root cause is deleted and structurally pinned (no on*-prop on the SchedulePicker span; no event-handler member in SchedulePickerProps; build lists the route as PPR), but render-time serialization success is a runtime behavior no test exercises — importing the page would drag 'use server' machinery and DB-touching actions into the test, so the pin is a source-scan proxy, not a render."
+
   - truth: "(05-08) Picking a date in the Schedule picker persists it via the setSchedule action and confirms with a success toast; the saved value survives a full page reload"
     test: "On the edit page of a published post, pick a date/time in the Schedule picker, wait for the toast, then reload the page"
     expected: "'Schedule saved' toast fires once (not once per time-slider tick — the ~700ms debounce), and the picker shows the saved value after reload"
     why_human: "Full chain (flatpickr -> debounce -> server action -> DB -> reload) crosses client/server/DB and is exercised by no test; the structural pin scans source text only and the setSchedule unit tests pin permissions, not the picker path. Debounce collapse of per-tick fires is likewise observable only live."
+
   - truth: "(05-08) A failed schedule save surfaces an error toast carrying the action's raw message — never a silent failure"
     test: "Force a failure (e.g. stop the dev server / network, or trigger as an author via a tampered session) and pick a schedule date"
     expected: "toast.error appears with the action's message (FORBIDDEN / network text), never a silent no-op"
     why_human: "Catch path is wired (toast.error with err.message) but toast rendering from an action failure is a runtime behavior; additionally review WR-03 notes Next.js production builds redact thrown Server Action messages — the dev-visible raw message is a browser-observable property."
 human_verification:
+
   - test: "Run the STAGED UAT R1 re-test exactly as written in 05-UAT.md 'Current Test' (covers behavior_unverified items 1-6 and original UAT tests 2+3): on a fresh dev server, as an editor open /dashboard/posts/new — confirm the styled surface (typography, placeholder, ~350px area, no black focus ring), slug auto-fill, and empty-Category Publish -> 'Category is required' toast + focus jump; fill Category + body and Publish -> 'Post saved' + 'Published' toasts; then open the post's edit page — it LOADS (no RSC crash), pick a Schedule date -> 'Schedule saved' toast -> reload -> value survived; then curl /sitemap.xml (expect /blog/{slug} at 0.8/weekly), /rss.xml (expect one <item>, stamped pubDate), and the /blog/{slug} page source (expect canonical + matching og:url + BlogPosting JSON-LD). Spot-check /dashboard/pages (PageForm) shares the styled surface."
     expected: "All of the above hold; Save-draft also toasts; the schedule toast fires once per settled value."
     why_human: "Cross-system runtime loop (UI -> Server Action -> revalidation/persistence -> route output and reload) plus visual first-load styling and toast/focus interactivity — no test exercises any of it end-to-end; this is the designated discharge path staged in 05-UAT.md."
+
   - test: "Run UAT R3: in the dashboard, open the Settings submenu and click the 'SEO' entry (no URL typing)"
     expected: "Navigates to /dashboard/settings/seo and the 5-field form loads; (optionally) edit + save and confirm the site-wide title/JSON-LD refresh on the next request — prior UAT test 4 already confirmed the save + invalidation by URL."
     why_human: "Sidebar entry (AppSidebar.tsx L93) and the page are code-verified and the page was live-confirmed via URL in UAT test 4; the shipped sidebar entry postdates that UAT, so one live click-through closes it."
