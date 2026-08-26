@@ -85,6 +85,20 @@ class IoredisAdapter implements UpstashRatelimitRedis {
 }
 
 /**
+ * Contact form ephemeral cache — the SUPPORTED reset surface for tests
+ * (Plan 07-06 / WR-02). Passed as the `ephemeralCache` option on the
+ * contactFormLimiter config below: the library wraps THIS Map in its Cache
+ * inside ctx (verified against @upstash/ratelimit@2.0.8 dist index.mjs
+ * lines ~757-761 — `if (config.ephemeralCache instanceof Map) this.ctx.cache
+ * = new Cache(config.ephemeralCache)`), so clearing this Map clears the
+ * memoized blocks. Tests import this export and clear() it between cases
+ * (src/lib/rate-limit/__tests__/rate-limit.test.ts). newsletterLimiter is
+ * left without an explicit cache on purpose: the tests exercise only
+ * contactFormLimiter, and an unused exported Map would be dead surface.
+ */
+export const contactFormEphemeralCache = new Map<string, number>();
+
+/**
  * Contact form rate limiter (D-01 — Contact form path).
  *
  * Policy: 5 submissions per IP per 1 hour. Matches the previous in-memory
@@ -100,6 +114,7 @@ export const contactFormLimiter = new Ratelimit({
   redis: new IoredisAdapter(),
   limiter: Ratelimit.slidingWindow(5, "1 h"),
   prefix: "ratelimit:contact",
+  ephemeralCache: contactFormEphemeralCache,
   analytics: false,
 });
 

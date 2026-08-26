@@ -27,7 +27,12 @@ import { asc, eq, isNull } from "drizzle-orm";
 import { log } from "@/lib/log";
 import { requireCan } from "@/lib/permissions";
 import { sanitizeBeforeStore } from "@/lib/sanitize";
-import { pageSchema, type PageSchemaInput } from "./pages-schema";
+import {
+  pageSchema,
+  pageUpdateSchema,
+  type PageSchemaInput,
+  type PageUpdateSchemaOutput,
+} from "./pages-schema";
 
 interface PageInput {
   title: string;
@@ -133,13 +138,15 @@ export async function createPage(input: PageInput) {
  * updatePage — patch an existing page row. Permission-check-first:
  *   await requireCan({ page: ["update"] }) — admins + editors pass; authors fail.
  *
- * Only the supplied fields are written (Partial<PageInput> semantics). Status is
- * parsed by pageSchema; body is sanitized via the walker when present.
+ * Only the supplied fields are written (Partial<PageInput> semantics). Input is
+ * parsed by pageUpdateSchema (every field optional + required id — Plan 07-06 /
+ * 07-REVIEW WR-05; the strict full pageSchema is the CREATE contract only);
+ * body is sanitized via the walker when present.
  */
 export async function updatePage(id: number, input: Partial<PageInput>) {
   await requireCan({ page: ["update"] }); // FIRST (Pitfall #1)
 
-  const data = pageSchema.parse({ ...input, id }) as PageSchemaInput;
+  const data = pageUpdateSchema.parse({ ...input, id }) as PageUpdateSchemaOutput;
 
   const sanitizedBody =
     data.body !== undefined ? sanitizeBodyHtml(data.body) : undefined;

@@ -17,11 +17,22 @@
 // `vi.useFakeTimers` + `resetRateLimit` machinery is GONE — the new limiter is
 // async and delegates to the (mocked) Redis adapter.
 //
-// IMPORTANT: `@upstash/ratelimit`'s `ephemeralCache` (default `Map`) memoizes
-// blocked identifiers until their reset time. Without resetting, a block from
-// one test would short-circuit Redis in the next. We reach into the limiter
-// via `l["cache"]` to clear it before each test (the field is private in the
-// type but extant at runtime — the library sets `ctx.cache = config.ephemeralCache ?? new Map()`).
+// IMPORTANT: `@upstash/ratelimit`'s `ephemeralCache` memoizes blocked
+// identifiers until their reset time (blockUntil). Without resetting, a block
+// from one test short-circuits Redis in the next (reason "cacheBlock"). The
+// reset goes through the EXPORTED `contactFormEphemeralCache` Map from
+// ../upstash-ioredis-adapter — the limiter config passes that exact Map as
+// `ephemeralCache`, and the library wraps it in its Cache inside ctx
+// (verified against @upstash/ratelimit@2.0.8 dist index.mjs lines ~757-761),
+// so clearing the export clears the memoized blocks. (The previous approach
+// probed a private `l["cache"]` field that does not exist at that path — the
+// cache lives at `ctx.cache` — so the old reset was a silent no-op; WR-02.)
+//
+// TRUTH about failures (WR-03, Plan 07-06): @upstash/ratelimit 2.0.8's
+// slidingWindow limit() has NO catch around safeEval, and safeEval RETHROWS
+// non-NOSCRIPT errors — Redis failures PROPAGATE to the caller. Callers
+// (contact.ts) MUST catch and map to the RATE_LIMITED contract (WR-01,
+// Plan 07-06 Task 1); the propagation test below pins that requirement.
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
@@ -116,16 +127,16 @@ function slidingWindowEval(
 // Import AFTER vi.mock above is hoisted. vitest hoists vi.mock calls to the
 // top of the file automatically, so this ordering is safe.
 import { contactFormLimiter } from "../index";
+import { contactFormEphemeralCache } from "../upstash-ioredis-adapter";
 
-// Reset the @upstash/ratelimit ephemeralCache (a Map<string, number>) between
-// tests so a cached block from one test does not short-circuit Redis in the
-// next. The cache field is private at the TYPE level but exists at runtime
-// (RegionRatelimit constructor sets it from config.ephemeralCache ?? new Map()).
+// Reset the @upstash/ratelimit ephemeralCache between tests so a cached block
+// from one test does not short-circuit Redis in the next. WR-02 (Plan 07-06):
+// clears the EXPORTED Map that the contactFormLimiter config passes as
+// `ephemeralCache` — the supported reset surface. The library wraps this
+// exact Map instance in its Cache inside ctx (dist index.mjs ~757-761), so
+// clear() here clears the memoized blocks. No private-field probing.
 function resetEphemeralCache() {
-  const cache = (contactFormLimiter as unknown as { cache?: Map<string, number> }).cache;
-  if (cache instanceof Map) {
-    cache.clear();
-  }
+  contactFormEphemeralCache.clear();
 }
 
 describe("Plan 07-02 / contactFormLimiter — Redis-backed sliding window (5 per 1h)", () => {
