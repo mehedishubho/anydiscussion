@@ -1,38 +1,15 @@
 ---
-status: pending
+status: complete
 phase: 05-seo-basics
 source: [05-VERIFICATION.md]
 started: 2026-07-07T04:30:00Z
-updated: 2026-08-26T04:15:00Z
+updated: 2026-08-26T13:45:00Z
 ---
 
 ## Current Test
 <!-- OVERWRITE each test - shows where we are -->
 
-number: R1
-name: Live publish flow re-test (after 05-08)
-expected: |
-  As an editor, open /dashboard/posts/new (fresh load) — the editor-surface, slug,
-  and validation-toast behaviors from the prior re-test (all confirmed working
-  2026-08-25) still hold. After publishing, open the post's edit page — it LOADS
-  (no RSC crash): "Edit: {title}" heading, form pre-filled, sidebar Schedule picker
-  + Preview visible. Picking a date in the Schedule picker saves it (toast) and the
-  value survives a page reload. (Claude then auto-verifies: post in /sitemap.xml +
-  /rss.xml, /blog/{slug} page source shows canonical + og:url + BlogPosting JSON-LD.)
-awaiting: user response
-note: |
-  2026-08-25 run: 05-07 + WR-01/WR-02 fixes CONFIRMED WORKING — publish succeeded
-  end-to-end (post 2 "R1 Walkthrough Test Post" published, published_at stamped,
-  DB-verified). NEW blocker surfaced on the post-publish visit to the edit page:
-  Server Component passes an inline onChange function prop to the client
-  SchedulePicker → RSC serialization throws, edit page unrenderable. Fix = plan
-  05-08 (wire picker to setSchedule action client-side, remove the function prop).
-  2026-08-26 post-05-08 re-test surfaced two new blockers — (a) client crash on
-  the posts edit page (tiptap#7849 destroyed-editor selector) and (b) publish
-  rejected media-library feature images with "Invalid url" (absolute-only image
-  schemas) — both root-caused and fixed by quick task 260826-5l0
-  (.planning/quick/260826-5l0-fix-two-phase-05-uat-r1-bugs-tiptap-v3-7/);
-  R1 live re-test still awaiting user response.
+[testing complete]
 
 ## Tests
 
@@ -44,17 +21,19 @@ note: Auto-verified via curl of live dev server 2026-08-24 — `<title>Any Discu
 
 ### 2. Populated-DB sitemap / RSS / robots content
 expected: With ≥1 published post + page seeded, `curl http://localhost:3000/sitemap.xml` lists home (1.0/daily) + post (/blog/{slug}, 0.8/weekly) + page (/{slug}, 0.5/monthly), no drafts/soft-deleted; `curl /rss.xml` returns `application/rss+xml` with one `<item>` per published post (full-text body in CDATA); `curl /robots.txt` shows allow "/" + disallow ["/preview/","/dashboard/","/signin","/signup","/forgot-password"] + sitemap pointer.
-result: issue
+result: pass
 reported: "when I try to published post the is only showing draft button, no published button and the body text box not working proporly as expected also check if the body box uses elsewhere also fix it. robots/sitemap/RSS pass but I mistakely deleted privacy page"
 severity: major
 partial_pass: robots.txt exact ✓; sitemap structure ✓ incl. published page entry (/contact, 0.5/monthly) ✓; RSS content-type ✓. Blocked-from-verification: /blog/{slug} sitemap entry + RSS <item> — could not publish a post (no Publish button in editor). Separately: privacy page accidentally deleted by user (data, not code).
+note: RESOLVED — publish button + body editor rebuilt (05-07 / WR-01 / WR-02) and confirmed live 2026-08-26 in R1 re-run. The previously blocked-from-verification items now pass: /blog/how-to-build-a-developer-community in sitemap + rss.xml <item> (content-type application/rss+xml), curl-verified 2026-08-26.
 
 ### 3. Editor flow — SEO panel saves post_seo
 expected: As an editor, create a post filling the 4 SEO panel fields (meta title, meta description, canonical URL, OG image), save, then inspect the `post_seo` row in the DB. Row exists with the 4 fields populated; grapheme-invalid inputs are logged + skipped without failing the save (defensive safeParse).
-result: issue
+result: pass
 reported: "after adding all done and hit the save draft it will nothing happen, so I clond not understand is it save or not so add a toast notification"
 severity: major
 partial_pass: none observable — save gives zero UI feedback (success AND failure silent), so the user cannot tell whether the post + post_seo saved. post_seo write to be re-verified from live meta tags after publish fix lands.
+note: RESOLVED — toast pattern added (05-06) and confirmed live 2026-08-26 in R1 re-run (publish success toast, schedule toast); post_seo round-trip proven from live meta tags (canonical + og:url + og:image on /blog/how-to-build-a-developer-community, curl-verified 2026-08-26).
 
 ### 4. Admin flow — settings/seo cache invalidation end-to-end (covers behavior_unverified[0])
 expected: As admin, open `/dashboard/settings/seo`, edit the 5 fields, save, then reload `/` in a browser. The home page `<title>` + JSON-LD update on the NEXT request (no container restart) — proves `revalidateTag("seo-settings","max")` actually invalidates the `getSeoSettings` `'use cache'` snapshot at runtime.
@@ -69,8 +48,8 @@ note: RESOLVED by gap-closure plan 05-04 (middleware moved to src/middleware.ts,
 ## Summary
 
 total: 5
-passed: 2
-issues: 3
+passed: 5
+issues: 0
 pending: 0
 skipped: 0
 blocked: 0
@@ -94,6 +73,7 @@ blocked: 0
     - "Wire Publish (editor/admin, calls publishPost) + Submit-for-review (author, calls submitForReview) buttons in PostForm / posts list"
     - "Rebuild body editor surface to WordPress-classic-editor spec (user screenshot, verbatim ask: 'the body box mush be functional like the screenshot I provided ... so I want same for post and pages or where the body box used'): Visual/Text tabs (Text = HTML source view — planner to scope generateHTML/parse round-trip feasibility); toolbar in this order — Paragraph/block-type dropdown (Paragraph/H1/H2/H3), Bold, Italic, Bulleted list, Numbered list, Blockquote, Align left/center/right (@tiptap/extension-text-align@3 — NEW dep), Insert link, Insert table, More(…) overflow (strike, code, code block, image via MediaPicker, undo/redo); large white min-height writing area; footer bar with live Word count (@tiptap/extension-character-count@3 — NEW dep). Applies EVERYWHERE EditorProvider/TiptapEditor is used (PostForm.tsx + PageForm.tsx). extensions.ts stays the single shared client+server source (round-trip test must still pass). pnpm only; @tiptap/*@3.27.1 line."
   debug_session: ""
+  resolution: "FIXED — 05-07 / WR-01 / WR-02 (editor surface + publish wiring + toasts), confirmed live 2026-08-26 in R1 re-run"
 
 - truth: "Saving a post shows clear success/failure feedback (toast) so the user knows the save landed"
   status: failed
@@ -109,6 +89,7 @@ blocked: 0
   missing:
     - "Add a toast/notification primitive (add sonner OR a small TailAdmin-style toast) and fire success+error toasts from PostForm/PageForm mutations (dashboard-wide pattern)"
   debug_session: ""
+  resolution: "FIXED — sonner + toast pattern (05-06), confirmed live 2026-08-26 in R1 re-run (publish + schedule toasts)"
 
 - truth: "SEO settings page is reachable from the dashboard Settings menu"
   status: failed
@@ -122,6 +103,7 @@ blocked: 0
   missing:
     - "Add SEO item to the Settings submenu in AppSidebar.tsx"
   debug_session: ""
+  resolution: "FIXED — 05-04 23c687b (SEO sidebar entry), confirmed live 2026-08-26 in R3 re-run"
 
 - truth: "A redirects-table row makes visiting old_path redirect to new_path (301→308 / 302→307)"
   status: failed
@@ -147,13 +129,14 @@ requirements SATISFIED in code, no code gaps — 3 runtime flows need live re-te
 
 ### R1. Live publish flow re-run (covers original tests 2 + 3, gaps 1 + 2)
 expected: As an editor, open `/dashboard/posts/new` (or an existing draft). Body editor shows the WordPress-classic surface (Visual/Text tabs, toolbar, word-count footer) and accepts typing. Fill title + body, click Publish — a success toast appears. The post then: (a) appears in `/sitemap.xml` under `/blog/{slug}` (0.8/weekly), (b) appears in `/rss.xml` as an `<item>` with a correct `pubDate` (CR-02: publish stamps `publishedAt`), (c) its live page source at `/blog/{slug}` shows `<link rel="canonical" href=".../blog/{slug}">` (CR-01), matching `og:url`, and a `BlogPosting` JSON-LD script (CR-03-escaped). Save-draft also toasts.
-result: issue
-fix_state: partial — 05-07 b84f952/38ace32/e0356e9 + WR-01 657ff3e + WR-02 e12cb59 fixes CONFIRMED WORKING live (publish flow succeeded end-to-end, post 2 published); NEW blocker found in the same re-test (edit-page RSC crash, see "edit page renders" gap below) — fix = plan 05-08
+result: pass
+fix_state: resolved — 05-07 b84f952/38ace32/e0356e9 + WR-01 657ff3e + WR-02 e12cb59 fixes CONFIRMED WORKING live (publish flow succeeded end-to-end, post 2 published); NEW blocker found in the same re-test (edit-page RSC crash, see "edit page renders" gap below) — fix = plan 05-08
 reported: "first time body box input showing like this and after adding all data and click on publish button nothing happen"
 severity: major
 evidence: "Screenshot 2026-08-25: toolbar renders correctly (Visual/Text tabs, Paragraph dropdown, B/I/lists/align/link/table/More, word-count footer '1 word, 9 characters') BUT the writing surface renders as an unstyled plain text box (black border, no padding, no ProseMirror placeholder) instead of the Tiptap contenteditable surface. Typed text 'hjhjhjhj' lands in the plain box. Category* field visible and empty. After filling all data, clicking Publish produces no toast, no navigation, no visible save."
 retest_reported: 'Console Error {"level":"error","msg":"Event handlers cannot be passed to Client Component props. <... postId={2} publishedAt={Date} onChange={function onChange} initialTimezone=...> ... If you need interactivity, consider converting part of this to a Client Component.","name":"Error"} at src/app/error.tsx (20:13) GlobalError.useEffect — "getting this error and toste notification showing error url when I click to publish"'
 retest_severity: blocker — edit page unrenderable (EVERY visit to /dashboard/posts/[id]/edit throws). Publish itself SUCCEEDED: DB shows post 2 published_at=2026-08-25 18:05:37.
+note: PASS 2026-08-26 (owner live re-test on dev server with 260826-5l0 + 260826-oif/pqg hot-reloaded): /dashboard/posts/new renders clean under 16.3.3; publish with a MEDIA-LIBRARY feature image succeeded (no "Invalid url"); edit page loads (no tiptap#7849 crash, no RSC serialization error); Schedule picker toasts and the value survives reload. Automated curl same day: sitemap lists /blog/how-to-build-a-developer-community (lastmod 2026-08-26T13:23:35Z); rss.xml <item> with matching pubDate; page source shows <link rel="canonical" href="http://localhost:3000/blog/how-to-build-a-developer-community">, matching og:url, og:image = /api/media/... root-relative URL, and BlogPosting JSON-LD with headline + description.
 
 ### R2. Live redirects re-run (covers original test 5, gap 4)
 expected: Dev server running, `redirects` row id 1 (`/old` → `/new`, 301) present in dev DB from the prior UAT (re-insert if the DB was reset). `curl -i http://localhost:3000/old` returns **308** with `Location: /new` (middleware maps 301→308). Unmatched path (e.g. `/nonexistent`) still renders the 404 UI.
@@ -163,7 +146,8 @@ note: Auto-verified via curl 2026-08-25 against live dev server. DB rows present
 
 ### R3. Sidebar SEO click-through (covers original test 4 gap)
 expected: In the dashboard, Settings submenu shows an `SEO` entry; clicking it navigates to `/dashboard/settings/seo` and the form loads (no URL typing).
-result: pending
+result: pass
+note: PASS 2026-08-26 (owner live check): Settings submenu shows the SEO entry (added by 05-04 23c687b); click-through loads the /dashboard/settings/seo form — no URL typing needed.
 
 ## Gaps added by re-run
 
