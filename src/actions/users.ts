@@ -23,6 +23,7 @@ import { requireCan, getSessionOrThrow } from "@/lib/permissions";
 import {
   USER_DELETE_DIGESTS,
   USER_DELETE_ERROR_MESSAGES,
+  userUpdateSchema,
   type UserDeleteDigest,
 } from "./users-schema";
 
@@ -295,6 +296,9 @@ export async function listUsers() {
  * @param input  Patch object. `role` is ignored on the self-edit path.
  * @throws Error("UNAUTHORIZED") when no session.
  * @throws Error("FORBIDDEN") when a non-admin attempts a cross-user edit.
+ * @throws Error("INVALID_INPUT") when the input fails userUpdateSchema
+ *         (Plan 07-07 / WR-05 — empty name, >2000-char bio, avatar outside the
+ *         imageUrlSchema contract, or a non-enum role value).
  */
 export async function updateUser(
   userId: string,
@@ -308,17 +312,27 @@ export async function updateUser(
   const session = await getSessionOrThrow();
   const isSelf = session.user.id === userId;
 
+  if (!isSelf) {
+    // Cross-user edit — admin-only. MUST fire BEFORE any db.write (T-04-12).
+    await requireCan({ user: ["update"] });
+  }
+
+  // WR-05: Zod input gate AFTER the session/permission gates, BEFORE the patch
+  // build / db.update. The FULL input (role included) is parsed — the cross-user
+  // path persists `role`, so an unvalidated string there would flow straight to
+  // the DB column. Role-stripping for self-edits happens on the PARSED data
+  // below, preserving T-04-11's graceful degradation for valid enum values.
+  const parsed = userUpdateSchema.safeParse(input);
+  if (!parsed.success) {
+    throw new Error("INVALID_INPUT");
+  }
+
   // Self-edit strips `role` (T-04-11 — no self-promotion). Destructure `role`
   // out of safeInput so it can NEVER reach the bio/avatar patch; the explicit
   // `!isSelf` guard below is the second layer of defense. We do NOT throw on a
   // self-edit role attempt — graceful degradation (UI hides the field; server
   // strips it; no error surfaced to the user).
-  const { role, ...safeInput } = input;
-
-  if (!isSelf) {
-    // Cross-user edit — admin-only. MUST fire BEFORE any db.write (T-04-12).
-    await requireCan({ user: ["update"] });
-  }
+  const { role, ...safeInput } = parsed.data;
 
   // Persist ALL fields (name + AUTH-08 bio/avatar + cross-user role) via a single
   // db.update on schema.user. Per the PLAN <action> step 3 alternative path: the
