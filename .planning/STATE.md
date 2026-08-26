@@ -7,8 +7,8 @@ current_phase_name: seo-basics
 status: executing
 stopped_at: Completed 08-03-PLAN.md (Google Drive destination + OAuth callback)
 last_updated: "2026-08-25T21:05:17.061Z"
-last_activity: 2026-08-25
-last_activity_desc: Phase 05 execution resumed (wave continue)
+last_activity: 2026-08-26
+last_activity_desc: Completed quick task 260826-5l0 — fix UAT R1 bugs (tiptap #7849 guard + image-url schema relax)
 progress:
   total_phases: 8
   completed_phases: 6
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-07-01)
 Phase: 05 (seo-basics) — EXECUTING
 Plan: 1 of 6
 Status: Executing Phase 05
-Last activity: 2026-08-25 — Phase 05 execution resumed (wave continue)
+Last activity: 2026-08-26 — Completed quick task 260826-5l0: fix UAT R1 bugs (tiptap #7849 destroyed-editor guard + image-url schema relax)
 
 Progress: [█░░░░░░░░░] 13%
 
@@ -157,6 +157,7 @@ Recent decisions affecting current work:
 | 260824-ptx | Users dashboard gap closure (Phase 2 UAT test 5) — three-state Status badge (Banned > Unverified > Active, amber warning palette via emailVerified projection) + guarded deleteUser action (permission-first, self / last-admin / has-posts guards; D-08 revised per owner decision) with optimistic-removal Delete UI | 2026-08-24 | 7a0cdbe | [260824-ptx-users-table-unverified-badge-guarded-del](./quick/260824-ptx-users-table-unverified-badge-guarded-del/) |
 | 260824-qtu | Fix live 401 on dashboard user delete — better-auth 1.6.23 adminMiddleware throws UNAUTHORIZED on headerless internal calls; ALL FOUR middleware-gated auth.api call sites (removeUser/banUser/unbanUser/revokeUserSessions) now forward headers: await headers() (createUser/sendVerificationEmail deliberately headerless, pinned by tests); lying premature log.info("user deleted") moved after success + friendly error wrap | 2026-08-24 | dd9578b | [260824-qtu-fix-headerless-auth-api-admin-401-delete](./quick/260824-qtu-fix-headerless-auth-api-admin-401-delete/) |
 | 260824-u1b | Users page confirmations via app modal system — new feature-local ConfirmDialog (TailAdmin Modal wrapper, danger/pending variants) replacing ALL FOUR browser-native window.confirm popups in UsersTable (Ban/Unban/Revoke/Delete) with one state-driven dialog; exact prior wording kept, mutations byte-identical (owner UAT feedback: native browser popup wrong for this dashboard) | 2026-08-24 | da85bf9 | [260824-u1b-users-confirm-dialog-modal](./quick/260824-u1b-users-confirm-dialog-modal/) |
+| 260826-5l0 | Fix two Phase 05 UAT R1 bugs — Tiptap #7849 destroyed-editor crash on /dashboard/posts/[id]/edit (isDestroyed guards in both useEditorState selectors; @tiptap/react 3.27.1 predates upstream fix) + "Invalid url" publish rejection of root-relative /api/media image URLs (shared imageUrlSchema on featureImage/ogImage/defaultOgImage accepting empty / absolute http(s) / root-relative; canonical + base-URL fields stay absolute; protocol-relative //host rejected per T-Q5-01) | 2026-08-26 | a49e155 | [260826-5l0-fix-two-phase-05-uat-r1-bugs-tiptap-v3-7](./quick/260826-5l0-fix-two-phase-05-uat-r1-bugs-tiptap-v3-7/) |
 
 ## Deferred Items
 
