@@ -88,7 +88,7 @@ import {
   updateCategory,
   softDeleteCategory,
 } from "../categories";
-import { createTag, listTags, softDeleteTag } from "../tags";
+import { createTag, listTags, softDeleteTag, updateTag } from "../tags";
 import { postSchema } from "../posts-schema";
 
 describe("CONT-05/06 + T-03-01: taxonomy actions enforce requireCan + assertUniqueSlug FIRST", () => {
@@ -222,6 +222,107 @@ describe("Plan 07-06 / WR-04: taxonomy revalidation calls — concrete literal a
 
     expect(revalidatePathMock).toHaveBeenCalledWith("/tag/existing-slug");
     expect(revalidateTagMock).toHaveBeenCalledWith("posts-list", "max");
+  });
+});
+
+// ============================================================
+// Plan 07-07 / WR-05 — Zod input validation for taxonomy actions.
+// createCategory/updateCategory/createTag/updateTag previously wrote WHATEVER
+// arrived: an empty-string name sailed through on create (DB NOT NULL was the
+// only backstop), updateCategory/updateTag's truthiness spread
+// `input.name ? { name } : {}` SILENTLY DROPPED a present-but-empty name (a
+// "rename to nothing" became a silent no-op instead of an error), and length
+// limits (name ≤120, description ≤1000) did not exist at all (07-REVIEW
+// WR-05). These tests pin the INVALID_INPUT contract: Zod safeParse fires
+// AFTER requireCan, BEFORE slug validation and any db write.
+// ============================================================
+describe("Plan 07-07 / WR-05: taxonomy actions validate input via Zod (INVALID_INPUT)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    requireCanMock.mockResolvedValue({ user: { id: "u1", role: "editor" }, session: { id: "s1" } });
+    validateSlugMock.mockReturnValue({ valid: true });
+    assertUniqueSlugMock.mockResolvedValue(undefined);
+    insertMock.mockResolvedValue([{ id: 1, slug: "news" }]);
+    updateMock.mockResolvedValue(undefined);
+    selectMock.mockResolvedValue([{ slug: "existing-slug" }]);
+    revalidatePathMock.mockReturnValue(undefined);
+    revalidateTagMock.mockReturnValue(undefined);
+  });
+
+  it("createCategory rejects an EMPTY name with INVALID_INPUT BEFORE db.insert", async () => {
+    insertMock.mockImplementation(() => {
+      throw new Error("MUST_NOT_BE_REACHED");
+    });
+    await expect(createCategory({ name: "", slug: "news" })).rejects.toThrow("INVALID_INPUT");
+    expect(insertMock).not.toHaveBeenCalled();
+  });
+
+  it("createTag rejects an EMPTY name with INVALID_INPUT BEFORE db.insert", async () => {
+    insertMock.mockImplementation(() => {
+      throw new Error("MUST_NOT_BE_REACHED");
+    });
+    await expect(createTag({ name: "", slug: "tech" })).rejects.toThrow("INVALID_INPUT");
+    expect(insertMock).not.toHaveBeenCalled();
+  });
+
+  it("createCategory rejects a name longer than 120 characters", async () => {
+    insertMock.mockImplementation(() => {
+      throw new Error("MUST_NOT_BE_REACHED");
+    });
+    await expect(
+      createCategory({ name: "x".repeat(121), slug: "news" }),
+    ).rejects.toThrow("INVALID_INPUT");
+    expect(insertMock).not.toHaveBeenCalled();
+  });
+
+  it("createCategory rejects a description longer than 1000 characters", async () => {
+    insertMock.mockImplementation(() => {
+      throw new Error("MUST_NOT_BE_REACHED");
+    });
+    await expect(
+      createCategory({ name: "News", slug: "news", description: "d".repeat(1001) }),
+    ).rejects.toThrow("INVALID_INPUT");
+    expect(insertMock).not.toHaveBeenCalled();
+  });
+
+  it("updateCategory rejects a PRESENT-BUT-EMPTY name (the truthiness spread silently dropped it — 07-REVIEW WR-05)", async () => {
+    updateMock.mockImplementation(() => {
+      throw new Error("MUST_NOT_BE_REACHED");
+    });
+    await expect(updateCategory(7, { name: "" })).rejects.toThrow("INVALID_INPUT");
+    expect(updateMock).not.toHaveBeenCalled();
+  });
+
+  it("updateTag rejects a present-but-empty name", async () => {
+    updateMock.mockImplementation(() => {
+      throw new Error("MUST_NOT_BE_REACHED");
+    });
+    await expect(updateTag(9, { name: "" })).rejects.toThrow("INVALID_INPUT");
+    expect(updateMock).not.toHaveBeenCalled();
+  });
+
+  it("validation fires AFTER the permission gate (a forbidden caller still gets FORBIDDEN, not INVALID_INPUT)", async () => {
+    requireCanMock.mockImplementation(() => {
+      throw new Error("FORBIDDEN");
+    });
+    await expect(createCategory({ name: "", slug: "news" })).rejects.toThrow("FORBIDDEN");
+  });
+
+  it("validation fires BEFORE slug validation (an invalid name wins over the INVALID_SLUG path)", async () => {
+    validateSlugMock.mockImplementation(() => {
+      throw new Error("INVALID_SLUG_MUST_NOT_WIN");
+    });
+    await expect(createCategory({ name: "", slug: "news" })).rejects.toThrow("INVALID_INPUT");
+  });
+
+  it("description-ONLY update with a valid value still passes (Partial semantics preserved)", async () => {
+    await expect(updateCategory(7, { description: "A short description." })).resolves.toEqual({ id: 7 });
+    expect(updateMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("EMPTY-STRING description is ALLOWED on update (clearing the field is legitimate — only name has min(1))", async () => {
+    await expect(updateCategory(7, { description: "" })).resolves.toEqual({ id: 7 });
+    expect(updateMock).toHaveBeenCalledTimes(1);
   });
 });
 
