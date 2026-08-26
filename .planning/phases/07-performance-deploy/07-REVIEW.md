@@ -1,8 +1,8 @@
 ---
 phase: 07-performance-deploy
-reviewed: 2026-08-26T14:19:48Z
+reviewed: 2026-08-26T17:43:49Z
 depth: standard
-files_reviewed: 20
+files_reviewed: 26
 files_reviewed_list:
   - docs/adr/0001-isr-single-instance-scaling.md
   - docs/operations/coolify-deploy.md
@@ -11,462 +11,393 @@ files_reviewed_list:
   - scripts/check-bundle-size.mjs
   - scripts/test-auth-ratelimit.mjs
   - scripts/test-publish-visible.mjs
+  - src/actions/__tests__/newsletter.test.ts
   - src/actions/__tests__/pages.test.ts
   - src/actions/__tests__/taxonomy.test.ts
   - src/actions/__tests__/users.test.ts
   - src/actions/categories.ts
   - src/actions/contact.ts
+  - src/actions/newsletter.ts
+  - src/actions/pages-schema.ts
   - src/actions/pages.ts
   - src/actions/tags.ts
   - src/actions/users.ts
+  - src/lib/__tests__/post-render.test.ts
   - src/lib/auth/index.ts
+  - src/lib/post-render.ts
+  - src/lib/rate-limit/__tests__/client-ip.test.ts
   - src/lib/rate-limit/__tests__/rate-limit.test.ts
   - src/lib/rate-limit/index.ts
   - src/lib/rate-limit/upstash-ioredis-adapter.ts
   - src/lib/redis/index.ts
 findings:
-  critical: 1
-  warning: 13
-  info: 4
-  total: 18
+  critical: 2
+  warning: 7
+  info: 5
+  total: 14
 status: issues_found
 ---
 
-# Phase 07: Code Review Report
+# Phase 7: Code Review Report
 
-**Reviewed:** 2026-08-26T14:19:48Z
+**Reviewed:** 2026-08-26T17:43:49Z
 **Depth:** standard
-**Files Reviewed:** 20
+**Files Reviewed:** 26
 **Status:** issues_found
 
 ## Summary
 
-The Phase 07 surface was reviewed at standard depth with cross-referencing of
-every library-behavior claim against the installed packages
-(`better-auth@1.6.23`, `@upstash/ratelimit@2.0.8`) and against the Dockerfile,
-package.json, schemas, and helpers the files depend on.
+Full-phase adversarial review of the Phase 7 (Performance & Deploy) surface,
+including the Plan 07-06 additions (trusted-proxy XFF keying, fail-closed Redis
+degradation, ephemeral-cache test surface, partial-update schema, harness
+reliability fixes). Every library-behavior claim was cross-checked against the
+installed packages (`better-auth@1.6.23`, `@upstash/ratelimit@2.0.8`,
+`next@16.2.9` dist, `resend` dist) and against the Dockerfile, package.json,
+schemas, and client components the reviewed files depend on.
 
-The revalidation additions to categories/tags/pages/users actions are
-conventionally correct (permission-check-first, concrete literal paths, 2-arg
-`revalidateTag(tag, "max")`) but have **zero assertion coverage** in the
-updated test mocks. The Redis singleton, Better Auth `customStorage`, and the
-ioredis adapter are solid individually. The dominant problems are: (1) an
-unverified, internally inconsistent client-IP trust model that can either
-collapse the entire auth rate limiter into one global bucket (verified against
-better-auth 1.6.23 dist source) or leave the contact limiter keyed on an
-attacker-controlled value; (2) a false "limiter never throws" contract that the
-test file claims to prove but never exercises; and (3) three runbook/ADR
-technical claims that contradict the actual Dockerfile and library behavior
-(the manual-deploy revision recorded in 07-04-SUMMARY.md is not re-flagged
-here).
+What holds up well: the permission-check-first convention is genuinely enforced
+across all mutating actions (proven by MUST_NOT_BE_REACHED tests, not just
+asserted); `subscribeNewsletter` is the correct public-action resilience shape
+(returned states, last-hop XFF via the one shared helper, fail-closed limiter
+catch); the rate-limit adapter's variadic translation and the WR-02/WR-03 test
+rewrites are faithful to the installed library; the post-render NULL-body guard
+and its test are sound; the ADR's `cacheHandler` naming claim is correct.
+
+The two critical findings are both deploy-time contract breaks: (1) the
+production runbook's runtime env table omits `TRUSTED_PROXY_CIDR` entirely, so
+a by-the-runbook deploy reintroduces the exact single-global-bucket auth lockout
+that Plan 07-06 was written to fix; (2) the `RATE_LIMITED`-via-thrown-error
+contract in `contact.ts` (and the friendly guard messages in `users.ts`) cannot
+reach the client in production builds — React's flight serializer strips error
+messages in production (verified in the installed dist), so `ContactForm`'s
+message mapping is dead code in prod and rate-limited users are told "Something
+went wrong. Please try again."
+
+## Structural Findings (fallow)
+
+No structural findings block was provided for this pass (no JSON payload in the
+invocation). All findings below are narrative findings from direct code review.
 
 ## Critical Issues
 
-### CR-01: Unverified, inconsistent client-IP trust model — Better Auth rate limiter collapses to a single shared bucket on multi-value XFF; contact limiter keys on attacker-controlled first hop
+### CR-01: Production runbook omits TRUSTED_PROXY_CIDR — a by-the-runbook deploy reintroduces the global auth rate-limit bucket (trivial unauthenticated sign-in lockout)
 
-**File:** `src/lib/auth/index.ts:141-148`, `src/actions/contact.ts:75-78`, `scripts/test-auth-ratelimit.mjs:33-37`
-**Issue:** The entire PERF-04 rate-limiting design rests on the claim (repeated
-in `src/lib/auth/index.ts:142-143` and `scripts/test-auth-ratelimit.mjs:34-36`)
-that "Coolify's Caddy/Traefik overwrites X-Forwarded-For; an attacker cannot set
-this header from the client side." This claim is never verified anywhere in the
-repo, and the two limiter paths implement *different, both-fragile* trust
-models:
+**File:** `docs/operations/coolify-deploy.md:179-208` (section 5 runtime env table); cross-ref `src/lib/auth/index.ts:163-175`
+**Issue:** Plan 07-06 made `advanced.ipAddress.trustedProxies` env-driven
+(`TRUSTED_PROXY_CIDR`) precisely because, per the code's own verified comment
+(`src/lib/auth/index.ts:143-157`), with `trustedProxies` empty and
+`ipAddressHeaders` set, Better Auth 1.6.23's `getIPFromHeader` returns **null**
+for ANY multi-value `X-Forwarded-For`. Behind an appending proxy (the Coolify
+Caddy/Traefik default — the runbook itself describes the proxy terminating TLS
+in front of the app) **every** production request carries a multi-value XFF, so
+all auth traffic collapses into one `NO_TRUSTED_IP_KEY` bucket limited to
+**3 requests / 15 minutes across all users**. Any unauthenticated attacker can
+spend 3 requests and lock out sign-in, password reset, and email verification
+for the entire site for 15 minutes at a time — the exact T-07-06-01 threat the
+plan says was mitigated.
 
-1. **Better Auth (verified against installed dist):** with only
-   `advanced.ipAddress.ipAddressHeaders: ["x-forwarded-for"]` configured and
-   `trustedProxies` NOT set,
-   `@better-auth/core@1.6.23/dist/utils/ip.mjs` (`getIPFromHeader`, lines
-   172-191) returns **null for any multi-value XFF header**
-   (`if (forwardedIps.length !== 1) return null;`). The rate limiter then keys
-   every such request into one shared bucket
-   (`rate-limiter/index.mjs:287`: `createRateLimitKey(ip ?? NO_TRUSTED_IP_KEY, path)`).
-   Proxies that *append* to XFF (Traefik's standard behavior) therefore make
-   every production request multi-value → **all anonymous sign-in,
-   password-reset, reset-consume, and email-verification traffic shares a
-   single 3-requests-per-15-minutes bucket**. Three requests from anyone lock
-   out auth for every user for 15 minutes — a trivial unauthenticated DoS of
-   the auth service, and the exact opposite of the intended brute-force
-   protection.
-2. **Contact form:** `src/actions/contact.ts:77` takes
-   `forwardedFor?.split(",")[0]?.trim()` — the **first** hop. Under an
-   appending proxy the first hop is client-supplied, so a bot rotating fake
-   `X-Forwarded-For` values gets a fresh 5/hour budget per fake IP
-   (`newsletterLimiter` shares the same extraction pattern via its consumer).
-   Under an overwriting proxy this is safe; under an appending proxy it is a
-   full bypass. The integration test sends a single-value XFF directly to
-   `next start`, so it validates neither production proxy behavior — it passes
-   while the production trust assumption is untested.
+The mitigation only activates if the operator sets `TRUSTED_PROXY_CIDR` in the
+production runtime environment. The variable IS documented in `.env.example`
+(local dev, empty default) and referenced in the harness's manual-run notes —
+but the runbook's runtime environment variable table (section 5), which is the
+operator's checklist for what Coolify must have set before first deploy, does
+not contain it. Grep confirms zero occurrences of `TRUSTED_PROXY_CIDR` anywhere
+under `docs/`. An operator following the runbook verbatim ships the vulnerable
+configuration, and the code's fail-closed framing ("over-limiting, never
+spoofable") does not help here — this is an availability attack surface on the
+auth endpoints, not a spoofing one.
 
-**Fix:**
-1. Configure `trustedProxies` so better-auth strips the chain from the right
-   (verified supported at `ip.mjs:178-186`):
+**Fix:** Add the variable to the section 5 runtime table with generation/shape
+guidance, and add a verification step:
 
-   ```ts
-   advanced: {
-     ipAddress: {
-       ipAddressHeaders: ["x-forwarded-for"],
-       // Coolify proxy network CIDR (the Caddy/Traefik container):
-       trustedProxies: ["172.16.0.0/12"], // adjust to the actual Coolify network
-     },
-   },
-   ```
-2. In `contact.ts`, stop trusting the first hop — take the **last** entry
-   (appended by our own proxy) or a proxy-set real-IP header:
-   `const ip = forwardedFor?.split(",").pop()?.trim() || "unknown";`
-3. Empirically verify the proxy behavior before shipping: through the deployed
-   proxy, `curl -H "X-Forwarded-For: 1.2.3.4"` the app and log what it
-   resolves. Add that check to `scripts/test-auth-ratelimit.mjs`'s manual-run
-   instructions so the assumption is re-verified per environment.
+```markdown
+| `TRUSTED_PROXY_CIDR` | The Coolify proxy's internal-network CIDR (e.g. the
+  docker-network range like `172.16.0.0/12`); comma-separate multiple ranges |
+  REQUIRED for production behind the appending proxy. Unset ⇒ every request
+  resolves to a null client IP ⇒ ALL auth traffic shares one 3/15-min bucket
+  (trivial unauthenticated lockout). Mis-set (over-broad CIDR matching every
+  hop) ⇒ same shared bucket. Verify after deploy via the through-the-proxy
+  curl check in scripts/test-auth-ratelimit.mjs SKIP instructions
+  ("Human Verification Required" item 4). |
+```
+
+Also mention it in the Troubleshooting entry for "Auth fails closed" — today
+that entry only says "Redis is unreachable", which will mislead an operator
+debugging the shared-bucket lockout.
+
+### CR-02: Thrown-error-message contracts (RATE_LIMITED, friendly guard messages) never reach the client in production — React flight redaction makes the mapping dead code
+
+**File:** `src/actions/contact.ts:94-100` (primary); `src/actions/users.ts:429-467, 478-488` (same mechanism); cross-ref `src/components/site/ContactForm.tsx:92-103`
+**Issue:** `submitContact` signals rate-limiting and Redis-outage by
+`throw new Error("RATE_LIMITED")`, and its docblock (contact.ts:48-53) states
+"The client form maps this to a friendly 'Too many messages — please try again
+later' message". `ContactForm.tsx:98-101` implements that mapping:
+`err instanceof Error && err.message === "RATE_LIMITED" ? "Too many messages…" : "Something went wrong…"`.
+`deleteUser` in users.ts relies on the same mechanism for its five
+deliberately-readable guard messages ("You cannot delete your own account.",
+"Cannot delete the last remaining admin…", etc.).
+
+Verified against the installed runtime: in production builds, React's flight
+server serializes a rejected Server Action promise as an error chunk carrying
+**only a digest** (`node_modules/next/dist/compiled/react-server-dom-webpack/cjs/react-server-dom-webpack-server.node.production.js:1925-1927`
+— `emitErrorChunk(request, id, digest)` stringifies `{ digest }` only; no
+message/name/stack), and the client reconstructs the error with the generic
+message "An error occurred in the Server Components render. The specific
+message is omitted in production builds…" (react-server-dom-webpack-client
+production bundles, line ~1800). `err.message` on the client is therefore never
+`"RATE_LIMITED"` in production — the mapping is dead code, rate-limited and
+Redis-outage users see "Something went wrong. **Please try again.**" (which
+actively invites hammering the limiter), and every `deleteUser` guard failure
+surfaces as a generic error in the dashboard. The contract appears to work in
+dev (dev flight builds forward `message`), so local testing cannot catch it.
+
+Note the irony: the phase invariant "never leak internal errors to public
+forms" is accidentally satisfied by the redaction, but the defined
+`RATE_LIMITED` public contract — the part tests pin — does not function
+end-to-end in production. `subscribeNewsletter` is the correct shape
+(useActionState + returned error states) and is unaffected.
+
+**Fix:** Return error states instead of throwing, mirroring
+`subscribeNewsletter`:
+
+```ts
+// contact.ts — change the public contract from thrown to returned state
+export async function submitContact(
+  input: unknown,
+): Promise<{ ok: true } | { ok: false; error: "RATE_LIMITED" | "INVALID_INPUT" }> {
+  const parsed = contactSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "INVALID_INPUT" };
+  // ...
+  try {
+    ({ success } = await contactFormLimiter.limit(ip));
+  } catch {
+    return { ok: false, error: "RATE_LIMITED" }; // Redis outage — fail closed
+  }
+  if (!success) return { ok: false, error: "RATE_LIMITED" };
+  // ...
+}
+// ContactForm.tsx — switch on the returned state (never err.message)
+```
+
+For `users.ts`, either return `{ error: string }` states from `deleteUser` /
+`updateUser` / `createUser` call sites, or attach a stable `digest` to the
+thrown errors and have the dashboard switch on `err.digest` — but do not keep
+branching on `err.message`.
 
 ## Warnings
 
-### WR-01: `submitContact` crashes with an opaque error when Redis is down — the "limiter never throws" contract is false
+### WR-01: Redis error listener is a no-op in production — outages are invisible, and the runbook's V5 diagnostic can never fire
 
-**File:** `src/actions/contact.ts:78-81`
-**Issue:** `await contactFormLimiter.limit(ip)` has no try/catch, and the
-claim (in `src/lib/rate-limit/index.ts` header and
-`src/lib/rate-limit/__tests__/rate-limit.test.ts:157-158`: "callers in
-contact.ts rely on `success: false` rather than a try/catch") is false.
-Verified against the installed `@upstash/ratelimit@2.0.8` dist:
-`safeEval` rethrows non-NOSCRIPT errors (`dist/index.mjs:147-156`) and the
-`slidingWindow` `limit()` implementation has **no catch** around it. When
-Redis is unreachable, ioredis rejects after `maxRetriesPerRequest: 3`
-(~seconds of retry backoff), `limit()` rejects, and `submitContact` throws a
-raw error that is neither the documented `RATE_LIMITED` nor any graceful
-message — the public contact form hard-fails during a Redis outage with no
-defined user-facing behavior. The auth path's fail-closed behavior is a
-documented decision (T-07-02-06); the contact path's is neither designed nor
-documented.
-**Fix:** Decide and encode the policy explicitly:
+**File:** `src/lib/redis/index.ts:47-54`; cross-ref `docs/operations/coolify-deploy.md:289-294` (V5)
+**Issue:** The singleton's only `error` listener logs via `console.warn` guarded
+by `if (process.env.NODE_ENV !== "production")`. In production (which is the
+only place the Redis outage path matters — fail-closed sign-in blocking), the
+listener swallows the error with **zero output**. The listener still prevents
+the process crash (its real job), but coolify-deploy.md V5 instructs: "Check
+the Next.js container logs for the ioredis connection succeeding (no repeated
+`[redis] connection error` warnings)" — those warnings are structurally
+impossible to observe in production, so V5 vacuously passes during a full
+Redis outage and the operator's only symptom is unexplained fail-closed auth.
+**Fix:** Log unconditionally (rate-limited if desired) via the structured
+`log.error` used elsewhere, e.g. `log.error("redis connection error", { message: err?.message })`, and align V5's wording with what production actually emits.
 
-```ts
-let limited: boolean;
-try {
-  ({ success: limited } = await contactFormLimiter.limit(ip));
-} catch {
-  // Redis down: fail CLOSED (consistent with the auth limiter, T-07-02-06)
-  throw new Error("RATE_LIMITED");
-}
-if (!limited) throw new Error("RATE_LIMITED");
-```
+### WR-02: DNS/deliverability runbook points operators at a nonexistent page — `/forget-password` (actual route is `/forgot-password`)
 
-and correct the false never-throws comments in `rate-limit/index.ts` and the
-test file.
+**File:** `docs/operations/dns-email-deliverability.md:119` (step 6.1) and `:245-247` (troubleshooting); cross-ref `src/app/(full-width-pages)/(auth)/forgot-password/` and `src/proxy.ts:94-97`
+**Issue:** Step 6 of the runbook instructs: "Visit
+`https://anydiscussion.com/forget-password`" to trigger the password-reset
+email. The app's page route is `/forgot-password` (confirmed in the route
+tree; `src/proxy.ts` matcher uses `/forgot-password`). `/forget-password` is
+only the Better Auth **API endpoint** name (`/api/auth/forget-password`, as
+keyed in `rateLimit.customRules`) — the runbook conflates the API endpoint
+with the user-facing page. The URL as written 404s, so verification step 6 and
+V3 cannot be executed as written (and the "Rate limit blocks the test"
+troubleshooting entry repeats the wrong path). **Fix:** Replace both
+occurrences with `/forgot-password` and optionally note that the underlying
+rate-limited endpoint is `/api/auth/forget-password`.
 
-### WR-02: `resetEphemeralCache()` in rate-limit.test.ts is a silent no-op — the cache lives at `ctx.cache` and is a `Cache` wrapper, not a `Map`
+### WR-03: Coolify runbook's two "OPEN DECISIONS" are stale against the repo, and the V1 dry-run command omits the build-time env its own decision A mandates
 
-**File:** `src/lib/rate-limit/__tests__/rate-limit.test.ts:113-118`
-**Issue:** The helper reads
-`(contactFormLimiter as { cache?: Map }).cache`, but in
-`@upstash/ratelimit@2.0.8` the ephemeral cache is assigned in the base
-constructor as `this.ctx.cache = new Cache(new Map())` (dist `index.mjs:757-761`;
-`new Ratelimit(...)` resolves to `RegionRatelimit extends Ratelimit`,
-`index.mjs:1419-1438`). `limiter.cache` is `undefined`, so
-`cache instanceof Map` is always false and the reset never runs. The file's
-own header comment even cites `ctx.cache` — then reads `.cache`. The current
-four tests pass only because their IPs were chosen to avoid cross-test
-collisions (the block cached by test 2's IP `1.2.3.4` is never reused by
-tests 3-4); any future test re-using a previously blocked identifier will
-fail mysteriously.
-**Fix:**
+**File:** `docs/operations/coolify-deploy.md:77-121` (Decision A), `:123-177` (Decision B), `:242-251` (V1); cross-ref `Dockerfile:16` vs `Dockerfile:95`, `package.json:18`
+**Issue:** (a) Decision B is presented as unresolved ("GATE 2 currently FAILS
+on a clean production build", "resolve before first deploy"), but the repo has
+already applied the recommended path: `Dockerfile:95` runs
+`--max-gz-kb=1000` and `package.json`'s `check-bundle` script matches — while
+`Dockerfile:16` (header comment) still says `--max-gz-kb=100`. The runbook
+also still claims the gate runs `--max-gz-kb=100`. An operator reconciling the
+runbook against the repo gets three mutually inconsistent statements, and
+might "re-raise" an already-raised threshold. (b) The V1 local dry-run command
+passes only the two `NEXT_PUBLIC_*` build args and no build-time
+`DATABASE_URL`/`REDIS_URL`, so the dry-run as written fails with the very
+`ECONNREFUSED` its own Decision A section and Troubleshooting entry describe.
+**Fix:** Update Decision B to record "resolved — 1000 KB applied in Dockerfile
+RUN + package.json (fix the stale Dockerfile:16 header comment)"; extend the
+V1 command with the Decision-A build-time env (`--build-arg`/env for
+`DATABASE_URL` and `REDIS_URL`), or explicitly mark the command as requiring
+them.
 
-```ts
-function resetEphemeralCache() {
-  const ctxCache = (contactFormLimiter as unknown as { ctx?: { cache?: { empty?(): void } } }).ctx?.cache;
-  ctxCache?.empty?.(); // Cache.empty() clears the underlying Map
-}
-```
+### WR-04: test-auth-ratelimit.mjs reports PASS (exit 0) when its HTTP assertions actually fail — false green for real limiter regressions
 
-(or expose `ephemeralCache: new Map()` in the limiter config and clear that
-Map directly, which is the supported API.)
+**File:** `scripts/test-auth-ratelimit.mjs:316-323, 328`
+**Issue:** In `main()`, an HTTP result of `"failed"` sets `process.exitCode = 1`
+only when the structural check ALSO failed; if structural passed, the script
+prints "FAIL:HTTP CHECK FAILED" and then exits 0, and the summary line prints
+`Result: PASS (exit 0)` — directly contradicting the FAIL line above it. The
+failure modes that reach `"failed"` are genuine regressions, not environment
+noise: "expected 4th attempt to return 429, got 200 — rate limiter is not
+enforced (Redis customStorage miswired?)" and "429 but no X-Retry-After
+header". Only the `"skipped"` result (server unavailable) deserves exit 0.
+Any automation (or the Docker gates, if this script is ever wired in) consuming
+the exit code will certify a broken limiter. **Fix:** In the `"failed"`
+branch, set `process.exitCode = 1` unconditionally; keep exit 0 only for
+`"passed"` and `"skipped"`. (Also note: `httpCheck`'s Windows cleanup calls
+`taskkill /pid ${server.pid}` — if the spawn itself failed, `pid` is
+`undefined`; the cleanup-error log covers it, but a `server.pid` guard would
+silence a predictable noise line.)
 
-### WR-03: Test "does NOT throw on Redis call failure surface" never simulates a Redis failure — certifies a property that is false
+### WR-05: No server-side input validation on taxonomy name/description and updateUser profile fields — violates the project's own Zod-reuse convention
 
-**File:** `src/lib/rate-limit/__tests__/rate-limit.test.ts:156-164`
-**Issue:** The test calls `contactFormLimiter.limit("203.0.113.42")` against
-the happy-path mock and asserts the result has `success/limit/remaining/reset`
-properties. It never makes the mocked `evalsha`/`eval` reject, so the
-stated subject ("Redis call failure surface") is never exercised — and the
-property it claims to prove is the exact one CR/WR-01 shows to be false (the
-library propagates Redis errors). This test gives false assurance that
-`contact.ts` needs no error handling.
-**Fix:** Replace with a real failure simulation:
+**File:** `src/actions/categories.ts:23-27, 29-43, 74-100`; `src/actions/tags.ts:23-26, 28-38, 78-102`; `src/actions/users.ts:294-334`
+**Issue:** CLAUDE.md's code conventions require Zod schemas "reused for both
+form validation and Server Action input parsing". `pages`, `posts`,
+`newsletter`, and `contact` all follow it; these three actions do not:
+- `createCategory`/`createTag` accept `name: string` with no length cap and no
+  min — an empty-string name is inserted verbatim; `description` likewise
+  unbounded. Only the slug is validated (`validateSlug`).
+- `updateCategory`/`updateTag` use truthiness (`...(input.name ? { name: ... } : {})`)
+  for `name` but `!== undefined` for `description` — an update of
+  `{ name: "" }` silently no-ops instead of being rejected, an inconsistency
+  that will cost someone an debugging hour.
+- `updateUser` accepts `name`/`bio`/`avatar` with no validation at all — any
+  authenticated user (self-edit path) can persist arbitrarily large strings, or
+  an `avatar` value that is not a URL/CDN key, which the public author page
+  then consumes.
+These are permission-gated surfaces, so severity is capped at Warning, but a
+10 MB `name`/`bio` payload is a trivial DB-bloat DoS by any authenticated
+author, and the project convention is explicit.
+**Fix:** Add `categorySchema`/`tagSchema` (`name: z.string().min(1).max(120)`,
+`description: z.string().max(1000).optional()`) parsed first in each action,
+and a `userUpdateSchema` for `updateUser` (`name` max 255, `bio` max ~2000,
+`avatar` as URL-or-empty). Use `!== undefined` consistently for partial
+semantics and let Zod reject empty names instead of silently skipping.
 
-```ts
-it("propagates Redis failures to the caller (documenting contact.ts's required catch)", async () => {
-  mockEvalshaRejects(new Error("ECONNREFUSED")); // wire a mutable failure flag into the vi.mock
-  await expect(contactFormLimiter.limit("203.0.113.42")).rejects.toThrow("ECONNREFUSED");
-});
-```
+### WR-06: Last-hop XFF keying assumes exactly ONE appending proxy — the documented Cloudflare + Coolify topology collapses all visitors into shared 5/hour form buckets
 
-### WR-04: The Phase-07 revalidation additions have zero assertion coverage — all three action test files mock `revalidatePath`/`revalidateTag` but never assert a single call
-
-**File:** `src/actions/__tests__/pages.test.ts:37-40`, `src/actions/__tests__/taxonomy.test.ts:36-39`, `src/actions/__tests__/users.test.ts:68-71`
-**Issue:** The stated Phase-07 change to these files is the revalidation wiring
-(concrete `revalidatePath("/category/${slug}")`, `revalidateTag("posts-list", "max")`,
-`revalidateTag(\`category-${id}\`, "max")`, etc.). The updated mocks exist only
-to prevent the actions from crashing outside Next's static-generation store —
-no test asserts `revalidatePathMock`/`revalidateTagMock` was called, with
-which paths/tags, or in the 2-arg `"max"` form. Regressions like dropping the
-`"max"` argument, revalidating the wrong slug on rename, or omitting the
-old-URL revalidation on soft-delete would all pass green. (taxonomy.test.ts
-line 104 even says "assertions on call patterns where useful" — none follow.)
-**Fix:** Add at least one assertion block per mutating action, e.g.:
-
-```ts
-it("softDeleteCategory revalidates the concrete old slug + tag axes", async () => {
-  await softDeleteCategory(7);
-  expect(revalidatePathMock).toHaveBeenCalledWith("/category/existing-slug");
-  expect(revalidatePathMock).toHaveBeenCalledWith("/sitemap.xml");
-  expect(revalidateTagMock).toHaveBeenCalledWith("posts-list", "max");
-  expect(revalidateTagMock).toHaveBeenCalledWith("category-7", "max");
-});
-```
-
-### WR-05: `updatePage`'s `Partial<PageInput>` contract is broken — `pageSchema` requires `title` and `slug`, so any true partial input throws
-
-**File:** `src/actions/pages.ts:139-142`
-**Issue:** `updatePage(id: number, input: Partial<PageInput>)` documents
-"Only the supplied fields are written (Partial<PageInput> semantics)" and
-`pageSchema.parse({ ...input, id })` — but `pageSchema`
-(`src/actions/pages-schema.ts:26-43`) declares `title: z.string().min(1)` and
-`slug: z.string().min(1)` as **required**. A partial call such as
-`updatePage(id, { status: "published" })` (a status toggle) or
-`{ metaTitle: "..." }` throws a ZodError before any write. The only current
-caller (`PageForm.tsx:89`) happens to always send the full payload, so this is
-latent — but the JSDoc/signature promise a behavior the implementation does
-not have, and pages.test.ts:156 (`updatePage(1, { title: "T2" })`) only works
-because the FORBIDDEN mock throws before the parse. The happy path of both
-`createPage` and `updatePage` (including revalidation) is untested.
-**Fix:** Parse partial updates with a partial schema, keeping the strict
-fields when present:
+**File:** `src/lib/rate-limit/index.ts:48-53` (docblock) and `:61-64`; cross-ref `docs/adr/0001-isr-single-instance-scaling.md:34-36`
+**Issue:** `getClientIpFromXff` returns the last comma-separated entry. Under
+the project's documented production topology — ADR 0001 describes the publish
+loop running "on a single Coolify instance **plus Cloudflare CDN**" — the chain
+seen by the app is `client-spoofed…, realClientIP (appended by Cloudflare),
+cfEdgeIP (appended by the Coolify proxy)`. The last hop is then a **Cloudflare
+edge IP shared by every visitor**, so `contactFormLimiter` and
+`newsletterLimiter` key on it: the whole site shares a handful of 5-per-hour
+buckets. The helper's own docblock acknowledges the multi-proxy mode
+("adjacent callers then share one bucket… over-limits, never under-limits"),
+but the failure direction being "safe" does not make it acceptable — it means
+both public forms are effectively disabled site-wide (every 6th submission
+within an hour, globally, returns RATE_LIMITED). This must be resolved before
+or at deploy: either confirm the apex is DNS-only (grey cloud) so the Coolify
+proxy is the sole appending hop, or extend the helper to strip a configured
+number of trusted hops / prefer `CF-Connecting-IP` when present and trusted.
+**Fix (minimal):** make the trusted-hop count configurable, mirroring the
+auth limiter's approach:
 
 ```ts
-const data = pageSchema.partial().extend({ id: z.number().int().positive() })
-  .parse({ ...input, id }) as Partial<PageSchemaInput>;
-```
-
-### WR-06: test-auth-ratelimit.mjs never kills `next start` on Linux/macOS — process-group kill of a `detached: false` child throws ESRCH, leaving an orphan server that poisons subsequent runs
-
-**File:** `scripts/test-auth-ratelimit.mjs:150-156, 211-221`
-**Issue:** The server is spawned with `{ shell: true, detached: false }`, so
-the child is *not* a process-group leader. The cleanup branch for non-Windows
-calls `process.kill(-server.pid, "SIGTERM")` — a negative PID targets a
-process group with pgid === child pid, which does not exist → ESRCH is thrown
-synchronously → swallowed by the bare `catch {}` ("best-effort kill") → the
-sh/next-start process survives the script. On POSIX, every run leaks a
-server holding port 3940; the next run's `waitForServer()` then succeeds
-immediately against the **stale** server (potentially an older build with
-older rate-limit config), and the 4 sign-in POSTs are issued against it —
-the test can pass or fail for reasons unrelated to the current code.
-**Fix:** Either spawn detached and keep the group kill, or kill the direct
-child and its children explicitly:
-
-```js
-const server = spawn(`npx next start -p ${PORT}`, { stdio: "pipe", shell: true, detached: true });
-// finally:
-process.kill(-server.pid, "SIGTERM"); // now valid: detached:true made it a group leader
-```
-
-### WR-07: `npx next start` in test-auth-ratelimit.mjs violates the pnpm-only project constraint and risks resolving a wrong binary
-
-**File:** `scripts/test-auth-ratelimit.mjs:151`
-**Issue:** CLAUDE.md: "pnpm only. Never use npm or yarn — not in commands,
-scripts, READMEs, or CI config." The script spawns `npx next start`. Beyond
-the convention violation, `npx` falls back to registry resolution if the
-local bin is missing (e.g. pruned node_modules), silently testing a different
-Next version than the app runs. All other scripts in the repo use pnpm.
-**Fix:** `spawn(\`pnpm exec next start -p ${PORT}\`, { stdio: "pipe", shell: true, detached: true });`
-
-### WR-08: check-bundle-size.mjs scans `.next/static/chunks` non-recursively — nested chunk directories (e.g. `chunks/app/**` emitted by webpack builds) are silently excluded from the total
-
-**File:** `scripts/check-bundle-size.mjs:84`
-**Issue:** `readdirSync(STATIC_DIR).filter((f) => f.endsWith(".js"))` reads
-only the top level, while the header (lines 12-14) and the coolify runbook
-both claim the script sums "EVERY `.js` file under `.next/static/chunks/`".
-Webpack App-Router builds emit client component chunks under nested paths
-(`_next/static/chunks/app/<route>-<hash>.js` is the standard webpack output
-shape); if the build ever runs under webpack (or Turbopack emits nested
-groups), those files are excluded from both the total and the top-10
-diagnostics — the gate undercounts and a leak in nested chunks goes
-undetected.
-**Fix:** Walk recursively:
-
-```js
-import { readdirSync, statSync } from "node:fs";
-function walkJsFiles(dir) {
-  return readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
-    const p = join(dir, e.name);
-    return e.isDirectory() ? walkJsFiles(p) : e.name.endsWith(".js") ? [p] : [];
-  });
+// strip N rightmost hops that our own proxy chain appended (env: TRUSTED_XFF_HOP_COUNT, default 1)
+export function getClientIpFromXff(forwardedFor: string | null): string {
+  const hops = (forwardedFor ?? "").split(",").map((h) => h.trim()).filter(Boolean);
+  const n = Number(process.env.TRUSTED_XFF_HOP_COUNT ?? "1");
+  const ip = hops.length > n ? hops[hops.length - 1 - n] : hops[hops.length - 1];
+  return ip || "unknown";
 }
 ```
 
-and verify the count against a fresh local `pnpm build` once (the runbook's
-"~48 chunks / ~749 KB" baseline should be re-confirmed as the recursive
-total).
+…and document the env var in the deploy runbook alongside
+`TRUSTED_PROXY_CIDR` (CR-01), with a post-deploy verification that two
+different clients get different buckets.
 
-### WR-09: coolify-deploy.md contradicts the actual Dockerfile on three points — stale "OPEN DECISION B", false "zero ARG/ENV" security claim, and a dry-run command missing the required build arg
+### WR-07: Deploy runbook's core premise (git push main = automatic production deploy) contradicts the recorded owner decision that production deploys are manual and Docker is local-dev only
 
-**File:** `docs/operations/coolify-deploy.md:73-75, 125-129, 152-177, 246-251, 337-340`
-**Issue:**
-1. **Section 4 (OPEN DECISION B)** quotes the GATE 2 invocation as
-   `--max-gz-kb=100`, says it "currently FAILS on a clean production build",
-   and instructs the operator to edit the Dockerfile `RUN` line and/or
-   `package.json` ("currently `--max-gz-kb=100`"). Both were already changed
-   to `--max-gz-kb=1000` (Dockerfile:95, package.json:18, applied in fc3286d
-   per 07-04-SUMMARY.md). The troubleshooting entry
-   "**GATE 2 fails with `total gzipped JS ~749 KB exceeds 100 KB threshold`**"
-   describes a failure that can no longer occur. An operator following this
-   runbook would "fix" an already-fixed gate.
-2. **Section 2's security note** states "The Dockerfile has zero ARG/ENV
-   lines for runtime secrets by design" and "DATABASE_URL … MUST NOT be
-   Dockerfile ARGs and MUST NOT be build args." The Dockerfile declares
-   `ARG DATABASE_URL` (line 71) and `ENV DATABASE_URL=$DATABASE_URL`
-   (line 74) — the documented D-21 build-time exception that ADR 0001
-   (lines 22-27) and runbook Section 3(a) itself both describe. The absolute
-   claim is false and contradicts the rest of the same document.
-3. **V1 (local dry-run)** shows a `docker build` command passing only the two
-   `NEXT_PUBLIC_*` args — but per the runbook's own Section 3 (and the
-   Dockerfile), the builder-stage `pnpm build` fails with ECONNREFUSED
-   without `--build-arg DATABASE_URL=…`. The verification command as written
-   reproduces the failure the runbook warns about.
-**Fix:** Update Section 4 to record the applied decision (threshold 1000 KB,
-baseline ~749 KB) and drop the "resolve before first deploy" framing; correct
-Section 2's note to "DATABASE_URL is the single sanctioned build-time ARG
-exception (builder stage only, not in the runner image — see Section 3a)";
-add `--build-arg DATABASE_URL=…` to the V1 command; rewrite the GATE 2
-troubleshooting entry for the 1000 KB threshold.
-
-### WR-10: umami-deploy.md instructs exposing Umami on internal port 3001 but never sets Umami's `PORT` env — following the runbook literally yields an unreachable service
-
-**File:** `docs/operations/umami-deploy.md:53-56, 63-70`
-**Issue:** Step 2 says "Port: expose Umami on `3001` internally. Coolify's
-proxy routes `https://analytics.anydiscussion.com` to this port… (Umami
-listens on 3000 by default; map/host as 3001 or whatever the Coolify service
-expects…)". Step 3's environment table sets only `DATABASE_URL` and
-`APP_SECRET`. Umami binds to `PORT` (default 3000) — if the proxy is pointed
-at 3001 while the container still listens on 3000, the health check and the
-subdomain 404/502, and step 4's "confirm the login screen" fails. The
-parenthetical "or whatever the Coolify service expects" is self-contradictory
-guidance for an operator without Umami internals knowledge.
-**Fix:** Either keep the service on 3000 (Coolify maps domains to the
-container port it is told to), or add to the step-3 table:
-`PORT=3001` (and keep the proxy target 3001). State one canonical choice.
-
-### WR-11: DNS runbook's DMARC `rua` on an external domain will never receive reports without the RFC-required authorization record — the documented rollback diagnostic silently has no data source
-
-**File:** `docs/operations/dns-email-deliverability.md:88-95, 210-216`
-**Issue:** The DMARC record publishes `rua=mailto:<operator-email>` where the
-operator email is, per the prerequisites, a Gmail/Outlook primary inbox — a
-different domain from the DMARC record's domain. Per RFC 7489 §7.1, a report
-receiver on an external domain only accepts aggregate reports if the
-receiving domain publishes
-`<mail-sending-domain>._report._dmarc.<receiver-domain> TXT "v=DMARC1"` —
-which a Gmail/Outlook user cannot publish. Without it, mailbox providers
-simply do not send reports to that address. The rollback section nevertheless
-instructs: "Inspect the `rua` aggregate reports (emailed to the `rua` address)
-to find which sources are failing DKIM/SPF alignment" — a step that can never
-produce data, so the p=quarantine tightening proceeds without the monitoring
-loop the runbook is built around.
-**Fix:** Either set `rua` to an address on the sending domain
-(e.g. `dmarc-reports@anydiscussion.com`) and forward it, or add a step
-documenting the external-rua authorization record requirement (and note that
-consumer Gmail/Outlook cannot publish it, requiring a report-processing
-address on the owned domain).
-
-### WR-12: redis/index.ts swallows all connection errors in production while coolify-deploy.md V5 tells the operator to verify Redis health via those very warnings
-
-**File:** `src/lib/redis/index.ts:47-54`, `docs/operations/coolify-deploy.md:289-294`
-**Issue:** The `on("error")` handler only logs when
-`NODE_ENV !== "production"`. In the production container
-(`NODE_ENV=production`, Dockerfile:102), *every* Redis error — connection
-refused, auth failure, DNS — is silently discarded. Runbook V5 ("Redis
-reachable from the runtime") instructs: "Check the Next.js container logs for
-the ioredis connection succeeding (no repeated `[redis] connection error`
-warnings)." That check can never fire in production; an operator confirms
-"no warnings" trivially whether Redis is healthy or completely down (the
-first visible symptom would be fail-closed 429/500s on auth). The
-verification step provides false assurance.
-**Fix:** Log at a low rate in production too (the listener's purpose is
-crash-prevention, not silence):
-
-```ts
-globalThis.__redisClient.on("error", (err) => {
-  console.warn("[redis] connection error — rate-limiting will fail closed:", err?.message ?? err);
-});
-```
-
-and/or correct V5 to a real probe (e.g. watch for the fail-closed 429 on a
-test sign-in, or `docker exec … redis-cli ping`).
-
-### WR-13: Mutating actions in categories.ts/tags.ts/users.ts skip server-side field validation mandated by the project's Zod-reuse convention
-
-**File:** `src/actions/categories.ts:29-43`, `src/actions/tags.ts:28-38`, `src/actions/users.ts:294-334`
-**Issue:** CLAUDE.md: "Zod schemas … reused for both form validation and
-Server Action input parsing"; pages.ts implements this correctly
-(`pageSchema.parse`). These files do not:
-- `createCategory`/`createTag`/`updateCategory`/`updateTag` validate only the
-  slug (`validateSlug`); `name` accepts the empty string (creates a taxonomy
-  row with no name) and `description` (categories) is entirely unvalidated
-  (any length/type shape passes the TS type at runtime).
-- `updateUser` performs no runtime validation at all: `name`/`bio`/`avatar`
-  have no length caps (bio is rendered on the public `/author/[username]`
-  page), and `role` is a TS-only union — a crafted action invocation can
-  write an arbitrary role string into the user table (admin-only path, but a
-  garbage value breaks that user's `userHasPermission` resolution). TS types
-  do not enforce anything at the Server Action boundary — the client can send
-  any shape.
-**Fix:** Add a small Zod schema per feature (mirroring pages-schema.ts) and
-parse as the first step after the permission gate, e.g.
-`userPatchSchema.parse(input)` with
-`role: z.enum(["admin","editor","author"]).optional()` and
-`bio: z.string().max(500).optional()`.
+**File:** `docs/operations/coolify-deploy.md:13-18` (header), `:271-279` (V3); cross-ref plan 07-04 close-out (commit `462e4e1`, 2026-07-29: "Tasks 2-3 deferred per owner manual-deploy decision") and the recorded deploy-approach decision (Dockerfile + docker-compose are LOCAL-DEV only; prod deploy is manual)
+**Issue:** The runbook opens with "There is NO staging environment and NO CI
+layer… A push to `main` builds and deploys directly to production at
+https://anydiscussion.com" and V3 instructs "Push to main: `git push origin
+main`" as the production deploy step. Per the owner's later recorded decision,
+the Docker pipeline is local-dev only and production deployment is manual.
+An operator following this runbook would wire up (and trigger) an
+auto-deploy-to-production path the owner explicitly deferred — the exact class
+of silent-divergence-between-docs-and-reality this runbook exists to prevent.
+**Fix:** Add a prominent status note at the top of the runbook: "SUPERSEDED
+(owner decision 2026-07-29): production deploys are MANUAL; the Docker/Coolify
+pipeline described here is local-dev dry-run material. Retain sections 5-6
+(runtime env, Redis service) as the production env-var reference." At minimum,
+reconcile the header and V3 with the recorded decision.
 
 ## Info
 
-### IN-01: check-bundle-size.mjs header still narrates the obsolete 100 KB deploy-abort policy
+### IN-01: check-bundle-size.mjs scans only the top level of chunks/ — currently correct, fragile to build-shape changes
 
-**File:** `scripts/check-bundle-size.mjs:12-16`
-**Issue:** The header says "Threshold: 100 KB gzipped total (D-14) … the
-deploy MUST abort," while the deployed gates (Dockerfile:95, package.json:18)
-run 1000 KB and the script default of 100 only applies to bare `node` invocation.
-**Fix:** Update the header comment to describe the default-vs-gate split and
-the 1000 KB total-budget decision (fc3286d).
+**File:** `scripts/check-bundle-size.mjs:84`
+**Issue:** `readdirSync(STATIC_DIR).filter((f) => f.endsWith(".js"))` is
+non-recursive. Verified against the current `.next/static/chunks` (Turbopack
+output): flat, no subdirectories — so today's totals are correct. But Webpack
+builds (an allowed opt-out per project context) and some Next versions emit
+nested chunk dirs (`chunks/app/`, `chunks/ssr/`), which would be silently
+skipped and under-count the gate's own metric.
+**Fix:** `readdirSync(STATIC_DIR, { recursive: true })` (Node ≥20.1) and keep
+the `.js` filter; totals stay identical on the current flat layout.
 
-### IN-02: sanitizeBodyHtml's `<`+`>` heuristic entity-escapes legitimate non-HTML text at storage time
+### IN-02: Blank contact subject ships as "Contact: " — the `?? data.name` fallback is dead for real form payloads
 
-**File:** `src/actions/pages.ts:60-67`
-**Issue:** A plain-text node containing both `<` and `>` that is not HTML
-(e.g. "if a < b and b > c") is routed through `sanitizeBeforeStore`
-(DOMPurify), which HTML-escapes bare `<` on serialization — the stored text
-can come back entity-escaped. Copied verbatim from posts.ts by design (drift
-prevention), so fix both together or neither; document the accepted edge.
-**Fix:** Guard with a stricter HTML-shape check (e.g. `/<[a-zA-Z][^>]*>/`) in
-both posts.ts and pages.ts, and add a round-trip test for text-with-angle-brackets.
+**File:** `src/actions/contact.ts:119`; cross-ref `src/actions/contact-schema.ts:45`
+**Issue:** `subject: \`${data.subject ?? data.name}\`` uses nullish
+coalescing, but the schema (`z.string().max(255).optional()`) permits empty
+string, and the client form always sends the field (default `""`). A user who
+leaves subject blank produces the email subject `Contact: ` — the intended
+name fallback never fires because `""` is not nullish.
+**Fix:** `\`Contact: ${data.subject?.trim() || data.name}\`` (or add
+`.min(1)` + `.transform` to the schema to normalize blank to undefined).
 
-### IN-03: Runbook sets `S3_FORCE_PATH_STYLE=false` for R2, contradicting the verified stack guidance in CLAUDE.md
+### IN-03: createFirstAdmin has a count-then-create TOCTOU window
 
-**File:** `docs/operations/coolify-deploy.md:200`
-**Issue:** `.claude/CLAUDE.md`'s verified R2 config states
-`forcePathStyle: true` for R2; the runbook's env table says R2 uses
-virtual-hosted style (`false`). R2 accepts both today, but the project's two
-authoritative documents disagree on production config.
-**Fix:** Align on one value (verify against the live R2 endpoint behavior) and
-make the runbook match the stack table.
+**File:** `src/actions/users.ts:69-91`
+**Issue:** Two concurrent bootstrap requests can both observe `count(admins)===0`
+and both create an admin. There is no unique constraint that backstops the
+check. The window is the first-run setup moment only, and the codebase's
+threat model treats post-bootstrap calls as blocked, so this is low
+likelihood — but it is the one gap in an otherwise structurally-proven gate.
+**Fix:** Wrap in a transaction with `SELECT … FOR UPDATE` on the count (or a
+settings-row "bootstrap-closed" flag inserted with `onConflictDoNothing` and
+checked via insert-result), or accept and document the window.
 
-### IN-04: Deploy prerequisites say migrations are applied via "`pnpm db:generate` artifacts" — generate does not apply, and no apply script exists
+### IN-04: Ungated "use server" read exports are publicly invocable endpoints
 
-**File:** `docs/operations/coolify-deploy.md:23-25`, `package.json:10`
-**Issue:** `db:generate` only generates migration files; package.json has no
-`db:migrate` script, so the prerequisite's wording ("with the migrations
-applied (`pnpm db:generate` artifacts …)") describes a command that does not
-apply anything. An operator could believe the schema is live when it isn't.
-**Fix:** Reword to the actual apply step (`pnpm exec drizzle-kit migrate`, or
-add a `db:migrate` script and reference it).
+**File:** `src/actions/tags.ts:70-76` (`getPostTagIds`), `:56-63` (`listTags`); `src/actions/categories.ts:62-72` (`listCategories`)
+**Issue:** Per the codebase's own stated threat model ("every export of a
+'use server' module is a publicly invocable endpoint" — newsletter.ts:15-17),
+these three reads are callable by any unauthenticated party. The data is
+public-site data (tag/category names, post↔tag id associations), so
+sensitivity is low, and the CLAUDE.md convention mandates checks on mutating
+actions. Flagging so the exposure is a documented decision rather than an
+accident. **Fix (optional):** add a lightweight `requireCan`/session gate or a
+comment pinning the "public data, deliberately ungated" rationale on each.
+
+### IN-05: test-auth-ratelimit.mjs has no port preflight — a stale listener on 3940 is polled and results are misattributed
+
+**File:** `scripts/test-auth-ratelimit.mjs:126-146` (waitForServer), `:173-186` (httpCheck)
+**Issue:** If any process (including an orphan from a pre-WR-06 run, or a dev
+server on the same port) already listens on 3940, `waitForServer` succeeds
+against it immediately, the four sign-in POSTs hit the foreign process, and
+the script's own spawned `next start` fails with EADDRINUSE visible only in
+captured stderr. Verdicts are then attributed to the wrong server. The WR-06
+cleanup work made orphans unlikely, but a preflight would make misattribution
+impossible.
+**Fix:** Before spawning, probe the port (e.g. a raw `net.connect` check) and
+fail fast with "port 3940 already in use — kill the stale listener" if
+occupied.
 
 ---
 
-_Reviewed: 2026-08-26T14:19:48Z_
+_Reviewed: 2026-08-26T17:43:49Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
