@@ -264,7 +264,7 @@ Plans:
   4. Auth endpoints (sign-in, password reset) are rate-limited. (Backup scheduling moved to Phase 8.)
   5. The app deploys to staging on Coolify via git-push with managed SSL, build-vs-runtime env secrets correctly separated, and the single-instance ISR scaling cliff (multi-replica needs a shared Redis cache handler) documented for v2.
 
-**Plans**: 5/5 plans complete
+**Plans**: 5/5 plans complete + 1 gap-closure plan (07-06)
 
 Plans:
 
@@ -287,6 +287,10 @@ Plans:
 **Wave 5** *(blocked on Wave 4 — needs live production URL to audit)*
 
 - [x] 07-05-PLAN.md — Perf audit + ISR docs slice (autonomous: false): lighthouserc.json with the four INP-correct thresholds (Performance ≥ 0.9, LCP ≤ 2500, **INP ≤ 200** via `interaction-to-next-paint` NOT deprecated `max-potential-fid`, CLS ≤ 0.1) + `@lhci/cli` install + Lighthouse CI run against production + manual DevTools audit of every (site) route per D-08 + docs/adr/0001-isr-single-instance-scaling.md (cacheHandler singular, not deprecated name) + README.md ISR scaling section. Covers PERF-01 + D-28/D-29/D-30.
+
+**Wave 6** *(gap closure — from 07-VERIFICATION.md; repo-side items only, live-stack legs owner-deferred)*
+
+- [ ] 07-06-PLAN.md — Gap-closure slice: CR-01 rate-limit IP-trust fix (`advanced.ipAddress.trustedProxies` from TRUSTED_PROXY_CIDR + last-hop XFF keying via shared getClientIpFromXff in contact/newsletter) + WR-01..06 advisory fixes (Redis-outage RATE_LIMITED degradation, real ephemeral-cache reset + failure-propagation test, revalidation call assertions in taxonomy/pages/users tests, updatePage pageUpdateSchema partial contract, harness POSIX kill + rerun reliability) + first end-to-end pnpm test:auth-ratelimit run + formal recording of both fc3286d overrides in 07-VERIFICATION.md. Covers PERF-02, PERF-03, PERF-04, PERF-06.
 
 **Pitfalls owned:** #3 (publish→visible verified on real stack), #6 (document single-replica ISR scaling cliff before adding a second Coolify replica), R2 op-count/sharp-CPU cost monitoring + billing alerts, Coolify build-vs-runtime env secret separation.
 **Research flag:** LOW — Coolify staging deploy + env-handling verification (backup/ops strategy moved to Phase 8).
