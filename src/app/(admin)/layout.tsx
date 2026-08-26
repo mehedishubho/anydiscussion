@@ -4,6 +4,19 @@ import { getSession } from "@/lib/auth/server";
 import AdminShell from "./AdminShell";
 
 /**
+ * cacheComponents-era replacement for the forbidden `dynamic = "force-dynamic"`
+ * (rejected under cacheComponents per the installed Next 16.3.3 migration
+ * guide): the `instant = false` segment config opts the whole (admin) group's ENTRY
+ * navigations into allowed-to-block (instant-navigation.md "Opting out").
+ * The dashboard is 100% session-dependent content behind the AuthGate below,
+ * so a static shell buys nothing here; the public (site) group is untouched
+ * and keeps full PPR. NOTE the docs' scope rule: this layout-level opt-out
+ * does NOT cover client navigations between sibling /dashboard segments —
+ * each data-fetching dashboard page carries its own export (task 260826-oif).
+ */
+export const instant = false;
+
+/**
  * Server-Component layout for the (admin) route group.
  *
  * AUTHORITATIVE auth boundary (Plan 02-05, AUTH-03 gap closure). This is the

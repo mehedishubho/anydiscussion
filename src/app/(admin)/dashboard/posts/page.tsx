@@ -22,6 +22,14 @@ export const metadata: Metadata = {
   description: "Manage blog posts",
 };
 
+// Page-scope instant-navigation opt-out (260826-oif): this page's top-level
+// uncached awaits (listPosts + awaited searchParams — permission-checked
+// Server Actions calling headers() + DB IO) sit below every effective
+// <Suspense> boundary on client navigations between /dashboard segments — the
+// (admin) layout's own opt-out does not cover sibling navigations (installed
+// instant-navigation.md). Allowed-to-block is correct for session-gated content.
+export const instant = false;
+
 const STATUS_BADGE: Record<string, string> = {
   draft: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300",
   pending_review: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",

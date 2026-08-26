@@ -20,6 +20,14 @@ export const metadata: Metadata = {
   title: "New Post | Any Discussion",
 };
 
+// Page-scope instant-navigation opt-out (260826-oif): this page's top-level
+// uncached awaits (getSession — a headers() call via the auth Server Action)
+// sit below every effective <Suspense> boundary on client navigations between
+// /dashboard segments — the (admin) layout's own opt-out does not cover
+// sibling navigations (installed instant-navigation.md). Allowed-to-block is
+// correct for session-gated content; a static shell buys nothing.
+export const instant = false;
+
 export default async function NewPostPage() {
   // The (admin) layout's AuthGate already redirected unauthenticated users,
   // so the session is present here; the Server Actions re-check every

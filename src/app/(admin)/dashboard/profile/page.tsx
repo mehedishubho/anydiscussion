@@ -22,6 +22,14 @@ export const metadata: Metadata = {
   description: "Edit your profile",
 };
 
+// Page-scope instant-navigation opt-out (260826-oif): this page's top-level
+// uncached awaits (getSession — a headers() call via the auth Server Action)
+// sit below every effective <Suspense> boundary on client navigations between
+// /dashboard segments — the (admin) layout's own opt-out does not cover
+// sibling navigations (installed instant-navigation.md). Allowed-to-block is
+// correct for session-gated content; a static shell buys nothing.
+export const instant = false;
+
 // The shape ProfileForm consumes. Better Auth additionalFields (bio, avatar per
 // AUTH-08) are present on session.user but typed loosely; cast through unknown
 // to the local shape so the client form gets typed props.

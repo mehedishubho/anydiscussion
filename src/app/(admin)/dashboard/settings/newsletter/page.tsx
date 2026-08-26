@@ -19,6 +19,14 @@ export const metadata = {
   title: "Newsletter Settings — Dashboard",
 };
 
+// Page-scope instant-navigation opt-out (260826-oif): this page's top-level
+// uncached awaits (readNewsletterSettings — a permission-checked Server Action
+// calling headers() + DB IO) sit below every effective <Suspense> boundary on
+// client navigations between /dashboard segments — the (admin) layout's own
+// opt-out does not cover sibling navigations (installed instant-navigation.md).
+// Allowed-to-block is correct for session-gated content; a static shell buys nothing.
+export const instant = false;
+
 export default async function NewsletterSettingsPage() {
   let initial: Awaited<ReturnType<typeof readNewsletterSettings>> | null = null;
   let loadError: string | null = null;

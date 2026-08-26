@@ -33,6 +33,14 @@ export const metadata: Metadata = {
   description: "Manage dashboard users and roles",
 };
 
+// Page-scope instant-navigation opt-out (260826-oif): this page's top-level
+// uncached awaits (listUsers via getSessionOrThrow — permission-checked
+// Server Actions calling headers() + DB IO) sit below every effective
+// <Suspense> boundary on client navigations between /dashboard segments — the
+// (admin) layout's own opt-out does not cover sibling navigations (installed
+// instant-navigation.md). Allowed-to-block is correct for session-gated content.
+export const instant = false;
+
 // Row shape returned by listUsers() — kept in sync with the select() projection
 // in src/actions/users.ts. bio/avatar/banReason/banExpires are nullable on the
 // Drizzle user table; the table renders them defensively. emailVerified is

@@ -23,6 +23,14 @@ export const metadata: Metadata = {
   description: "Manage newsletter subscribers",
 };
 
+// Page-scope instant-navigation opt-out (260826-oif): this page's top-level
+// uncached awaits (listSubscribers + countSubscribers + awaited searchParams —
+// permission-checked Server Actions calling headers() + DB IO) sit below every
+// effective <Suspense> boundary on client navigations between /dashboard
+// segments — the (admin) layout's own opt-out does not cover sibling
+// navigations (installed instant-navigation.md). Allowed-to-block is correct.
+export const instant = false;
+
 /** Must match SUBSCRIBERS_PAGE_SIZE in src/actions/newsletter.ts. */
 const PAGE_SIZE = 20;
 

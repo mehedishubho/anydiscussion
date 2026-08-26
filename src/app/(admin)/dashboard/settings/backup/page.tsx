@@ -16,6 +16,14 @@ export const metadata = {
   title: "Backup Settings — Dashboard",
 };
 
+// Page-scope instant-navigation opt-out (260826-oif): this page's top-level
+// uncached awaits (getBackupSettings + listBackups — permission-checked Server
+// Actions calling headers() + DB IO) sit below every effective <Suspense>
+// boundary on client navigations between /dashboard segments — the (admin)
+// layout's own opt-out does not cover sibling navigations (installed
+// instant-navigation.md). Allowed-to-block is correct; a static shell buys nothing.
+export const instant = false;
+
 export default async function BackupSettingsPage() {
   // Dynamic import avoids pulling the "use server" actions into the client bundle boundary at build
   // and keeps the page module light. Each call is admin-gated inside the action (requireRole FIRST).

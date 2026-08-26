@@ -23,6 +23,14 @@ export const metadata: Metadata = {
   description: "Admin dashboard overview",
 };
 
+// Page-scope instant-navigation opt-out (260826-oif): this page's top-level
+// uncached awaits (listPosts + listMedia — permission-checked Server Actions
+// calling headers() + DB IO) sit below every effective <Suspense> boundary on
+// client navigations between /dashboard segments — the (admin) layout's own
+// opt-out does not cover sibling navigations (installed instant-navigation.md).
+// Allowed-to-block is correct for session-gated content; a static shell buys nothing.
+export const instant = false;
+
 // Caps for the small-team dashboard (PROJECT.md: 2–5 person team). Set high
 // enough that a normal volume of drafts/published posts is captured for the
 // counts; if the dashboard ever grows past these, Plan 04-02+ can add proper
