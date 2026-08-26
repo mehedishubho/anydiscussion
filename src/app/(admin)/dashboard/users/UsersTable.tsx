@@ -24,6 +24,10 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Table, TableHeader, TableBody, TableRow, TableCell } from "@/components/ui/table";
 import { banUser, unbanUser, revokeSessions, deleteUser } from "@/actions/users";
+import {
+  USER_DELETE_ERROR_MESSAGES,
+  type UserDeleteDigest,
+} from "@/actions/users-schema";
 import UserDrawer from "./UserDrawer";
 import ConfirmDialog from "./ConfirmDialog";
 import type { UserRow } from "./page";
@@ -88,6 +92,29 @@ function AvatarInitials({ name }: { name: string }) {
       {initials || "?"}
     </div>
   );
+}
+
+// ---- Plan 07-07 / CR-02 leg 2: digest-mapped delete-error copy ----
+// React's production flight serializer emits digest-only error chunks (the
+// thrown error's .message is redacted in production builds — 07-REVIEW CR-02 /
+// 07-VERIFICATION gap #6), so the shared error alert below must NOT rely on
+// deleteMutation.error.message for the five deleteUser guard failures. Each
+// guard throw carries a stable digest; this narrow type guard reads that field
+// and maps it to the friendly copy from the pure users-schema module (safe for
+// a client component to import — same pattern as contact-schema.ts ←
+// ContactForm). Digest-less errors keep the existing fallback chain (the
+// generic redacted message / the other mutations' messages).
+function deleteErrorCopy(err: unknown): string | undefined {
+  if (
+    typeof err === "object" &&
+    err !== null &&
+    "digest" in err &&
+    typeof (err as { digest: unknown }).digest === "string" &&
+    (err as { digest: string }).digest in USER_DELETE_ERROR_MESSAGES
+  ) {
+    return USER_DELETE_ERROR_MESSAGES[(err as { digest: UserDeleteDigest }).digest];
+  }
+  return undefined;
 }
 
 export default function UsersTable({
@@ -344,7 +371,15 @@ export default function UsersTable({
 
       {(banMutation.error || unbanMutation.error || revokeMutation.error || deleteMutation.error) && (
         <div className="rounded-lg border border-error-300 bg-error-50 p-3 text-sm text-error-700 dark:border-error-700 dark:bg-error-900/20 dark:text-error-300">
-          {banMutation.error?.message || unbanMutation.error?.message || revokeMutation.error?.message || deleteMutation.error?.message || "Action failed"}
+          {/* Plan 07-07 / CR-02: the delete leg maps err.digest → the friendly
+              guard copy (production flight redacts .message); digest-less
+              errors keep the pre-existing fallback chain. */}
+          {banMutation.error?.message ||
+            unbanMutation.error?.message ||
+            revokeMutation.error?.message ||
+            deleteErrorCopy(deleteMutation.error) ||
+            deleteMutation.error?.message ||
+            "Action failed"}
         </div>
       )}
       {pendingAction && (

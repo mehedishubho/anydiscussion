@@ -31,8 +31,10 @@
 // TRUTH about failures (WR-03, Plan 07-06): @upstash/ratelimit 2.0.8's
 // slidingWindow limit() has NO catch around safeEval, and safeEval RETHROWS
 // non-NOSCRIPT errors — Redis failures PROPAGATE to the caller. Callers
-// (contact.ts) MUST catch and map to the RATE_LIMITED contract (WR-01,
-// Plan 07-06 Task 1); the propagation test below pins that requirement.
+// (contact.ts) MUST catch and map to the returned { ok: false, error:
+// "RATE_LIMITED" } state (WR-01, Plan 07-06 Task 1; the returned-state
+// transport is Plan 07-07 / CR-02 — thrown messages never reach the client
+// in production builds); the propagation test below pins that requirement.
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
@@ -182,8 +184,10 @@ describe("Plan 07-02 / contactFormLimiter — Redis-backed sliding window (5 per
   // slidingWindow limit() has NO catch around safeEval, and safeEval RETHROWS
   // non-NOSCRIPT errors (dist index.mjs:147-156), so Redis failures PROPAGATE
   // to the caller. This is precisely why contact.ts wraps its
-  // contactFormLimiter.limit() await in a try/catch mapping rejections to
-  // Error("RATE_LIMITED") (WR-01, Plan 07-06 Task 1).
+  // contactFormLimiter.limit() await in a try/catch mapping rejections to the
+  // returned { ok: false, error: "RATE_LIMITED" } state (WR-01, Plan 07-06
+  // Task 1; returned-state transport per Plan 07-07 / CR-02 — thrown error
+  // messages are redacted by production flight serialization).
   it("propagates a Redis failure to the caller — documenting contact.ts's required catch (WR-03)", async () => {
     redisFailure.current = new Error("ECONNREFUSED");
     // FRESH IP (198.51.100.77 — RFC 5737 TEST-NET-2, unused by the other

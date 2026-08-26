@@ -83,23 +83,42 @@ export default function ContactForm() {
     // startTransition wraps the Server Action call so the submission is
     // non-blocking (concurrent rendering keeps the UI responsive). The action
     // returns { ok: true } on real success AND on honeypot-tripped (silent
-    // success — the bot sees the same UX as a real user).
+    // success — the bot sees the same UX as a real user), or a returned
+    // { ok: false, error } state on the defined public failure paths.
     startTransition(async () => {
       try {
-        await submitContact(values as Parameters<typeof submitContact>[0]);
-        setStatus({ kind: "success" });
-        reset();
-      } catch (err) {
-        // RATE_LIMITED is the documented public error (rate-limit gate — D-07).
-        // Any other error is a generic "something went wrong" — lib/email never
+        const result = await submitContact(
+          values as Parameters<typeof submitContact>[0],
+        );
+        if (result.ok) {
+          setStatus({ kind: "success" });
+          reset();
+          return;
+        }
+        // Branch on the RETURNED state, never on a thrown error's message —
+        // React's production flight serializer strips error messages
+        // (digest-only chunks), so the old thrown-message equality mapping
+        // against the RATE_LIMITED sentinel was dead code in production
+        // builds (07-REVIEW CR-02).
+        // RATE_LIMITED is the documented public error (rate-limit gate — D-07);
+        // INVALID_INPUT means the server-side Zod re-validation rejected the
+        // payload (shouldn't happen — the client validates first).
+        setStatus({
+          kind: "error",
+          message:
+            result.error === "RATE_LIMITED"
+              ? "Too many messages — please try again later."
+              : "Please check the form and try again.",
+        });
+      } catch {
+        // Unexpected transport failure only — NO inspection of the error's
+        // message text (it is redacted in production anyway). lib/email never
         // throws (R8), so a send failure is swallowed inside the action and
-        // surfaces to the user as success. This catch is for parse errors
-        // (shouldn't happen — client validates first) and rate-limit.
-        const message =
-          err instanceof Error && err.message === "RATE_LIMITED"
-            ? "Too many messages — please try again later."
-            : "Something went wrong. Please try again.";
-        setStatus({ kind: "error", message });
+        // surfaces to the user as success; this catch is purely a safety net.
+        setStatus({
+          kind: "error",
+          message: "Something went wrong. Please try again.",
+        });
       }
     });
   };
