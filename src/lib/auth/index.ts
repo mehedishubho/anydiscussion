@@ -138,12 +138,39 @@ export const auth = betterAuth({
     },
   },
 
-  // T-07-02-03 — key rate limits on the Coolify proxy's view of the client IP,
-  // not a user-spoofable value. Coolify's Caddy/Traefik overwrites
-  // X-Forwarded-For; an attacker cannot set this header from the client side.
+  // T-07-02-03 / CR-01 (Plan 07-06, 07-VERIFICATION gap #2) — the VERIFIED
+  // client-IP trust model, read against the installed @better-auth/core
+  // 1.6.23 dist/utils/ip.mjs (getIPFromHeader):
+  //   - With ONLY ipAddressHeaders set (no trustedProxies), getIPFromHeader
+  //     returns null for ANY multi-value XFF (`if (forwardedIps.length !== 1)
+  //     return null;`). Behind an appending proxy (the standard Traefik/Caddy
+  //     behavior) every production request is multi-value, so ALL auth traffic
+  //     collapses into one NO_TRUSTED_IP_KEY 3/15min bucket — a trivial
+  //     unauthenticated auth DoS. (The earlier claim here — that the proxy
+  //     replaces the XFF header wholesale so clients cannot influence it — was
+  //     disproven by CR-01; appending, not replacing, is the default.)
+  //   - With trustedProxies set to the proxy network CIDR, the chain is
+  //     stripped from the RIGHT: trusted proxy hops are removed and the first
+  //     untrusted hop (the real client IP) keys the rate limit.
+  //   - An over-broad CIDR that matches EVERY hop returns null → shared bucket
+  //     → fail-closed (over-limiting), never spoofable — the failure direction
+  //     is safe for an abuse control.
+  // The CIDR list is env-driven (TRUSTED_PROXY_CIDR), never hardcoded, per the
+  // 2026-08-26 escalation-gate decision: deployment topology varies and the
+  // owner's manual deploy is unreviewed. Unset/empty env → empty array → the
+  // installed lib keeps the single-value XFF behavior (local dev and the
+  // existing single-value integration harness are unchanged).
   advanced: {
     ipAddress: {
       ipAddressHeaders: ["x-forwarded-for"],
+      // CR-01 — comma-separated CIDR ranges of reverse proxies trusted to
+      // append X-Forwarded-For (same env-parsing idiom as trustedOrigins
+      // above). Invalid entries are dropped by the lib's findInvalidTrusted-
+      // Proxies/parseCIDR path (verified in ip.mjs).
+      trustedProxies: (process.env.TRUSTED_PROXY_CIDR ?? "")
+        .split(",")
+        .map((cidr) => cidr.trim())
+        .filter(Boolean),
     },
   },
 

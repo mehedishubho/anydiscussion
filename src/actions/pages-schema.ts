@@ -44,3 +44,19 @@ export const pageSchema = z.object({
 
 export type PageSchemaInput = z.input<typeof pageSchema>;
 export type PageSchemaOutput = z.output<typeof pageSchema>;
+
+/**
+ * pageUpdateSchema — backs updatePage's `Partial<PageInput>` contract
+ * (Plan 07-06 / 07-REVIEW WR-05): every field optional + a REQUIRED id.
+ * The strict `pageSchema` above (title/slug required) remains the CREATE
+ * contract — createPage still parses via pageSchema. Before this schema,
+ * updatePage parsed partial input with the full pageSchema, so a true partial
+ * call like `{ status: "published" }` threw a ZodError, breaking the
+ * Partial<PageInput> semantics the action's signature and JSDoc promise.
+ */
+export const pageUpdateSchema = pageSchema.partial().extend({
+  id: z.number().int().positive(), // REQUIRED on update (the row being patched)
+});
+
+export type PageUpdateSchemaInput = z.input<typeof pageUpdateSchema>;
+export type PageUpdateSchemaOutput = z.output<typeof pageUpdateSchema>;

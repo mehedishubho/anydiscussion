@@ -481,6 +481,40 @@ describe("DASH-04 / D-09 / D-11: updateUser — self-edit + admin cross-user edi
     // And requireCan was NOT called for the self-edit path.
     expect(requireCanMock).not.toHaveBeenCalled();
   });
+
+  // ============================================================
+  // Plan 07-06 / WR-04 — revalidation call assertions for updateUser. The
+  // Plan 07-03 wiring had zero call coverage (07-REVIEW WR-04); these pin the
+  // concrete literals (username seeded in beforeEach → "target-user") AND the
+  // negative space (role-only updates fire NO revalidation).
+  // ============================================================
+  it("self-edit with profile fields revalidates /author/{username} + /sitemap.xml + posts-list tag (2-arg max form)", async () => {
+    // Self-edit: session user is the target (username fetch → "target-user").
+    getSessionOrThrowMock.mockResolvedValue({
+      user: { id: "self-1", role: "author" },
+      session: { id: "sess-self" },
+    });
+
+    await updateUser("self-1", { name: "Me" });
+
+    expect(updateSetWhere).toHaveBeenCalled();
+    expect(revalidatePathMock).toHaveBeenCalledWith("/author/target-user");
+    expect(revalidatePathMock).toHaveBeenCalledWith("/sitemap.xml");
+    expect(revalidateTagMock).toHaveBeenCalledWith("posts-list", "max");
+  });
+
+  it("admin role-ONLY cross-user update fires NO revalidatePath (role changes have no public surface)", async () => {
+    // Admin passes the cross-user gate; the patch carries ONLY role — the
+    // users.ts conditional (name/bio/avatar all undefined) must skip the
+    // revalidation block entirely.
+    requireCanMock.mockResolvedValue({ user: { id: "admin-1", role: "admin" } });
+
+    await updateUser("target-1", { role: "editor" });
+
+    expect(updateSetWhere).toHaveBeenCalled();
+    expect(revalidatePathMock).not.toHaveBeenCalled();
+    expect(revalidateTagMock).not.toHaveBeenCalled();
+  });
 });
 
 // ============================================================

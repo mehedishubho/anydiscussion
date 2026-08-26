@@ -33,6 +33,7 @@ const {
   revalidateTagMock,
   headersMock,
   newsletterLimiterMock,
+  clientIpHelperMock,
 } = vi.hoisted(() => ({
   requireRoleMock: vi.fn(),
   // update chain: db.update(schema.settings).set(patch).where(eq) — set captures
@@ -53,6 +54,13 @@ const {
   revalidateTagMock: vi.fn(),
   headersMock: vi.fn(),
   newsletterLimiterMock: vi.fn(),
+  // Plan 07-06 / CR-01 leg 2 — subscribeNewsletter now derives the limiter IP
+  // via the shared getClientIpFromXff helper from @/lib/rate-limit. A spy (with
+  // the faithful default implementation installed in beforeEach) so the tests
+  // can assert the action actually routes the header THROUGH the shared helper
+  // (the "do not invent a second style" contract), not just that the limiter
+  // ends up keyed on the last hop.
+  clientIpHelperMock: vi.fn(),
 }));
 
 vi.mock("@/lib/permissions", () => ({
@@ -72,15 +80,20 @@ vi.mock("next/cache", () => ({
   revalidateTag: (...a: unknown[]) => revalidateTagMock(...a),
 }));
 
-// next/headers — subscribeNewsletter reads x-forwarded-for (contact.ts
-// extraction: first value, "unknown" fallback). Controllable per-test.
+// next/headers — subscribeNewsletter reads x-forwarded-for (the shared
+// getClientIpFromXff last-hop extraction, "unknown" fallback). Controllable per-test.
 vi.mock("next/headers", () => ({
   headers: (...a: unknown[]) => headersMock(...a),
 }));
 
-// @/lib/rate-limit — controllable newsletterLimiter mock (D-05).
+// @/lib/rate-limit — controllable newsletterLimiter mock (D-05) + the shared
+// getClientIpFromXff helper as a spy (CR-01 leg 2). The helper's real contract
+// is unit-tested against the real module in
+// src/lib/rate-limit/__tests__/client-ip.test.ts; here the spy's default
+// implementation (installed in beforeEach) reproduces it faithfully.
 vi.mock("@/lib/rate-limit", () => ({
   newsletterLimiter: { limit: (...a: unknown[]) => newsletterLimiterMock(...a) },
+  getClientIpFromXff: (...a: unknown[]) => clientIpHelperMock(...a),
 }));
 
 // db — chainable update + insert + delete + select matching the action shapes:
@@ -278,6 +291,14 @@ describe("260824-3l2 D-01/D-05/D-06: subscribeNewsletter — public subscribe ga
     });
     newsletterLimiterMock.mockResolvedValue({ success: true });
     insertOnConflictUpdateMock.mockResolvedValue(undefined);
+    // Faithful default implementation of the shared last-hop helper (the real
+    // module's contract is pinned in
+    // src/lib/rate-limit/__tests__/client-ip.test.ts): trimmed last
+    // comma-separated entry, "unknown" fallback.
+    clientIpHelperMock.mockImplementation(
+      (forwardedFor: string | null) =>
+        forwardedFor?.split(",").pop()?.trim() || "unknown",
+    );
   });
 
   it("honeypot filled → silent { status: 'success' }, db.insert NEVER called, limiter never reached (D-05)", async () => {
@@ -302,6 +323,47 @@ describe("260824-3l2 D-01/D-05/D-06: subscribeNewsletter — public subscribe ga
 
     expect(result).toEqual({ status: "error", message: "RATE_LIMITED" });
     expect(newsletterLimiterMock).toHaveBeenCalledWith("203.0.113.7");
+    expect(insertValuesMock).not.toHaveBeenCalled();
+    expect(insertOnConflictUpdateMock).not.toHaveBeenCalled();
+  });
+
+  // Plan 07-06 / CR-01 leg 2 — the limiter must key on the proxy-appended LAST
+  // XFF hop (via the shared getClientIpFromXff helper), never the
+  // client-spoofable first hop. Under an appending proxy the first hop is
+  // attacker-controlled; keying on it hands a bot a fresh 5/h budget per fake
+  // IP (07-REVIEW CR-01).
+  it("multi-hop x-forwarded-for → limiter keyed on the LAST hop via the shared helper, NOT the injected first hop (CR-01)", async () => {
+    headersMock.mockResolvedValue({
+      get: (k: string) =>
+        k === "x-forwarded-for" ? "9.9.9.9, 203.0.113.7" : null,
+    });
+
+    await subscribeNewsletter(
+      { status: "idle" },
+      subscribeForm("someone@example.com"),
+    );
+
+    // The action routes the RAW header through the one shared helper.
+    expect(clientIpHelperMock).toHaveBeenCalledWith("9.9.9.9, 203.0.113.7");
+    // The limiter is keyed on the proxy-appended last hop...
+    expect(newsletterLimiterMock).toHaveBeenCalledWith("203.0.113.7");
+    // ...and never on the client-injected first hop.
+    expect(newsletterLimiterMock).not.toHaveBeenCalledWith("9.9.9.9");
+  });
+
+  // Plan 07-06 / WR-01 sibling — a Redis outage must surface as the defined
+  // RATE_LIMITED error state (subscribeNewsletter's returned-state resilience
+  // contract), never as an unhandled rejection / raw internal error on the
+  // public footer surface (07-REVIEW WR-01/WR-03).
+  it("limiter rejection (Redis outage) → { status: 'error', message: 'RATE_LIMITED' }, db.insert NEVER called (WR-01)", async () => {
+    newsletterLimiterMock.mockRejectedValue(new Error("ECONNREFUSED"));
+
+    const result = await subscribeNewsletter(
+      { status: "idle" },
+      subscribeForm("someone@example.com"),
+    );
+
+    expect(result).toEqual({ status: "error", message: "RATE_LIMITED" });
     expect(insertValuesMock).not.toHaveBeenCalled();
     expect(insertOnConflictUpdateMock).not.toHaveBeenCalled();
   });

@@ -29,7 +29,7 @@ import { desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { requireRole } from "@/lib/permissions";
 import { log } from "@/lib/log";
-import { newsletterLimiter } from "@/lib/rate-limit";
+import { getClientIpFromXff, newsletterLimiter } from "@/lib/rate-limit";
 import {
   newsletterSettingsSchema,
   subscribeSchema,
@@ -144,8 +144,12 @@ export async function saveNewsletterSettings(
  *   1. Zod parse (email normalized: trim + lowercase — no citext) → INVALID_EMAIL.
  *   2. Honeypot ("website" non-empty after trim) → SILENT success WITHOUT
  *      inserting (bots that see errors retry with mutated payloads — D-05).
- *   3. Per-IP rate limit (x-forwarded-for first value, "unknown" fallback —
- *      contact.ts's extraction, do not invent a second style) → RATE_LIMITED.
+ *   3. Per-IP rate limit (LAST x-forwarded-for hop via the shared
+ *      getClientIpFromXff helper from @/lib/rate-limit, "unknown" fallback —
+ *      THE one extraction style, do not invent a second one; CR-01 leg 2) →
+ *      RATE_LIMITED. A limiter REJECTION (Redis outage — limit() propagates
+ *      Redis errors, WR-01) maps to the SAME returned RATE_LIMITED state,
+ *      keeping this action's returned-state (never thrown) resilience contract.
  *   4. The D-01 upsert, ONE statement, no read-check-write race:
  *      insert({ email, token: crypto.randomUUID() }).onConflictDoUpdate({
  *        target: email, set: { status: "active", updatedAt: new Date() } })
@@ -178,14 +182,25 @@ export async function subscribeNewsletter(
   }
 
   // 3. Rate limit — per-IP, Redis-backed (5 / 1 h on the newsletterLimiter
-  //    instance — single source of truth in src/lib/rate-limit/). x-forwarded-for
-  //    is the standard proxy header (Coolify's proxy sets it); "unknown"
-  //    fallback when absent (local dev). IP is used transiently here only —
-  //    never stored (research A3: no PII retention).
+  //    instance — single source of truth in src/lib/rate-limit/). CR-01 leg 2:
+  //    keys on the LAST x-forwarded-for hop via the shared getClientIpFromXff
+  //    helper (the proxy-appended entry, not the client-spoofable first hop);
+  //    "unknown" fallback when absent (local dev). IP is used transiently here
+  //    only — never stored (research A3: no PII retention). WR-01: a Redis
+  //    outage makes limit() REJECT (@upstash/ratelimit 2.0.8 safeEval rethrows
+  //    non-NOSCRIPT errors) — caught and mapped to the same returned
+  //    RATE_LIMITED state, so no raw internal error reaches the public footer.
   const headerList = await headers();
   const forwardedFor = headerList.get("x-forwarded-for");
-  const ip = forwardedFor?.split(",")[0]?.trim() || "unknown";
-  const { success } = await newsletterLimiter.limit(ip);
+  const ip = getClientIpFromXff(forwardedFor);
+  let success: boolean;
+  try {
+    ({ success } = await newsletterLimiter.limit(ip));
+  } catch {
+    // Redis unreachable — fail closed to the returned RATE_LIMITED state
+    // (this action returns error states rather than throwing; docblock).
+    return { status: "error", message: "RATE_LIMITED" };
+  }
   if (!success) {
     return { status: "error", message: "RATE_LIMITED" };
   }

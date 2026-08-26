@@ -253,6 +253,72 @@ describe("D-08: softDeletePage sets deletedAt (never hard-deletes)", () => {
   });
 });
 
+// ============================================================
+// Plan 07-06 — WR-04 (revalidation call assertions) + WR-05
+// (updatePage true-partial contract). The revalidation calls themselves were
+// added in Plan 07-03 but had ZERO assertion coverage — a dropped "max" tag
+// argument, a wrong literal path, or a missing old-URL revalidation would all
+// pass green (07-REVIEW WR-04). These blocks pin the EXACT literals the source
+// emits. The partial-update test is the WR-05 regression pin: it FAILS against
+// the pre-fix code (pageSchema requires title/slug → ZodError on a status-only
+// payload) and passes once updatePage parses via pageUpdateSchema.
+// ============================================================
+describe("Plan 07-06 / WR-04: pages revalidation calls — concrete literal assertions (2-arg max form)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    requireCanMock.mockResolvedValue({
+      user: { id: "u1", role: "admin" },
+      session: { id: "s1" },
+    });
+    insertMock.mockResolvedValue([{ id: 1 }]);
+    updateMock.mockResolvedValue(undefined);
+    // The pre-update/pre-delete slug fetch resolves to this slug (the concrete
+    // old public URL that must revalidate).
+    selectMock.mockResolvedValue([{ slug: "terms-and-conditions" }]);
+    revalidatePathMock.mockReturnValue(undefined);
+    revalidateTagMock.mockReturnValue(undefined);
+  });
+
+  it("createPage revalidates /{slug} + /sitemap.xml + posts-list tag (2-arg max)", async () => {
+    await createPage({ title: "T", slug: "t-and-c" });
+
+    expect(revalidatePathMock).toHaveBeenCalledWith("/t-and-c");
+    expect(revalidatePathMock).toHaveBeenCalledWith("/sitemap.xml");
+    expect(revalidateTagMock).toHaveBeenCalledWith("posts-list", "max");
+  });
+
+  it("softDeletePage revalidates the pre-delete slug URL + /sitemap.xml + posts-list tag", async () => {
+    await softDeletePage(5);
+
+    expect(revalidatePathMock).toHaveBeenCalledWith("/terms-and-conditions");
+    expect(revalidatePathMock).toHaveBeenCalledWith("/sitemap.xml");
+    expect(revalidateTagMock).toHaveBeenCalledWith("posts-list", "max");
+  });
+
+  it("updatePage happy path revalidates the pre-update slug URL + /sitemap.xml + posts-list tag", async () => {
+    await updatePage(1, { title: "T2" });
+
+    expect(updateMock).toHaveBeenCalledTimes(1);
+    expect(revalidatePathMock).toHaveBeenCalledWith("/terms-and-conditions");
+    expect(revalidatePathMock).toHaveBeenCalledWith("/sitemap.xml");
+    expect(revalidateTagMock).toHaveBeenCalledWith("posts-list", "max");
+  });
+
+  it("WR-05: updatePage accepts a TRUE partial payload (status only — title/slug ABSENT) without ZodError", async () => {
+    // Pre-fix this threw a ZodError (pageSchema requires title + slug),
+    // breaking the Partial<PageInput> contract the signature and JSDoc
+    // promise (07-REVIEW WR-05).
+    const result = await updatePage(1, { status: "published" });
+
+    expect(result).toEqual({ id: 1 });
+    // The db update chain fired (the write must still happen for a partial).
+    expect(updateMock).toHaveBeenCalledTimes(1);
+    // And the revalidation still fires on the partial path.
+    expect(revalidatePathMock).toHaveBeenCalledWith("/terms-and-conditions");
+    expect(revalidateTagMock).toHaveBeenCalledWith("posts-list", "max");
+  });
+});
+
 describe("D-20: pageSchema rejects pending_review (pages = draft | published only)", () => {
   it("accepts status: 'draft'", () => {
     expect(() =>

@@ -82,7 +82,12 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
-import { createCategory, listCategories, softDeleteCategory } from "../categories";
+import {
+  createCategory,
+  listCategories,
+  updateCategory,
+  softDeleteCategory,
+} from "../categories";
 import { createTag, listTags, softDeleteTag } from "../tags";
 import { postSchema } from "../posts-schema";
 
@@ -100,7 +105,8 @@ describe("CONT-05/06 + T-03-01: taxonomy actions enforce requireCan + assertUniq
     // The pre-update/pre-delete slug-fetch (.where(...).limit(1)) resolves to a
     // one-element array carrying the existing slug.
     selectMock.mockResolvedValue([{ slug: "existing-slug" }]);
-    // next/cache mocks — no-op spies (assertions on call patterns where useful).
+    // next/cache mocks — no-op spies; the Plan 07-06 WR-04 describe below pins
+    // the concrete revalidatePath/revalidateTag call literals each action emits.
     revalidatePathMock.mockReturnValue(undefined);
     revalidateTagMock.mockReturnValue(undefined);
   });
@@ -147,6 +153,75 @@ describe("CONT-05/06 + T-03-01: taxonomy actions enforce requireCan + assertUniq
   it("softDeleteTag sets deletedAt (D-08)", async () => {
     await softDeleteTag(9);
     expect(updateMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ============================================================
+// Plan 07-06 / WR-04 — revalidation call assertions. The Plan 07-03 wiring
+// added these calls but the mocks existed only to keep the actions from
+// crashing; zero call assertions existed, so a dropped "max" tag argument, a
+// wrong slug literal, or a missing old-URL revalidation on rename/delete
+// would pass green (07-REVIEW WR-04). These blocks pin the EXACT literals
+// the source emits (seeded slugs: insert → "news", pre-fetch → "existing-slug").
+// ============================================================
+describe("Plan 07-06 / WR-04: taxonomy revalidation calls — concrete literal assertions (2-arg max form)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    requireCanMock.mockResolvedValue({ user: { id: "u1", role: "editor" }, session: { id: "s1" } });
+    validateSlugMock.mockReturnValue({ valid: true });
+    assertUniqueSlugMock.mockResolvedValue(undefined);
+    insertMock.mockResolvedValue([{ id: 1, slug: "news" }]);
+    updateMock.mockResolvedValue(undefined);
+    selectMock.mockResolvedValue([{ slug: "existing-slug" }]);
+    revalidatePathMock.mockReturnValue(undefined);
+    revalidateTagMock.mockReturnValue(undefined);
+  });
+
+  it("createCategory revalidates /category/{slug} + all list surfaces + category-1 & posts-list tags (2-arg max)", async () => {
+    await createCategory({ name: "News", slug: "news" });
+
+    expect(revalidatePathMock).toHaveBeenCalledWith("/category/news");
+    expect(revalidatePathMock).toHaveBeenCalledWith("/blog");
+    expect(revalidatePathMock).toHaveBeenCalledWith("/");
+    expect(revalidatePathMock).toHaveBeenCalledWith("/archive");
+    expect(revalidatePathMock).toHaveBeenCalledWith("/sitemap.xml");
+    expect(revalidateTagMock).toHaveBeenCalledWith("category-1", "max");
+    expect(revalidateTagMock).toHaveBeenCalledWith("posts-list", "max");
+  });
+
+  it("softDeleteCategory revalidates the PRE-DELETE fetched slug URL + category-{id} & posts-list tags", async () => {
+    await softDeleteCategory(7);
+
+    expect(revalidatePathMock).toHaveBeenCalledWith("/category/existing-slug");
+    expect(revalidateTagMock).toHaveBeenCalledWith("category-7", "max");
+    expect(revalidateTagMock).toHaveBeenCalledWith("posts-list", "max");
+  });
+
+  it("updateCategory with a RENAMED slug revalidates BOTH the old-slug and new-slug paths (old URL must 404, new URL must prime)", async () => {
+    await updateCategory(7, { name: "News 2", slug: "renamed-news" });
+
+    expect(revalidatePathMock).toHaveBeenCalledWith("/category/existing-slug");
+    expect(revalidatePathMock).toHaveBeenCalledWith("/category/renamed-news");
+    expect(revalidateTagMock).toHaveBeenCalledWith("category-7", "max");
+    expect(revalidateTagMock).toHaveBeenCalledWith("posts-list", "max");
+  });
+
+  it("createTag revalidates /tag/{slug} + posts-list tag, with NO per-entity tag (listArchive has no per-tag cacheTag)", async () => {
+    await createTag({ name: "News", slug: "news" });
+
+    expect(revalidatePathMock).toHaveBeenCalledWith("/tag/news");
+    expect(revalidateTagMock).toHaveBeenCalledWith("posts-list", "max");
+    // Tags have no per-entity cacheTag axis (only categories/authors do) —
+    // pin the negative: no category-N / tag-N tag was fired.
+    const tagCalls = revalidateTagMock.mock.calls.map((c) => String(c[0]));
+    expect(tagCalls.every((t) => t === "posts-list")).toBe(true);
+  });
+
+  it("softDeleteTag revalidates the pre-delete fetched slug URL + posts-list tag", async () => {
+    await softDeleteTag(9);
+
+    expect(revalidatePathMock).toHaveBeenCalledWith("/tag/existing-slug");
+    expect(revalidateTagMock).toHaveBeenCalledWith("posts-list", "max");
   });
 });
 

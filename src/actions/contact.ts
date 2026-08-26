@@ -3,7 +3,8 @@
 // [CITED: src/actions/pages.ts L23-29 — the "use server" + Zod parse pattern,
 //  adapted by DROPPING requireCan since contact is unauthenticated]
 // [CITED: src/lib/email/index.ts L40-72 — sendEmail signature; fire-and-forget; never throws (R8)]
-// [CITED: src/lib/rate-limit/index.ts — contactFormLimiter.limit(ip) from Plan 07-02 (PERF-04)]
+// [CITED: src/lib/rate-limit/index.ts — contactFormLimiter.limit(ip) from Plan 07-02 (PERF-04);
+//  getClientIpFromXff (last-hop XFF extraction) from Plan 07-06 (CR-01 leg 2)]
 // [CITED: 06-CONTEXT.md D-07 — reuse lib/email; honeypot + per-IP rate-limit]
 // [CITED: 06-CONTEXT.md D-08 — email-only, NO DB storage]
 // [CITED: 06-RESEARCH.md Pitfall 7 (L703-708) — do NOT add 'use cache' to the contact
@@ -25,7 +26,7 @@
 import { headers } from "next/headers";
 import { contactSchema } from "./contact-schema";
 import { sendEmail } from "@/lib/email";
-import { contactFormLimiter } from "@/lib/rate-limit";
+import { contactFormLimiter, getClientIpFromXff } from "@/lib/rate-limit";
 import { getSetting } from "@/actions/settings";
 
 // Fallback recipient when the admin has not yet set contact.recipient_email
@@ -47,6 +48,11 @@ const FALLBACK_RECIPIENT = "admin@anydiscussion.com";
  *     the server re-validates per CLAUDE.md ("never trust the client shape").
  *   - Rate-limit exceeded → `Error("RATE_LIMITED")`. The client form maps this
  *     to a friendly "Too many messages — please try again later" message.
+ *   - Rate-limit backend unreachable (Redis outage) → `Error("RATE_LIMITED")`
+ *     as well — fail-closed, consistent with the auth limiter's documented
+ *     T-07-02-06 policy (WR-01: @upstash/ratelimit 2.0.8 slidingWindow has no
+ *     catch around safeEval, so Redis errors PROPAGATE out of limit(); this
+ *     action catches and maps them to the same public contract).
  *
  * @param input  shape matching {@link ContactInput} (parsed by contactSchema).
  * @returns      `{ ok: true }` on success (real or honeypot-tripped).
@@ -67,15 +73,28 @@ export async function submitContact(
   }
 
   // 3. Rate-limit — per-IP, Redis-backed (Plan 07-02 / PERF-04 / D-01).
-  //    x-forwarded-for is the standard proxy header (Coolify's Caddy/Traefik
-  //    sets it). Fall back to "unknown" when no header is present (local dev).
+  //    CR-01 leg 2 (Plan 07-06): the limiter keys on the LAST X-Forwarded-For
+  //    hop via the shared getClientIpFromXff helper — the entry our own
+  //    appending proxy added (not client-controllable), NOT the spoofable
+  //    first hop. "unknown" fallback when no header is present (local dev).
   //    Policy unchanged from Plan 06-01: 5 per IP per 1 hour (configured on the
   //    `contactFormLimiter` instance, not here — single source of truth in
   //    src/lib/rate-limit/upstash-ioredis-adapter.ts).
+  //    WR-01 (Plan 07-06): a Redis outage makes limit() REJECT (@upstash/
+  //    ratelimit 2.0.8 rethrows non-NOSCRIPT errors from safeEval) — caught
+  //    here and mapped to the same RATE_LIMITED contract (fail-closed,
+  //    consistent with the auth limiter's T-07-02-06 policy) instead of
+  //    surfacing a raw internal error on the public form.
   const headerList = await headers();
   const forwardedFor = headerList.get("x-forwarded-for");
-  const ip = forwardedFor?.split(",")[0]?.trim() || "unknown";
-  const { success } = await contactFormLimiter.limit(ip);
+  const ip = getClientIpFromXff(forwardedFor);
+  let success: boolean;
+  try {
+    ({ success } = await contactFormLimiter.limit(ip));
+  } catch {
+    // Redis unreachable — fail closed under the documented public contract.
+    throw new Error("RATE_LIMITED");
+  }
   if (!success) {
     throw new Error("RATE_LIMITED");
   }

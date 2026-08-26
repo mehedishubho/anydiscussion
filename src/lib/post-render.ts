@@ -37,6 +37,18 @@ import { sanitizeBeforeRender } from "@/lib/sanitize";
  * @returns sanitized HTML string, safe for `dangerouslySetInnerHTML={{ __html: ... }}`
  */
 export function renderPostBody(postBodyJson: unknown): string {
+  // NULL-body guard (Plan 07-06, Rule 2/3). A dashboard-saved pages row CAN
+  // carry body = NULL (observed 2026-08-26: published /terms-and-conditions
+  // and /contact rows saved with NULL bodies). Without this guard the NULL
+  // reaches Tiptap's generateHTML → Node.fromJSON(schema, null) →
+  // "RangeError: Invalid input for Node.fromJSON", which crashed the ENTIRE
+  // production build at the /terms-and-conditions prerender. A CMS page with
+  // an empty body renders an empty article — it must never take down the
+  // build or the site. Returning "" skips generateHTML AND the sanitize gate
+  // (nothing to sanitize) and is safe for dangerouslySetInnerHTML by
+  // construction (no HTML at all).
+  if (postBodyJson == null) return "";
+
   // Cast to JSONContent — the stored jsonb is structurally ProseMirror JSON but
   // typed as `unknown` at the DB boundary. generateHTML walks the schema; invalid
   // nodes are silently dropped (safe behavior — no un-gated HTML reaches the output).

@@ -17,16 +17,36 @@
 // `vi.useFakeTimers` + `resetRateLimit` machinery is GONE — the new limiter is
 // async and delegates to the (mocked) Redis adapter.
 //
-// IMPORTANT: `@upstash/ratelimit`'s `ephemeralCache` (default `Map`) memoizes
-// blocked identifiers until their reset time. Without resetting, a block from
-// one test would short-circuit Redis in the next. We reach into the limiter
-// via `l["cache"]` to clear it before each test (the field is private in the
-// type but extant at runtime — the library sets `ctx.cache = config.ephemeralCache ?? new Map()`).
+// IMPORTANT: `@upstash/ratelimit`'s `ephemeralCache` memoizes blocked
+// identifiers until their reset time (blockUntil). Without resetting, a block
+// from one test short-circuits Redis in the next (reason "cacheBlock"). The
+// reset goes through the EXPORTED `contactFormEphemeralCache` Map from
+// ../upstash-ioredis-adapter — the limiter config passes that exact Map as
+// `ephemeralCache`, and the library wraps it in its Cache inside ctx
+// (verified against @upstash/ratelimit@2.0.8 dist index.mjs lines ~757-761),
+// so clearing the export clears the memoized blocks. (The previous approach
+// probed a private `l["cache"]` field that does not exist at that path — the
+// cache lives at `ctx.cache` — so the old reset was a silent no-op; WR-02.)
+//
+// TRUTH about failures (WR-03, Plan 07-06): @upstash/ratelimit 2.0.8's
+// slidingWindow limit() has NO catch around safeEval, and safeEval RETHROWS
+// non-NOSCRIPT errors — Redis failures PROPAGATE to the caller. Callers
+// (contact.ts) MUST catch and map to the RATE_LIMITED contract (WR-01,
+// Plan 07-06 Task 1); the propagation test below pins that requirement.
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
 // In-memory backing store for the mock Redis. Reset before each test.
 let mockStore: Map<string, number>;
+
+// WR-03 (Plan 07-06): hoisted mutable failure state wired into the mocked
+// evalsha/eval below. Set `.current` to an Error to make every mocked Redis
+// script call REJECT with it — a real Redis-outage simulation (the previous
+// "does NOT throw" test never exercised this surface). Reset to null in
+// beforeEach.
+const { redisFailure } = vi.hoisted(() => ({
+  redisFailure: { current: null as Error | null },
+}));
 
 // Mock @/lib/redis so the IoredisAdapter gets a fake redisClient (bypasses
 // globalThis.__redisClient singleton caching AND any real ioredis connection).
@@ -36,10 +56,12 @@ let mockStore: Map<string, number>;
 vi.mock("@/lib/redis", () => ({
   redisClient: {
     async evalsha(...allArgs: unknown[]) {
+      if (redisFailure.current) return Promise.reject(redisFailure.current);
       const { keys, args } = splitIoredisArgs(allArgs);
       return slidingWindowEval(mockStore, keys, args);
     },
     async eval(...allArgs: unknown[]) {
+      if (redisFailure.current) return Promise.reject(redisFailure.current);
       const { keys, args } = splitIoredisArgs(allArgs);
       return slidingWindowEval(mockStore, keys, args);
     },
@@ -105,21 +127,22 @@ function slidingWindowEval(
 // Import AFTER vi.mock above is hoisted. vitest hoists vi.mock calls to the
 // top of the file automatically, so this ordering is safe.
 import { contactFormLimiter } from "../index";
+import { contactFormEphemeralCache } from "../upstash-ioredis-adapter";
 
-// Reset the @upstash/ratelimit ephemeralCache (a Map<string, number>) between
-// tests so a cached block from one test does not short-circuit Redis in the
-// next. The cache field is private at the TYPE level but exists at runtime
-// (RegionRatelimit constructor sets it from config.ephemeralCache ?? new Map()).
+// Reset the @upstash/ratelimit ephemeralCache between tests so a cached block
+// from one test does not short-circuit Redis in the next. WR-02 (Plan 07-06):
+// clears the EXPORTED Map that the contactFormLimiter config passes as
+// `ephemeralCache` — the supported reset surface. The library wraps this
+// exact Map instance in its Cache inside ctx (dist index.mjs ~757-761), so
+// clear() here clears the memoized blocks. No private-field probing.
 function resetEphemeralCache() {
-  const cache = (contactFormLimiter as unknown as { cache?: Map<string, number> }).cache;
-  if (cache instanceof Map) {
-    cache.clear();
-  }
+  contactFormEphemeralCache.clear();
 }
 
 describe("Plan 07-02 / contactFormLimiter — Redis-backed sliding window (5 per 1h)", () => {
   beforeEach(() => {
     mockStore = new Map();
+    redisFailure.current = null;
     resetEphemeralCache();
   });
 
@@ -153,13 +176,47 @@ describe("Plan 07-02 / contactFormLimiter — Redis-backed sliding window (5 per
     expect(r.success).toBe(true);
   });
 
-  it("does NOT throw on Redis call failure surface (returns a result object)", async () => {
-    // Sanity: the limiter always resolves to a result object, never throws —
-    // callers in contact.ts rely on `success: false` rather than a try/catch.
-    const r = await contactFormLimiter.limit("203.0.113.42");
-    expect(r).toHaveProperty("success");
-    expect(r).toHaveProperty("limit");
-    expect(r).toHaveProperty("remaining");
-    expect(r).toHaveProperty("reset");
+  // WR-03 (Plan 07-06) — REPLACES the former "does NOT throw on Redis call
+  // failure surface" test, which never actually simulated a failure and
+  // certified the exact opposite of the truth: @upstash/ratelimit 2.0.8's
+  // slidingWindow limit() has NO catch around safeEval, and safeEval RETHROWS
+  // non-NOSCRIPT errors (dist index.mjs:147-156), so Redis failures PROPAGATE
+  // to the caller. This is precisely why contact.ts wraps its
+  // contactFormLimiter.limit() await in a try/catch mapping rejections to
+  // Error("RATE_LIMITED") (WR-01, Plan 07-06 Task 1).
+  it("propagates a Redis failure to the caller — documenting contact.ts's required catch (WR-03)", async () => {
+    redisFailure.current = new Error("ECONNREFUSED");
+    // FRESH IP (198.51.100.77 — RFC 5737 TEST-NET-2, unused by the other
+    // tests): a cached blocked identifier would short-circuit BEFORE the Redis
+    // call and never see the failure.
+    await expect(contactFormLimiter.limit("198.51.100.77")).rejects.toThrow(
+      "ECONNREFUSED",
+    );
+  });
+
+  // WR-02 (Plan 07-06) — resetEphemeralCache must clear the REAL ephemeral
+  // cache. The previous implementation read `limiter.cache`, which does not
+  // exist (the cache lives at `ctx.cache`, wrapped in a Cache instance —
+  // dist index.mjs:757-761), so it was a silent no-op: a block memoized by
+  // one test would short-circuit Redis in a later test re-using the IP.
+  it("resetEphemeralCache clears the memoized block (WR-02): after block + reset + FRESH store, the same IP hits Redis again", async () => {
+    // Exhaust the budget: 5 succeed, 6th → success:false. The library
+    // memoizes the block in the ephemeral cache until the window reset
+    // (blockUntil — up to 1h for the "1 h" window).
+    for (let i = 0; i < 5; i++) {
+      await contactFormLimiter.limit("192.0.2.10");
+    }
+    const blocked = await contactFormLimiter.limit("192.0.2.10");
+    expect(blocked.success).toBe(false);
+
+    // Fresh Redis backing store + the reset helper under test.
+    mockStore = new Map();
+    resetEphemeralCache();
+
+    // If the reset actually cleared the ephemeral cache, the SAME IP consults
+    // the fresh store and succeeds again. With a no-op reset the stale block
+    // short-circuits (reason "cacheBlock") and success stays false.
+    const after = await contactFormLimiter.limit("192.0.2.10");
+    expect(after.success).toBe(true);
   });
 });
