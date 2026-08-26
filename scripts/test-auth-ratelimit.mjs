@@ -31,10 +31,28 @@ const PORT = process.env.PORT || 3940; // distinct from test-auth-gate.mjs (3939
 const HOST = "localhost";
 const BASE_URL = `http://${HOST}:${PORT}`;
 const NEXT_DIR = "./.next";
-// Synthetic test IP sent via X-Forwarded-For. Better Auth trusts this header
-// because advanced.ipAddress.ipAddressHeaders is set to ["x-forwarded-for"]
-// (Coolify's Caddy/Traefik overwrites it in prod - T-07-02-03).
-const TEST_IP = "203.0.113.42"; // RFC 5737 documentation range - never a real client
+// Synthetic test IP sent via X-Forwarded-For - RANDOMIZED per run inside the
+// RFC 5737 documentation range 203.0.113.0/24 (never a real client) so a
+// stale Redis bucket left by a previous run can never consume THIS run's
+// 3-attempt budget (WR-06 rerun-poisoning fix, Plan 07-06).
+const TEST_IP = `203.0.113.${1 + Math.floor(Math.random() * 254)}`;
+// Trust model (corrected by CR-01 / Plan 07-06 - the earlier claim that the
+// production proxy replaces the X-Forwarded-For header wholesale, making
+// client-supplied values safe, was disproven):
+//   - TRUSTED_PROXY_CIDR unset (local dev, this harness): a SINGLE-VALUE
+//     X-Forwarded-For is trusted via advanced.ipAddress.ipAddressHeaders -
+//     exactly what the POSTs below send.
+//   - TRUSTED_PROXY_CIDR set (production): advanced.ipAddress.trustedProxies
+//     strips the chain from the RIGHT; the first untrusted hop (the real
+//     client) keys the rate limit. Multi-value XFF WITHOUT trustedProxies
+//     resolves to null -> ALL auth traffic shares one 3/15min bucket
+//     (fail-closed over-limiting, never spoofable).
+// Per-environment verification: proxy behavior is environment-specific - after
+// deploy, run the through-the-proxy curl check in the SKIP instructions below
+// (07-VERIFICATION "Human Verification Required" item 4).
+//
+// WR-07 (npx vs pnpm exec in the spawn below) is a known advisory finding
+// deliberately left untouched by this closure's owner-approved scope.
 const SIGN_IN_URL = `${BASE_URL}/api/auth/sign-in/email`;
 
 // --- helpers --------------------------------------------------------------
@@ -74,6 +92,12 @@ function structuralCheck() {
     '"/reset-password"',
     '"/verify-email"',
     "ipAddressHeaders",
+    // CR-01 leg-1 pin (Plan 07-06 / 07-VERIFICATION gap #2): without
+    // trustedProxies (env-driven via TRUSTED_PROXY_CIDR), a multi-value
+    // X-Forwarded-For behind an appending proxy collapses ALL auth traffic
+    // into one 3/15min bucket. This token failing the gate means the CR-01
+    // fix was removed from src/lib/auth/index.ts.
+    "trustedProxies",
   ];
   const missing = required.filter((tok) => !src.includes(tok));
   if (missing.length > 0) {
@@ -148,10 +172,17 @@ async function postSignIn(attempt) {
 
 async function httpCheck() {
   log("http", `Spawning next start on port ${PORT}...`);
+  // WR-06 (Plan 07-06 / 07-REVIEW): detached ONLY on POSIX so the child
+  // becomes a process-group leader - the negative-PID group kill in the
+  // finally block below is valid only then (a detached:false child has no
+  // group with pgid === its pid -> process.kill(-pid) threw ESRCH ->
+  // previously swallowed -> orphaned next-start holding the port, poisoning
+  // every rerun). Windows keeps detached:false (a detached child there would
+  // flash a new console) and uses taskkill /f /t to tree-kill.
   const server = spawn(`npx next start -p ${PORT}`, {
     stdio: "pipe",
     shell: true,
-    detached: false,
+    detached: process.platform !== "win32",
   });
 
   let serverStderr = "";
@@ -211,12 +242,26 @@ async function httpCheck() {
   } finally {
     try {
       if (process.platform === "win32") {
-        spawn(`taskkill /pid ${server.pid} /f /t`, { shell: true });
+        // execSync, NOT spawn (WR-06, Plan 07-06): a spawned taskkill child
+        // leaves an open libuv async handle that races process.exit teardown —
+        // observed 2026-08-26: the harness printed "Result: PASS (exit 0)" and
+        // THEN crashed in node's src\win\async.c ("!(handle->flags &
+        // UV_HANDLE_CLOSING)", pnpm exit 3221226505) while the taskkill child
+        // had not yet killed the server (orphan held the port). execSync blocks
+        // until the tree-kill completes: no dangling handle, no orphan.
+        execSync(`taskkill /pid ${server.pid} /f /t`, { stdio: "ignore" });
       } else {
         process.kill(-server.pid, "SIGTERM");
       }
-    } catch {
-      // best-effort kill
+    } catch (err) {
+      // WR-06 (Plan 07-06 / 07-REVIEW): a bare ESRCH from a non-leader child
+      // was previously swallowed here - an orphaned server holding the port
+      // is exactly the failure this cleanup exists to prevent, so LOG it.
+      const code = err && typeof err === "object" && "code" in err ? err.code : "unknown";
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(
+        `  [cleanup] FAILED to kill server (pid=${server.pid}, code=${code}): ${msg}`,
+      );
     }
   }
 }
@@ -253,7 +298,21 @@ async function main() {
     console.log("           -H 'x-forwarded-for: " + TEST_IP + "' \\");
     console.log("           -d '{\"email\":\"a@b.invalid\",\"password\":\"x\"}' | head -1;");
     console.log("         done");
-    console.log("      Expected: 4th response is HTTP/1.1 429 with a retry-after header\n");
+    console.log("      Expected: 4th response is HTTP/1.1 429 with a retry-after header");
+    console.log("      4. AFTER DEPLOY - per-environment IP-trust verification (CR-01 leg 3 /");
+    console.log("         07-VERIFICATION \"Human Verification Required\" item 4): through the");
+    console.log("         REAL deployed proxy (not direct-to-app), send a sign-in POST while");
+    console.log("         injecting a fake X-Forwarded-For from the documentation range:");
+    console.log("           curl -s -o /dev/null -w '%{http_code}' \\");
+    console.log("             https://<prod-host>/api/auth/sign-in/email \\");
+    console.log("             -X POST -H 'content-type: application/json' \\");
+    console.log("             -H 'X-Forwarded-For: 198.51.100.99' \\");
+    console.log("             -d '{\"email\":\"a@b.invalid\",\"password\":\"x\"}'");
+    console.log("         Then confirm from logs/behavior that the resolved client IP is the");
+    console.log("         PROXY-DERIVED value (trustedProxies strips the chain from the right");
+    console.log("         per TRUSTED_PROXY_CIDR), not the injected 198.51.100.99 - i.e. rate");
+    console.log("         buckets stay per-client. Proxy behavior is environment-specific;");
+    console.log("         this check re-verifies the trust model per environment.\n");
   } else {
     console.log(`  FAIL:HTTP CHECK FAILED: ${httpResult.reason}\n`);
     if (structural.passed) {

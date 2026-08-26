@@ -2,12 +2,22 @@
 phase: 07-performance-deploy
 verified: 2026-08-26T20:45:00Z
 status: gaps_found
-score: 8/16 must-haves verified
-behavior_unverified: 1 # truths present + wired whose runtime behavior no test exercises
-overrides_applied: 0
-# NOTE: two operator-approved deviations (fc3286d) are suggested as overrides below —
-# they are NOT applied because no prior VERIFICATION.md recorded them. Accept or reject
-# at the escalation gate; see "Override Suggestions" in the report body.
+score: 12/16 must-haves verified
+behavior_unverified: 0 # truths present + wired whose runtime behavior no test exercises
+overrides_applied: 2
+# Both fc3286d operator-approved deviations were ACCEPTED by the owner at the
+# escalation gate on 2026-08-26 (formalizing the 2026-07-29 fc3286d approval) —
+# recorded in the overrides list below, copied verbatim from the report body's
+# "Override Suggestions" section.
+overrides:
+  - must_have: "No runtime secret appears in any ARG or ENV line of the Dockerfile — only NEXT_PUBLIC_* build-time ARGs are baked (D-21)"
+    reason: "Build-time DATABASE_URL ARG in builder stage ONLY (cacheComponents prerender needs Postgres at build); runner stage is a fresh node:20-alpine and ships secret-free — runtime DB creds still platform-env-injected"
+    accepted_by: "owner (mehedishubho)"
+    accepted_at: "2026-08-26"
+  - must_have: "Bundle-budget gate at 100KB gzipped (D-14)"
+    reason: "Next.js flattens .next/static/chunks — no public/admin separation is possible at the chunk level; 1000KB total budget (~33% headroom over the ~749KB baseline) catches catastrophic regressions while GATE 1 (no-restricted-imports, verified exit-1) is the precise (site)→(admin) leak guard"
+    accepted_by: "owner (mehedishubho)"
+    accepted_at: "2026-08-26"
 gaps:
   - truth: "The app deploys to staging/production on Coolify via git-push with managed SSL (SC#5 / PERF-06)"
     status: partial
@@ -18,36 +28,6 @@ gaps:
     missing:
       - "Revise coolify-deploy.md (+ umami-deploy.md service sections) for the manual VPS flow when deploy is revisited"
       - "Execute the deploy: runtime env injection, Redis service, smoke test, PROD_URL publish-visible run"
-  - truth: "Rate limits key correctly per client IP behind the production proxy (IP-trust model sound)"
-    status: failed
-    reason: "07-REVIEW CR-01, independently re-verified against installed @better-auth/core@1.6.23 dist/utils/ip.mjs: with only ipAddressHeaders=[x-forwarded-for] and NO trustedProxies, getIPFromHeader returns null for any multi-value XFF (`if (forwardedIps.length !== 1) return null;`) — behind an appending proxy (Traefik default) ALL auth traffic shares ONE 3/15min bucket (trivial unauthenticated auth DoS). contact.ts takes the FIRST XFF hop (attacker-controllable under an appending proxy) — limiter bypass via header rotation. Not biting today (no deploy; local test sends single-value XFF), but it defeats the brute-force intent in exactly the production-like conditions the phase goal demands."
-    artifacts:
-      - path: "src/lib/auth/index.ts"
-        issue: "advanced.ipAddress lacks trustedProxies — multi-value XFF collapses to NO_TRUSTED_IP_KEY shared bucket"
-      - path: "src/actions/contact.ts"
-        issue: "line 77 keys on first XFF hop (split(\",\")[0]) — spoofable under an appending proxy"
-    missing:
-      - "Configure advanced.ipAddress.trustedProxies with the Coolify proxy network CIDR (supported in installed 1.6.23: ip.mjs strips the chain from the right)"
-      - "contact.ts (+ newsletter consumer): take the LAST XFF hop or a proxy-set real-IP header instead of the first"
-      - "Add the through-the-proxy curl -H 'X-Forwarded-For: ...' verification to test-auth-ratelimit.mjs manual-run instructions"
-  - truth: "A bundle-budget check proves no TailAdmin or Tiptap/editor JS leaks into the public chunk (SC#2, D-14 100KB)"
-    status: partial
-    reason: "Operator-approved deviation (fc3286d): gate 2 budget raised 100KB→1000KB TOTAL across all ~48 chunks (Next.js flattens chunks — no route-group separation possible; baseline ~749KB includes admin/editor). At 1000KB the budget catches only catastrophic regressions and CANNOT prove per-chunk leak-freedom by itself; GATE 1 (no-restricted-imports, behaviorally verified exit-1) is the precise leak guard. Script mechanics verified behaviorally (exit 0 under / exit 1 over threshold). Suggested override below."
-    artifacts:
-      - path: "Dockerfile"
-        issue: "GATE 2 invokes --max-gz-kb=1000 (plan literal: 100)"
-      - path: "package.json"
-        issue: "check-bundle script uses --max-gz-kb=1000 (plan literal: 100)"
-    missing:
-      - "Accept the deviation via the suggested override, OR restore a public-chunk-scoped budget (per-route chunk filtering) at 100KB"
-  - truth: "No runtime secret appears in any ARG or ENV line of the Dockerfile — only NEXT_PUBLIC_* build-time ARGs (07-01 D-21 literal)"
-    status: partial
-    reason: "Operator-approved deviation (fc3286d): ARG/ENV DATABASE_URL added to the BUILDER stage only — cacheComponents prerender needs Postgres at build. Security intent preserved: runner stage is a fresh FROM node:20-alpine whose only ENV lines are NODE_ENV, NEXT_TELEMETRY_DISABLED, PORT, HOSTNAME (verified — shipped image is secret-free); runtime DATABASE_URL comes from platform env. The plan's negative-grep criterion now matches (ARG/ENV DATABASE_URL present). Suggested override below."
-    artifacts:
-      - path: "Dockerfile"
-        issue: "lines 71/74: ARG DATABASE_URL + ENV DATABASE_URL=$DATABASE_URL (builder stage only)"
-    missing:
-      - "Accept via the suggested override (runner-image secret-freedom is the load-bearing property and holds), or remove the build-time DB dependency (e.g. prerender-time stubbing)"
   - truth: "Public-site pages pass the Lighthouse / Core Web Vitals bar on the real Coolify + Cloudflare stack (SC#1 live leg)"
     status: partial
     reason: "Unfulfillable today — no live production URL exists (deploy owner-deferred). Config + tooling are complete and verified in-repo (lighthouserc.json with INP-correct thresholds, @lhci/cli installed, pnpm lighthouse wired). 07-05 Task 2 recorded status: partial for the same reason."
@@ -68,11 +48,7 @@ deferred: # Step 9b — items addressed by a LATER milestone phase
   - truth: "PERF-05: Postgres backups scheduled"
     addressed_in: "Phase 8 (Backup & Disaster Recovery)"
     evidence: "REQUIREMENTS.md: PERF-05 SUPERSEDED — replaced by BACKUP-01..05 (Phase 8); Phase 8 verification passed 2026-07-30 (22/22)"
-behavior_unverified_items:
-  - truth: "The 4th sign-in attempt within 15 minutes returns HTTP 429 with X-Retry-After; the 4th attempt after the window succeeds"
-    test: "docker compose up -d redis && pnpm test:auth-ratelimit (spawns next start, 4 POSTs from synthetic IP, asserts 4th = 429 + X-Retry-After)"
-    expected: "Attempts 1-3 non-429; attempt 4 HTTP 429 with X-Retry-After (or Retry-After) header; window reset succeeds after 15 min"
-    why_human: "Requires a running server + live Redis; the graceful-SKIP integration script has never been executed end-to-end (no recorded run); Better Auth's limiter is library-internal so no unit test exercises the HTTP path"
+behavior_unverified_items: [] # the auth 429 item was closed 2026-08-26 by the recorded live harness run (07-06 Task 3 — truth 9)
 ---
 
 # Phase 7: Performance & Deploy — Verification Report
@@ -86,7 +62,7 @@ behavior_unverified_items:
 
 ## Goal Achievement
 
-The phase goal is **partially achieved**. Everything repo-anchored exists, is substantive, and is wired — build gates (behaviorally proven), rate-limiting config + Redis storage, the complete revalidation audit with matching code fixes, Lighthouse config with INP-correct thresholds, the ISR ADR, and three operator runbooks. Everything live-stack-anchored is **not done**: there is no deployment, so the "ships on the real self-hosted stack ... verified in production-like conditions" legs of the goal are unmet — deferred by an explicit owner decision (2026-07-29: manual deploy, post-app-completion review), not by executor omission. One verified code defect (CR-01 rate-limit IP-trust model) is repo-fixable now and should be fixed before any deploy.
+The phase goal is **partially achieved**. Everything repo-anchored exists, is substantive, and is wired — build gates (behaviorally proven), rate-limiting config + Redis storage, the complete revalidation audit with matching code fixes, Lighthouse config with INP-correct thresholds, the ISR ADR, and three operator runbooks. Everything live-stack-anchored is **not done**: there is no deployment, so the "ships on the real self-hosted stack ... verified in production-like conditions" legs of the goal are unmet — deferred by an explicit owner decision (2026-07-29: manual deploy, post-app-completion review), not by executor omission. One verified code defect (CR-01 rate-limit IP-trust model) was repo-fixable — FIXED 2026-08-26 by 07-06 (see Gaps Summary).
 
 ### Observable Truths
 
@@ -95,25 +71,25 @@ The phase goal is **partially achieved**. Everything repo-anchored exists, is su
 | 1 | lighthouserc.json + @lhci/cli + `pnpm lighthouse` with INP-correct thresholds (SC#1 config leg) | ✓ VERIFIED | lighthouserc.json:16-21 — perf≥0.9, LCP≤2500, `interaction-to-next-paint`≤200 (no `max-potential-fid` anywhere), CLS≤0.1 error-level; package.json:19,77; .gitignore:53 |
 | 2 | Public-site pages pass Lighthouse/CWV bar on the real Coolify+Cloudflare stack (SC#1 live leg) | ? UNCERTAIN | No production URL exists (owner-deferred deploy). Unfulfillable today — gap #5 |
 | 3 | A deliberate cross-group import fails the pre-production gate (SC#2) | ✓ VERIFIED | Behavioral: `(site)`→`@/app/(admin)/...` import via eslint --stdin → `no-restricted-imports` ERROR, exit 1 (probe run this verification); rule at eslint.config.mjs:20-54 (bidirectional); wired as Dockerfile GATE 1 `pnpm lint --max-warnings 0` (line 82) BEFORE `pnpm build` |
-| 4 | Bundle-budget check proves no TailAdmin/Tiptap leak into the public chunk (SC#2, D-14 100KB literal) | ✗ FAILED | Budget is 1000KB TOTAL (fc3286d, operator-approved; Dockerfile:95, package.json:18) — cannot prove per-chunk leak-freedom; script mechanics themselves verified behaviorally (195.4KB synthetic chunks: exit 0 @1000KB, exit 1 @100KB). Gap #3 + override suggestion |
+| 4 | Bundle-budget check proves no TailAdmin/Tiptap leak into the public chunk (SC#2, D-14 100KB literal) | ✓ VERIFIED (override) | Override ACCEPTED 2026-08-26 by owner at the escalation gate (frontmatter overrides block; fc3286d approval formalized) — 1000KB total budget catches catastrophic regressions while GATE 1 (truth 3) is the precise leak guard; script mechanics behaviorally verified (195.4KB synthetic chunks: exit 0 @1000KB, exit 1 @100KB). Former gap #3 closed as accepted override (07-06) |
 | 5 | Every mutating action classified HAS/MISSING/N/A in the audit — zero blank rows (SC#3 audit leg) | ✓ VERIFIED | 07-REVALIDATION-AUDIT.md — 34 rows covering every action in posts/settings/storage/categories/tags/pages/users/media/contact + cache-strategy matrix per public route; no blank classifications |
 | 6 | categories/tags/pages/users actions revalidate public routes — mechanism-matched, concrete literals, 2-arg tag, after gate + DB write (SC#3 fix leg) | ✓ VERIFIED | Source-verified: categories.ts:51-57/106-115/138-144, tags.ts:46-51/105-113/134-139, pages.ts:124-126/174-179/240-242, users.ts:357-363 — all `revalidateTag(tag, "max")`, concrete template-literal paths, fires after `requireCan` + write; posts.ts:357-373 canonical template HAS assertion coverage (posts.test.ts:475-504). Note WR-04: no call assertions for the 4 fixed files |
 | 7 | Published post visible within 30s on the real stack (SC#3 live leg) | ? UNCERTAIN | No production URL. Instrument verified: scripts/test-publish-visible.mjs (30s deadline, poller, SKIP on unreachable) + package.json `test:publish-visible` — gap #6 |
 | 8 | Auth endpoints rate-limited — Better Auth 3/900s on all 4 endpoints + Redis customStorage + Contact limiter (SC#4 config leg) | ✓ VERIFIED | src/lib/auth/index.ts:102-139 (`customRules` ×4 at `{window:900,max:3}`, customStorage via redisClient with `ratelimit:` prefix + EX TTL, ipAddressHeaders) + contact.ts:78 (`contactFormLimiter.limit(ip)`) + upstash-ioredis-adapter.ts:98-104; rate-limit.test.ts 4/4 pass (run this verification); docker-compose.yml:52-66 D-04 redis; .env.example REDIS_URL |
-| 9 | 4th sign-in within 15 min → HTTP 429 + X-Retry-After; window reset succeeds (SC#4 behavior leg) | ⚠️ PRESENT_BEHAVIOR_UNVERIFIED | Config + storage wired; HTTP path never exercised (test-auth-ratelimit.mjs graceful-SKIPs without server+Redis; no recorded run) — see behavior_unverified_items + human verification |
-| 10 | Rate limits key per-client-IP behind the production proxy (IP-trust soundness) | ✗ FAILED | CR-01 re-verified against installed @better-auth/core@1.6.23 dist/utils/ip.mjs — `if (forwardedIps.length !== 1) return null;` without trustedProxies → multi-value XFF collapses all auth traffic into ONE 3/15min bucket (auth DoS); contact.ts:77 first-hop XFF is spoofable under an appending proxy — gap #2 |
+| 9 | 4th sign-in within 15 min → HTTP 429 + X-Retry-After; window reset succeeds (SC#4 behavior leg) | ✓ VERIFIED | Live harness run 2026-08-26 (07-06 Task 3, recorded in 07-06-SUMMARY.md): `pnpm test:auth-ratelimit` against docker redis — Structural PASS (incl. trustedProxies token), HTTP PASS: attempts 1-3 non-429 (403 invalid credentials), attempt 4 HTTP 429 with X-Retry-After=900; exit 0 |
+| 10 | Rate limits key per-client-IP behind the production proxy (IP-trust soundness) | ✓ VERIFIED | CR-01 FIXED (07-06): advanced.ipAddress.trustedProxies sourced from TRUSTED_PROXY_CIDR (env-driven, comma-split/trim/filter; unset preserves single-value XFF behavior) + shared last-hop helper getClientIpFromXff keys contact.ts/newsletter.ts limiters (never the spoofable first hop) + trustedProxies structural token pinned in test-auth-ratelimit.mjs; unit + action-level tests pin the extraction (client-ip.test.ts, newsletter.test.ts). Per-environment proxy leg documented in the harness's through-the-proxy instructions — former gap #2 |
 | 11 | App deploys to staging/production on Coolify via git-push with managed SSL (SC#5 / PERF-06) | ✗ FAILED | No deployment exists. Owner decision 2026-07-29 (manual deploy, Docker local-dev only, review post-app-completion; project memory deploy-approach-manual-no-docker-prod) — gap #1 |
 | 12 | Build-vs-runtime env secrets correctly separated (SC#5) | ✓ VERIFIED | Runner stage fresh `FROM node:20-alpine` with only NODE_ENV/NEXT_TELEMETRY_DISABLED/PORT/HOSTNAME (Dockerfile:99-135) — shipped image secret-free; separation rationale documented in Dockerfile header + coolify-deploy.md:264 non-leakage check |
-| 13 | No runtime secret in ANY ARG/ENV line — only NEXT_PUBLIC_* baked (07-01 D-21 literal) | ✗ FAILED | Builder stage carries `ARG DATABASE_URL` + `ENV DATABASE_URL` (Dockerfile:71,74 — fc3286d, operator-approved; intent preserved, see truth 12) — gap #4 + override suggestion |
+| 13 | No runtime secret in ANY ARG/ENV line — only NEXT_PUBLIC_* baked (07-01 D-21 literal) | ✓ VERIFIED (override) | Override ACCEPTED 2026-08-26 by owner at the escalation gate (frontmatter overrides block; fc3286d approval formalized) — builder-stage-only ARG/ENV DATABASE_URL; runner image secret-free (truth 12). Former gap #4 closed as accepted override (07-06) |
 | 14 | Single-instance ISR scaling cliff documented for v2 (SC#5 doc leg) | ✓ VERIFIED | docs/adr/0001-isr-single-instance-scaling.md — full ADR (cliff, single-instance decision, v2 Redis-backed `cacheHandler` singular form, SCALE-01 cross-ref) + README.md:86-96 ISR Scaling section linking the ADR |
 | 15 | Operator runbooks (coolify/umami/dns) with Prerequisites/Steps/Verification/Rollback | ✓ VERIFIED | docs/operations/ 3 files (359/209/247 lines), 4/4 sections each; content spot-checked (env-injection list + NEVER-as-ARG callout + non-leakage env-grep + gates doc; Umami image/password-change/script-wiring; DKIM/SPF/DMARC templates + p=none→p=quarantine progression) |
 | 16 | Umami deployed + DKIM/SPF/DMARC published + real-inbox test (07-04 Tasks 2-3) | ✗ FAILED | Owner-deferred with the deploy. Substantive inbox proof exists: 02-UAT.md (2026-08-24) AUTH-06 + AUTH-07 real-inbox round-trips PASS — gap #7 |
 
-**Score:** 8/16 truths verified (2 uncertain — owner-deferred live legs; 1 present, behavior-unverified; 5 failed, of which 3 are owner-deferred/deviation items and 1 is a repo-fixable defect)
+**Score:** 12/16 truths verified (2 uncertain — owner-deferred live legs; 2 failed — owner-deferred deploy items). Updated 2026-08-26 by 07-06: truths 4/13 override-accepted (frontmatter overrides), truth 9 live-verified (recorded harness run), truth 10 fixed (CR-01 closed).
 
-### Override Suggestions (NOT applied — no prior VERIFICATION.md recorded these)
+### Override Suggestions (APPLIED 2026-08-26 — owner accepted both at the escalation gate)
 
-Both deviations were operator-approved at commit fc3286d (documented in 07-04-SUMMARY.md decisions). To accept them formally, add to this file's frontmatter:
+Both deviations were operator-approved at commit fc3286d (documented in 07-04-SUMMARY.md decisions) and formally ACCEPTED by the owner at the escalation gate on 2026-08-26. Both entries below are now recorded verbatim in this file's frontmatter (overrides_applied: 2), with accepted_by "owner (mehedishubho)" / accepted_at "2026-08-26":
 
 ```yaml
 overrides:
@@ -232,9 +208,9 @@ The phase's repo-side contract is delivered and mostly proven: bundle gates exis
 
 What is NOT achieved is the goal's head — "ships on the real self-hosted stack ... verified in production-like conditions": there is no deployment (owner-deferred 2026-07-29 to a post-app-completion manual-deploy review), hence no live CWV numbers, no live publish→visible run, no Umami, and no formal DKIM/SPF/DMARC publication (though real-inbox deliverability was substantively proven by 02-UAT on 2026-08-24). These are reported as owner-deferred gaps, not executor failures.
 
-Two operator-approved fc3286d deviations (builder-stage DATABASE_URL ARG; 1000KB total bundle budget) fail their plan-literal must-haves while preserving intent (runner image secret-free; catastrophic-leak guard + precise lint guard) — override suggestions provided above for formal acceptance.
+Two operator-approved fc3286d deviations (builder-stage DATABASE_URL ARG; 1000KB total bundle budget) fail their plan-literal must-haves while preserving intent (runner image secret-free; catastrophic-leak guard + precise lint guard) — formally accepted as overrides on 2026-08-26 (frontmatter; former gaps #3/#4 closed).
 
-One repo-fixable defect must be fixed before any deploy: CR-01 (independently confirmed against the installed better-auth dist) — without `trustedProxies`, an appending proxy collapses all auth rate limiting into one shared 3/15-minute bucket, and the contact limiter keys on a spoofable first hop. Advisory warnings WR-01..WR-06 (contact-form outage contract, test-quality issues, missing revalidation assertions) are documented in 07-REVIEW.md and summarized above.
+One repo-fixable defect was fixed before any deploy: CR-01 (independently confirmed against the installed better-auth dist) — without `trustedProxies`, an appending proxy collapses all auth rate limiting into one shared 3/15-minute bucket, and the contact limiter keys on a spoofable first hop. FIXED 2026-08-26 by 07-06: trustedProxies from TRUSTED_PROXY_CIDR, last-hop keying via the shared getClientIpFromXff helper, structural pin in the harness — see 07-06-SUMMARY.md. Advisory warnings WR-01..WR-06 (contact-form outage contract, test-quality issues, missing revalidation assertions) were likewise addressed by 07-06; WR-07..WR-13 and IN-01..IN-04 remain recorded in 07-REVIEW.md as owner-scoped-out advisories.
 
 ---
 
