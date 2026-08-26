@@ -264,7 +264,7 @@ Plans:
   4. Auth endpoints (sign-in, password reset) are rate-limited. (Backup scheduling moved to Phase 8.)
   5. The app deploys to staging on Coolify via git-push with managed SSL, build-vs-runtime env secrets correctly separated, and the single-instance ISR scaling cliff (multi-replica needs a shared Redis cache handler) documented for v2.
 
-**Plans**: 7 plans
+**Plans**: 7/7 plans complete
 
 Plans:
 
@@ -294,7 +294,7 @@ Plans:
 
 **Wave 7** *(gap closure round 2 — 07-REVIEW.md criticals structured as 07-VERIFICATION gaps #5/#6 + the seven repo-fixable warning legs)*
 
-- [ ] 07-07-PLAN.md — Round-2 gap-closure slice: CR-02 production-reachable error contracts (submitContact → returned states mirroring subscribeNewsletter + deleteUser guard digests with UsersTable digest mapping; React flight redaction fix; new contact.test.ts) + CR-01 runbook activation (TRUSTED_PROXY_CIDR + TRUSTED_XFF_HOP_COUNT section-5 rows, shared-bucket troubleshooting entry — gap #5) + WR-06 configurable XFF hop count in getClientIpFromXff (code + client-ip tests + .env.example + runbook; corrected off-by-one vs the review sketch) + WR-01 unconditional structured Redis error logging + WR-04 harness unconditional failure exit + server.pid guard + WR-05 taxonomy/profile Zod validation (taxonomy-schema.ts + userUpdateSchema) + WR-07 SUPERSEDED banner + WR-03 resolved Decision B/Dockerfile header/V1 build-arg + WR-02 /forgot-password corrections. Live-stack legs owner-deferred; IN-01..05 excluded. Covers PERF-04, PERF-06.
+- [x] 07-07-PLAN.md — Round-2 gap-closure slice: CR-02 production-reachable error contracts (submitContact → returned states mirroring subscribeNewsletter + deleteUser guard digests with UsersTable digest mapping; React flight redaction fix; new contact.test.ts) + CR-01 runbook activation (TRUSTED_PROXY_CIDR + TRUSTED_XFF_HOP_COUNT section-5 rows, shared-bucket troubleshooting entry — gap #5) + WR-06 configurable XFF hop count in getClientIpFromXff (code + client-ip tests + .env.example + runbook; corrected off-by-one vs the review sketch) + WR-01 unconditional structured Redis error logging + WR-04 harness unconditional failure exit + server.pid guard + WR-05 taxonomy/profile Zod validation (taxonomy-schema.ts + userUpdateSchema) + WR-07 SUPERSEDED banner + WR-03 resolved Decision B/Dockerfile header/V1 build-arg + WR-02 /forgot-password corrections. Live-stack legs owner-deferred; IN-01..05 excluded. Covers PERF-04, PERF-06.
 
 **Pitfalls owned:** #3 (publish→visible verified on real stack), #6 (document single-replica ISR scaling cliff before adding a second Coolify replica), R2 op-count/sharp-CPU cost monitoring + billing alerts, Coolify build-vs-runtime env secret separation.
 **Research flag:** LOW — Coolify staging deploy + env-handling verification (backup/ops strategy moved to Phase 8).
