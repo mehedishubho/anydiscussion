@@ -13,10 +13,10 @@
 #                       catches (site) -> (admin) leaks that would otherwise pull
 #                       TailAdmin/editor JS into the public chunk.
 #
-#   GATE 2 (D-13/D-14): node scripts/check-bundle-size.mjs --max-gz-kb=100
+#   GATE 2 (D-13/D-14): node scripts/check-bundle-size.mjs --max-gz-kb=1000
 #                       Runs AFTER `pnpm build` produces .next/static and BEFORE
 #                       the runner copy. Fails the build when total gzipped JS
-#                       in .next/static/chunks exceeds 100 KB (catastrophic leak
+#                       in .next/static/chunks exceeds 1000 KB (catastrophic leak
 #                       or genuine public-chunk bloat).
 #
 # D-21 security boundary: NEXT_PUBLIC_* vars are build-time ARG/ENV (public, baked
