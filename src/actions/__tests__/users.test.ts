@@ -663,9 +663,32 @@ describe("DASH-04: deleteUser — guarded destructive removal (owner decision 20
       throw new Error("MUST_NOT_BE_REACHED");
     });
 
-    await expect(deleteUser("self-1")).rejects.toThrow(
-      "You cannot delete your own account.",
-    );
+    // Plan 07-07 / CR-02 (gap #6): each guard error also carries a stable
+    // `digest` — React's production flight serializer forwards digests (never
+    // err.message), so the digest is what the dashboard's friendly-copy map
+    // branches on (UsersTable → users-schema.ts). The message still exists on
+    // the thrown instance (dev flights + server logs); the digest is the
+    // production-surviving contract.
+    await expect(deleteUser("self-1")).rejects.toMatchObject({
+      message: "You cannot delete your own account.",
+      digest: "SELF_DELETE",
+    });
+    expect(removeUserMock).not.toHaveBeenCalled();
+  });
+
+  // Plan 07-07 / CR-02 — the target-not-found guard carries USER_NOT_FOUND.
+  it("target-not-found guard: rejects with 'User not found.' + digest USER_NOT_FOUND before any auth call", async () => {
+    requireCanMock.mockResolvedValue({ user: { id: "admin-1", role: "admin" } });
+    // Target-role fetch returns no row → the not-found guard fires.
+    countResult.mockResolvedValueOnce([]);
+    removeUserMock.mockImplementation(() => {
+      throw new Error("MUST_NOT_BE_REACHED");
+    });
+
+    await expect(deleteUser("missing-user")).rejects.toMatchObject({
+      message: "User not found.",
+      digest: "USER_NOT_FOUND",
+    });
     expect(removeUserMock).not.toHaveBeenCalled();
   });
 
@@ -678,9 +701,10 @@ describe("DASH-04: deleteUser — guarded destructive removal (owner decision 20
       throw new Error("MUST_NOT_BE_REACHED");
     });
 
-    await expect(deleteUser("target-1")).rejects.toThrow(
-      "Cannot delete the last remaining admin. Promote another admin first.",
-    );
+    await expect(deleteUser("target-1")).rejects.toMatchObject({
+      message: "Cannot delete the last remaining admin. Promote another admin first.",
+      digest: "LAST_ADMIN",
+    });
     expect(removeUserMock).not.toHaveBeenCalled();
   });
 
@@ -694,9 +718,10 @@ describe("DASH-04: deleteUser — guarded destructive removal (owner decision 20
       throw new Error("MUST_NOT_BE_REACHED");
     });
 
-    await expect(deleteUser("target-1")).rejects.toThrow(
-      "This user still has posts. Reassign or delete their posts first.",
-    );
+    await expect(deleteUser("target-1")).rejects.toMatchObject({
+      message: "This user still has posts. Reassign or delete their posts first.",
+      digest: "USER_HAS_POSTS",
+    });
     expect(removeUserMock).not.toHaveBeenCalled();
   });
 
@@ -800,9 +825,10 @@ describe("REGRESSION 260824-qtu: middleware-gated admin endpoints receive forwar
     // The live failure mode: the gated endpoint rejects with an opaque APIError.
     removeUserMock.mockRejectedValueOnce(new Error("APIError UNAUTHORIZED"));
 
-    await expect(deleteUser("target-1")).rejects.toThrow(
-      "Failed to delete user — please try again.",
-    );
+    await expect(deleteUser("target-1")).rejects.toMatchObject({
+      message: "Failed to delete user — please try again.",
+      digest: "DELETE_FAILED",
+    });
     // The failure is observable in the server log with the target id.
     expect(logErrorMock).toHaveBeenCalledWith(
       "deleteUser failed",
