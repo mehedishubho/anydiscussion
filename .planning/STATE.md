@@ -8,7 +8,7 @@ status: executing
 stopped_at: Completed 08-03-PLAN.md (Google Drive destination + OAuth callback)
 last_updated: "2026-08-25T21:05:17.061Z"
 last_activity: 2026-08-26
-last_activity_desc: Completed quick task 260826-oif — fix Next 16.3.3 cacheComponents blocking-prerender-dynamic on (admin) routes (instant=false)
+last_activity_desc: Completed quick task 260826-pqg — fix 16.3.3 blocking-prerender-current-time in (admin) AuthGate (await connection())
 progress:
   total_phases: 8
   completed_phases: 6
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-07-01)
 Phase: 05 (seo-basics) — EXECUTING
 Plan: 1 of 6
 Status: Executing Phase 05
-Last activity: 2026-08-26 — Completed quick task 260826-oif: fix Next 16.3.3 cacheComponents blocking-prerender-dynamic errors on (admin) dashboard routes (instant=false)
+Last activity: 2026-08-26 — Completed quick task 260826-pqg: fix 16.3.3 blocking-prerender-current-time error in (admin) AuthGate (await connection() before getSession)
 
 Progress: [█░░░░░░░░░] 13%
 
@@ -159,6 +159,7 @@ Recent decisions affecting current work:
 | 260824-u1b | Users page confirmations via app modal system — new feature-local ConfirmDialog (TailAdmin Modal wrapper, danger/pending variants) replacing ALL FOUR browser-native window.confirm popups in UsersTable (Ban/Unban/Revoke/Delete) with one state-driven dialog; exact prior wording kept, mutations byte-identical (owner UAT feedback: native browser popup wrong for this dashboard) | 2026-08-24 | da85bf9 | [260824-u1b-users-confirm-dialog-modal](./quick/260824-u1b-users-confirm-dialog-modal/) |
 | 260826-5l0 | Fix two Phase 05 UAT R1 bugs — Tiptap #7849 destroyed-editor crash on /dashboard/posts/[id]/edit (isDestroyed guards in both useEditorState selectors; @tiptap/react 3.27.1 predates upstream fix) + "Invalid url" publish rejection of root-relative /api/media image URLs (shared imageUrlSchema on featureImage/ogImage/defaultOgImage accepting empty / absolute http(s) / root-relative; canonical + base-URL fields stay absolute; protocol-relative //host rejected per T-Q5-01) | 2026-08-26 | a49e155 | [260826-5l0-fix-two-phase-05-uat-r1-bugs-tiptap-v3-7](./quick/260826-5l0-fix-two-phase-05-uat-r1-bugs-tiptap-v3-7/) |
 | 260826-oif | Fix Next 16.3.3 cacheComponents blocking-prerender-dynamic errors on (admin) dashboard routes — `export const instant = false` on (admin)/layout.tsx (entry navigations) + all 16 data-fetching dashboard pages (sibling client navigations, per installed 16.3.3 docs scope rule); optional-chain fix for 4 pre-existing TS18048 test assertions that became build-blocking under 16.3.3 project-wide type-check; proxy.ts registration PROVEN under 16.3.3 (functions-config-manifest `/_middleware` + signed-out 307 `location: /signin?next=…` — reverses the 05-04 no-registration finding); 621/621 vitest, build clean, tsc clean | 2026-08-26 | a893f06 | [260826-oif-fix-next-16-3-3-cachecomponents-blocking](./quick/260826-oif-fix-next-16-3-3-cachecomponents-blocking/) |
+| 260826-pqg | Fix 16.3.3 blocking-prerender-current-time error in (admin) AuthGate (follow-up to 260826-oif surfaced by live signed-in dev UAT) — Better Auth's getSession constructs an argument-less `new Date()` before any tracked dynamic access postpones the shell prerender; `await connection()` (next/server) added as AuthGate's FIRST statement per the error's [dynamic] remedy, postponing the boundary top-down inside the existing Suspense; one file only (16 page instant exports untouched); 621/621 vitest + tsc clean, no build/server run (owner's dev server live on :3000 — signed-in HMR reload is the owner's R1 UAT step) | 2026-08-26 | 1813b61 | [260826-pqg-fix-16-3-3-blocking-prerender-current-ti](./quick/260826-pqg-fix-16-3-3-blocking-prerender-current-ti/) |
 
 ## Deferred Items
 
