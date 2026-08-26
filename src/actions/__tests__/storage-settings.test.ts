@@ -315,11 +315,13 @@ describe("D-25 / Pitfall 7: getStorageSettings — redacts secret fields on read
 
     expect(result.activeProvider).toBe("cloudinary");
     // Cloudinary redacted: api_key + api_secret empty (per Pitfall 7); cloud_name preserved.
-    expect(result.cloudinary.api_secret).toBe("");
-    expect(result.cloudinary.cloud_name).toBe("demo");
+    // Optional chaining: provider creds are optional in the return shape (TS18048 under
+    // Next 16.3.3's project-wide build type-check); a missing object still fails toBe("").
+    expect(result.cloudinary?.api_secret).toBe("");
+    expect(result.cloudinary?.cloud_name).toBe("demo");
     // R2 redacted: secretAccessKey empty; accessKeyId + bucket preserved.
-    expect(result.r2.secretAccessKey).toBe("");
-    expect(result.r2.bucket).toBe("media");
+    expect(result.r2?.secretAccessKey).toBe("");
+    expect(result.r2?.bucket).toBe("media");
     // Push-CDN: empty blob → undefined creds in the returned shape.
     expect(result.push_cdn).toBeUndefined();
   });
