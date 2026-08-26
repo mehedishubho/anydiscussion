@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
+import { connection } from "next/server";
 import { getSession } from "@/lib/auth/server";
 import AdminShell from "./AdminShell";
 
@@ -41,9 +42,14 @@ export const instant = false;
  */
 
 async function AuthGate({ children }: { children: React.ReactNode }) {
-  // getSession() calls headers() — a Next.js dynamic API. Inside <Suspense>,
-  // this opts the auth check into per-request (dynamic) rendering without
-  // triggering the PPR "uncached data outside Suspense" build error.
+  // next@16.3.3: the shell still prerenders through AuthGate (`instant=false`
+  // keeps the PPR shell, task 260826-oif), and Better Auth's getSession builds
+  // an argument-less Date for session-expiry math BEFORE headers() postpones
+  // the pass — the 16.3.3 current-time guard threw here on /dashboard/posts.
+  // `connection()` — awaited as this gate's first statement — is the error's
+  // own [dynamic] remedy: the boundary is postponed up front so headers AND
+  // the session Date math run at request time inside the Suspense boundary.
+  await connection();
   const session = await getSession();
   if (!session) {
     redirect("/signin");
