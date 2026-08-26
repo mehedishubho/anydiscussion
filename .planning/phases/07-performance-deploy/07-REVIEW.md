@@ -1,8 +1,8 @@
 ---
 phase: 07-performance-deploy
-reviewed: 2026-08-26T17:43:49Z
+reviewed: 2026-08-27T00:00:00Z
 depth: standard
-files_reviewed: 26
+files_reviewed: 30
 files_reviewed_list:
   - docs/adr/0001-isr-single-instance-scaling.md
   - docs/operations/coolify-deploy.md
@@ -10,7 +10,7 @@ files_reviewed_list:
   - docs/operations/umami-deploy.md
   - scripts/check-bundle-size.mjs
   - scripts/test-auth-ratelimit.mjs
-  - scripts/test-publish-visible.mjs
+  - src/actions/__tests__/contact.test.ts
   - src/actions/__tests__/newsletter.test.ts
   - src/actions/__tests__/pages.test.ts
   - src/actions/__tests__/taxonomy.test.ts
@@ -21,7 +21,11 @@ files_reviewed_list:
   - src/actions/pages-schema.ts
   - src/actions/pages.ts
   - src/actions/tags.ts
+  - src/actions/taxonomy-schema.ts
+  - src/actions/users-schema.ts
   - src/actions/users.ts
+  - src/app/(admin)/dashboard/users/UsersTable.tsx
+  - src/components/site/ContactForm.tsx
   - src/lib/__tests__/post-render.test.ts
   - src/lib/auth/index.ts
   - src/lib/post-render.ts
@@ -31,373 +35,271 @@ files_reviewed_list:
   - src/lib/rate-limit/upstash-ioredis-adapter.ts
   - src/lib/redis/index.ts
 findings:
-  critical: 2
-  warning: 7
-  info: 5
-  total: 14
+  critical: 1
+  warning: 2
+  info: 9
+  total: 12
 status: issues_found
 ---
 
-# Phase 7: Code Review Report
+# Phase 7: Code Review Report (Re-review after Plan 07-07)
 
-**Reviewed:** 2026-08-26T17:43:49Z
+**Reviewed:** 2026-08-27T00:00:00Z
 **Depth:** standard
-**Files Reviewed:** 26
+**Files Reviewed:** 30
 **Status:** issues_found
 
 ## Summary
 
-Full-phase adversarial review of the Phase 7 (Performance & Deploy) surface,
-including the Plan 07-06 additions (trusted-proxy XFF keying, fail-closed Redis
-degradation, ephemeral-cache test surface, partial-update schema, harness
-reliability fixes). Every library-behavior claim was cross-checked against the
-installed packages (`better-auth@1.6.23`, `@upstash/ratelimit@2.0.8`,
-`next@16.2.9` dist, `resend` dist) and against the Dockerfile, package.json,
-schemas, and client components the reviewed files depend on.
+Re-review of the Phase 7 surface after the Plan 07-07 gap-closure round (commits
+6211be6..c2995a7). Every file was read in full; every library-behavior claim was
+cross-checked against the installed packages (`drizzle-orm@0.45.2`,
+`better-auth@1.6.23`, `@upstash/ratelimit@2.0.8` — versions verified in
+node_modules) and against the modules the reviewed files import
+(`@/lib/permissions`, `@/actions/settings`, `@/lib/validation/image-url`,
+`src/lib/storage/seed.ts`, `listAuthors`, the subscribers page, the Dockerfile).
 
-What holds up well: the permission-check-first convention is genuinely enforced
-across all mutating actions (proven by MUST_NOT_BE_REACHED tests, not just
-asserted); `subscribeNewsletter` is the correct public-action resilience shape
-(returned states, last-hop XFF via the one shared helper, fail-closed limiter
-catch); the rate-limit adapter's variadic translation and the WR-02/WR-03 test
-rewrites are faithful to the installed library; the post-render NULL-body guard
-and its test are sound; the ADR's `cacheHandler` naming claim is correct.
+**Prior-fix verification — all nine prior findings landed correctly:**
 
-The two critical findings are both deploy-time contract breaks: (1) the
-production runbook's runtime env table omits `TRUSTED_PROXY_CIDR` entirely, so
-a by-the-runbook deploy reintroduces the exact single-global-bucket auth lockout
-that Plan 07-06 was written to fix; (2) the `RATE_LIMITED`-via-thrown-error
-contract in `contact.ts` (and the friendly guard messages in `users.ts`) cannot
-reach the client in production builds — React's flight serializer strips error
-messages in production (verified in the installed dist), so `ContactForm`'s
-message mapping is dead code in prod and rate-limited users are told "Something
-went wrong. Please try again."
+| Prior ID | Fix verified |
+|---|---|
+| CR-01 | `TRUSTED_PROXY_CIDR` + `TRUSTED_XFF_HOP_COUNT` documented in coolify-deploy.md §5 runtime table (lines 208-209) with both failure modes, plus the shared-bucket lockout troubleshooting entry (lines 392-399). |
+| CR-02 | `submitContact` returns `{ ok: true } \| { ok: false; error: "RATE_LIMITED" \| "INVALID_INPUT" }` (contact.ts:72-141); ContactForm branches on the returned state (ContactForm.tsx:93-112); `USER_DELETE_DIGESTS`/`USER_DELETE_ERROR_MESSAGES` live in the pure users-schema.ts sibling; UsersTable maps `err.digest` via `deleteErrorCopy` (UsersTable.tsx:107-118, 374-382). |
+| WR-01 | redis/index.ts:49-59 logs unconditionally via structured `log.error`; runbook V5 wording matches. |
+| WR-02 | dns-email-deliverability.md uses `/forgot-password` (line 119); troubleshooting distinguishes page route vs `/api/auth/forget-password` endpoint (lines 245-250). Route existence confirmed on disk. |
+| WR-03 | Decision B marked RESOLVED at 1000 KB; V1 dry-run passes `--build-arg DATABASE_URL`; Dockerfile:16 header now says `--max-gz-kb=1000` (verified). |
+| WR-04 | test-auth-ratelimit.mjs sets `process.exitCode = 1` unconditionally on HTTP failure (lines 322-335) + pid guard in cleanup (lines 244-261). |
+| WR-05 | taxonomy-schema.ts + users-schema.ts `userUpdateSchema`, parsed after the gates with `!== undefined` partial spreads; pinned by new tests. |
+| WR-06 | `getClientIpFromXff` honors `TRUSTED_XFF_HOP_COUNT` with `hops[len − n]`, min-clamp 1, short-chain last-hop fallback (rate-limit/index.ts:91-107). The code's correction of the prior review's sample formula is itself correct: `hops[len − 1 − n]` with n=1 would have selected the spoofable first hop on two-entry chains. |
+| WR-07 | SUPERSEDED banner at the top of coolify-deploy.md (lines 3-9). |
+
+**New findings.** One new critical: `upsertSetting` in newsletter.ts has a
+provably dead insert fallback — drizzle's node-postgres driver returns the raw
+pg `QueryResult` (not an array) from a bare `.update()` with no `.returning()`,
+so the `Array.isArray(updated) && updated.length === 0` condition never fires,
+and no seed creates the `newsletter.*` settings rows. On any database where
+those rows don't already exist, `saveNewsletterSettings` silently persists
+nothing while returning `{ ok: true }` and logging success. Two new warnings
+(incomplete CR-02 coverage for ban/unban/revoke error copy; unvalidated `page`
+on `listSubscribers`) and nine info items (five carryforwards from the prior
+round, four new) follow.
 
 ## Structural Findings (fallow)
 
-No structural findings block was provided for this pass (no JSON payload in the
-invocation). All findings below are narrative findings from direct code review.
+No structural findings block was provided for this pass. All findings below are
+narrative findings from direct code review.
+
+## Narrative Findings (AI reviewer)
 
 ## Critical Issues
 
-### CR-01: Production runbook omits TRUSTED_PROXY_CIDR — a by-the-runbook deploy reintroduces the global auth rate-limit bucket (trivial unauthenticated sign-in lockout)
+### CR-01: `upsertSetting` insert fallback is unreachable — `saveNewsletterSettings` silently persists nothing for settings keys that don't already exist
 
-**File:** `docs/operations/coolify-deploy.md:179-208` (section 5 runtime env table); cross-ref `src/lib/auth/index.ts:163-175`
-**Issue:** Plan 07-06 made `advanced.ipAddress.trustedProxies` env-driven
-(`TRUSTED_PROXY_CIDR`) precisely because, per the code's own verified comment
-(`src/lib/auth/index.ts:143-157`), with `trustedProxies` empty and
-`ipAddressHeaders` set, Better Auth 1.6.23's `getIPFromHeader` returns **null**
-for ANY multi-value `X-Forwarded-For`. Behind an appending proxy (the Coolify
-Caddy/Traefik default — the runbook itself describes the proxy terminating TLS
-in front of the app) **every** production request carries a multi-value XFF, so
-all auth traffic collapses into one `NO_TRUSTED_IP_KEY` bucket limited to
-**3 requests / 15 minutes across all users**. Any unauthenticated attacker can
-spend 3 requests and lock out sign-in, password reset, and email verification
-for the entire site for 15 minutes at a time — the exact T-07-06-01 threat the
-plan says was mitigated.
-
-The mitigation only activates if the operator sets `TRUSTED_PROXY_CIDR` in the
-production runtime environment. The variable IS documented in `.env.example`
-(local dev, empty default) and referenced in the harness's manual-run notes —
-but the runbook's runtime environment variable table (section 5), which is the
-operator's checklist for what Coolify must have set before first deploy, does
-not contain it. Grep confirms zero occurrences of `TRUSTED_PROXY_CIDR` anywhere
-under `docs/`. An operator following the runbook verbatim ships the vulnerable
-configuration, and the code's fail-closed framing ("over-limiting, never
-spoofable") does not help here — this is an availability attack surface on the
-auth endpoints, not a spoofing one.
-
-**Fix:** Add the variable to the section 5 runtime table with generation/shape
-guidance, and add a verification step:
-
-```markdown
-| `TRUSTED_PROXY_CIDR` | The Coolify proxy's internal-network CIDR (e.g. the
-  docker-network range like `172.16.0.0/12`); comma-separate multiple ranges |
-  REQUIRED for production behind the appending proxy. Unset ⇒ every request
-  resolves to a null client IP ⇒ ALL auth traffic shares one 3/15-min bucket
-  (trivial unauthenticated lockout). Mis-set (over-broad CIDR matching every
-  hop) ⇒ same shared bucket. Verify after deploy via the through-the-proxy
-  curl check in scripts/test-auth-ratelimit.mjs SKIP instructions
-  ("Human Verification Required" item 4). |
-```
-
-Also mention it in the Troubleshooting entry for "Auth fails closed" — today
-that entry only says "Redis is unreachable", which will mislead an operator
-debugging the shared-bucket lockout.
-
-### CR-02: Thrown-error-message contracts (RATE_LIMITED, friendly guard messages) never reach the client in production — React flight redaction makes the mapping dead code
-
-**File:** `src/actions/contact.ts:94-100` (primary); `src/actions/users.ts:429-467, 478-488` (same mechanism); cross-ref `src/components/site/ContactForm.tsx:92-103`
-**Issue:** `submitContact` signals rate-limiting and Redis-outage by
-`throw new Error("RATE_LIMITED")`, and its docblock (contact.ts:48-53) states
-"The client form maps this to a friendly 'Too many messages — please try again
-later' message". `ContactForm.tsx:98-101` implements that mapping:
-`err instanceof Error && err.message === "RATE_LIMITED" ? "Too many messages…" : "Something went wrong…"`.
-`deleteUser` in users.ts relies on the same mechanism for its five
-deliberately-readable guard messages ("You cannot delete your own account.",
-"Cannot delete the last remaining admin…", etc.).
-
-Verified against the installed runtime: in production builds, React's flight
-server serializes a rejected Server Action promise as an error chunk carrying
-**only a digest** (`node_modules/next/dist/compiled/react-server-dom-webpack/cjs/react-server-dom-webpack-server.node.production.js:1925-1927`
-— `emitErrorChunk(request, id, digest)` stringifies `{ digest }` only; no
-message/name/stack), and the client reconstructs the error with the generic
-message "An error occurred in the Server Components render. The specific
-message is omitted in production builds…" (react-server-dom-webpack-client
-production bundles, line ~1800). `err.message` on the client is therefore never
-`"RATE_LIMITED"` in production — the mapping is dead code, rate-limited and
-Redis-outage users see "Something went wrong. **Please try again.**" (which
-actively invites hammering the limiter), and every `deleteUser` guard failure
-surfaces as a generic error in the dashboard. The contract appears to work in
-dev (dev flight builds forward `message`), so local testing cannot catch it.
-
-Note the irony: the phase invariant "never leak internal errors to public
-forms" is accidentally satisfied by the redaction, but the defined
-`RATE_LIMITED` public contract — the part tests pin — does not function
-end-to-end in production. `subscribeNewsletter` is the correct shape
-(useActionState + returned error states) and is unaffected.
-
-**Fix:** Return error states instead of throwing, mirroring
-`subscribeNewsletter`:
+**File:** `src/actions/newsletter.ts:66-77`
+**Issue:** The upsert helper decides between update and insert with:
 
 ```ts
-// contact.ts — change the public contract from thrown to returned state
-export async function submitContact(
-  input: unknown,
-): Promise<{ ok: true } | { ok: false; error: "RATE_LIMITED" | "INVALID_INPUT" }> {
-  const parsed = contactSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: "INVALID_INPUT" };
-  // ...
-  try {
-    ({ success } = await contactFormLimiter.limit(ip));
-  } catch {
-    return { ok: false, error: "RATE_LIMITED" }; // Redis outage — fail closed
-  }
-  if (!success) return { ok: false, error: "RATE_LIMITED" };
-  // ...
+const updated = await db
+  .update(schema.settings)
+  .set({ value, updatedAt: new Date() })
+  .where(eq(schema.settings.key, key));
+if (!updated || (Array.isArray(updated) && updated.length === 0)) {
+  await db.insert(schema.settings).values({ key, value }).onConflictDoNothing();
 }
-// ContactForm.tsx — switch on the returned state (never err.message)
 ```
 
-For `users.ts`, either return `{ error: string }` states from `deleteUser` /
-`updateUser` / `createUser` call sites, or attach a stable `digest` to the
-thrown errors and have the dashboard switch on `err.digest` — but do not keep
-branching on `err.message`.
+Verified against the installed `drizzle-orm@0.45.2` node-postgres driver:
+`PgUpdateBase._prepare()` passes `this.config.returning` (undefined when
+`.returning()` is never called) as the `fields` argument
+(node_modules/drizzle-orm/pg-core/query-builders/update.js:190-197), and
+`NodePgPreparedQuery.execute()` then takes the `!fields && !customResultMapper`
+branch, returning the **raw pg `QueryResult` object**
+(`{ rows, rowCount, command, ... }`) — see
+node_modules/drizzle-orm/node-postgres/session.js:104-117. A `QueryResult` is
+always truthy and never an array, so `!updated` is false and
+`Array.isArray(updated)` is false for **every** result, including 0-row updates.
+The insert fallback is dead code: when the settings key does not yet exist, the
+UPDATE matches nothing and nothing is ever inserted.
+
+Impact chain (all verified):
+
+- No seed creates the `newsletter.*` rows — grep across `src/`, `scripts/`, and
+  `db/` finds zero inserts for `newsletter.enabled` / `.heading` /
+  `.description` / `.success_message`; `src/lib/storage/seed.ts` seeds only the
+  storage/SEO keys. On any environment without manually pre-inserted rows, the
+  first save of every newsletter setting is a silent no-op.
+- The action then returns `{ ok: true }`, logs
+  `newsletter settings saved` (newsletter.ts:123), and revalidates — the admin
+  UI reports success while nothing was written.
+- The reader defaults missing keys to enabled-with-defaults
+  (`src/lib/queries/newsletter-settings.ts:87` —
+  `enabled: map["newsletter.enabled"] !== "false"`), so an admin who disables
+  the newsletter sees the footer keep rendering the subscribe form. The
+  configured heading/description/success message are equally unpersistable.
+- The unit tests stay green because the db mock fabricates a return shape the
+  real driver never produces: `updateWhereMock.mockResolvedValue([{ key: "x" }])`
+  (newsletter.test.ts:180) — an array.
+
+Note the helper's own comment ("treat any falsy/0 result as insert needed") does
+not describe the code: a 0-row update under node-postgres is a truthy
+`QueryResult` with `rowCount: 0`, which this condition cannot see. The identical
+latent defect exists in `src/actions/settings.ts:68-79` and
+`src/actions/storage-settings.ts:83-96` (both outside this review's file list;
+there it is masked only because `storage/seed.ts` pre-creates those keys — a
+follow-up fix should cover all three copies).
+
+**Fix:** Replace the update-then-insert dance with a single-statement upsert —
+the same idiom `subscribeNewsletter` already uses in this file (and race-free,
+unlike the check-then-insert form):
+
+```ts
+async function upsertSetting(key: string, value: string): Promise<void> {
+  await db
+    .insert(schema.settings)
+    .values({ key, value })
+    .onConflictDoUpdate({
+      target: schema.settings.key,
+      set: { value, updatedAt: new Date() },
+    });
+}
+```
+
+(`settings.updatedAt` has a column default — seed.ts inserts without it — so the
+insert path is covered.) Update newsletter.test.ts's mock chain to assert the
+`onConflictDoUpdate` config (mirroring the subscribeNewsletter assertions), and
+apply the same fix to the two out-of-scope copies in settings.ts /
+storage-settings.ts.
 
 ## Warnings
 
-### WR-01: Redis error listener is a no-op in production — outages are invisible, and the runbook's V5 diagnostic can never fire
+### WR-01: CR-02 remediation stops at `deleteUser` — ban/unban/revoke failures still render React's redaction boilerplate in the production alert
 
-**File:** `src/lib/redis/index.ts:47-54`; cross-ref `docs/operations/coolify-deploy.md:289-294` (V5)
-**Issue:** The singleton's only `error` listener logs via `console.warn` guarded
-by `if (process.env.NODE_ENV !== "production")`. In production (which is the
-only place the Redis outage path matters — fail-closed sign-in blocking), the
-listener swallows the error with **zero output**. The listener still prevents
-the process crash (its real job), but coolify-deploy.md V5 instructs: "Check
-the Next.js container logs for the ioredis connection succeeding (no repeated
-`[redis] connection error` warnings)" — those warnings are structurally
-impossible to observe in production, so V5 vacuously passes during a full
-Redis outage and the operator's only symptom is unexplained fail-closed auth.
-**Fix:** Log unconditionally (rate-limited if desired) via the structured
-`log.error` used elsewhere, e.g. `log.error("redis connection error", { message: err?.message })`, and align V5's wording with what production actually emits.
+**File:** `src/app/(admin)/dashboard/users/UsersTable.tsx:372-384`; cross-ref `src/actions/users.ts:161-221`
+**Issue:** The shared error alert falls back through
+`banMutation.error?.message || unbanMutation.error?.message || revokeMutation.error?.message`
+before the digest-mapped delete leg. `banUser`, `unbanUser`, and `revokeSessions`
+throw plain errors with no `digest` and return no error state, so in production
+builds — the exact CR-02 mechanism — any failure of those three actions renders
+React's generic "…message is omitted in production builds…" boilerplate in the
+dashboard alert instead of actionable copy (dev builds mask this by forwarding
+`.message`). The optimistic row state still rolls back correctly, so this is a
+quality/UX degradation of the same class CR-02 fixed for `deleteUser`, not a
+correctness break.
+**Fix:** Extend the digest pattern to the three remaining actions (attach stable
+digests like `BAN_FAILED`/`UNBAN_FAILED`/`REVOKE_FAILED` in users.ts and map
+them through the users-schema message module), or wrap the mutations'
+`mutationFn` in a try/catch that returns a typed error state, or — minimally —
+suppress digest-less error messages client-side so the existing
+`"Action failed"` fallback renders instead of the boilerplate.
 
-### WR-02: DNS/deliverability runbook points operators at a nonexistent page — `/forget-password` (actual route is `/forgot-password`)
+### WR-02: `listSubscribers` never validates `page` — NaN propagates to a SQL error
 
-**File:** `docs/operations/dns-email-deliverability.md:119` (step 6.1) and `:245-247` (troubleshooting); cross-ref `src/app/(full-width-pages)/(auth)/forgot-password/` and `src/proxy.ts:94-97`
-**Issue:** Step 6 of the runbook instructs: "Visit
-`https://anydiscussion.com/forget-password`" to trigger the password-reset
-email. The app's page route is `/forgot-password` (confirmed in the route
-tree; `src/proxy.ts` matcher uses `/forgot-password`). `/forget-password` is
-only the Better Auth **API endpoint** name (`/api/auth/forget-password`, as
-keyed in `rateLimit.customRules`) — the runbook conflates the API endpoint
-with the user-facing page. The URL as written 404s, so verification step 6 and
-V3 cannot be executed as written (and the "Rate limit blocks the test"
-troubleshooting entry repeats the wrong path). **Fix:** Replace both
-occurrences with `/forgot-password` and optionally note that the underlying
-rate-limited endpoint is `/api/auth/forget-password`.
-
-### WR-03: Coolify runbook's two "OPEN DECISIONS" are stale against the repo, and the V1 dry-run command omits the build-time env its own decision A mandates
-
-**File:** `docs/operations/coolify-deploy.md:77-121` (Decision A), `:123-177` (Decision B), `:242-251` (V1); cross-ref `Dockerfile:16` vs `Dockerfile:95`, `package.json:18`
-**Issue:** (a) Decision B is presented as unresolved ("GATE 2 currently FAILS
-on a clean production build", "resolve before first deploy"), but the repo has
-already applied the recommended path: `Dockerfile:95` runs
-`--max-gz-kb=1000` and `package.json`'s `check-bundle` script matches — while
-`Dockerfile:16` (header comment) still says `--max-gz-kb=100`. The runbook
-also still claims the gate runs `--max-gz-kb=100`. An operator reconciling the
-runbook against the repo gets three mutually inconsistent statements, and
-might "re-raise" an already-raised threshold. (b) The V1 local dry-run command
-passes only the two `NEXT_PUBLIC_*` build args and no build-time
-`DATABASE_URL`/`REDIS_URL`, so the dry-run as written fails with the very
-`ECONNREFUSED` its own Decision A section and Troubleshooting entry describe.
-**Fix:** Update Decision B to record "resolved — 1000 KB applied in Dockerfile
-RUN + package.json (fix the stale Dockerfile:16 header comment)"; extend the
-V1 command with the Decision-A build-time env (`--build-arg`/env for
-`DATABASE_URL` and `REDIS_URL`), or explicitly mark the command as requiring
-them.
-
-### WR-04: test-auth-ratelimit.mjs reports PASS (exit 0) when its HTTP assertions actually fail — false green for real limiter regressions
-
-**File:** `scripts/test-auth-ratelimit.mjs:316-323, 328`
-**Issue:** In `main()`, an HTTP result of `"failed"` sets `process.exitCode = 1`
-only when the structural check ALSO failed; if structural passed, the script
-prints "FAIL:HTTP CHECK FAILED" and then exits 0, and the summary line prints
-`Result: PASS (exit 0)` — directly contradicting the FAIL line above it. The
-failure modes that reach `"failed"` are genuine regressions, not environment
-noise: "expected 4th attempt to return 429, got 200 — rate limiter is not
-enforced (Redis customStorage miswired?)" and "429 but no X-Retry-After
-header". Only the `"skipped"` result (server unavailable) deserves exit 0.
-Any automation (or the Docker gates, if this script is ever wired in) consuming
-the exit code will certify a broken limiter. **Fix:** In the `"failed"`
-branch, set `process.exitCode = 1` unconditionally; keep exit 0 only for
-`"passed"` and `"skipped"`. (Also note: `httpCheck`'s Windows cleanup calls
-`taskkill /pid ${server.pid}` — if the spawn itself failed, `pid` is
-`undefined`; the cleanup-error log covers it, but a `server.pid` guard would
-silence a predictable noise line.)
-
-### WR-05: No server-side input validation on taxonomy name/description and updateUser profile fields — violates the project's own Zod-reuse convention
-
-**File:** `src/actions/categories.ts:23-27, 29-43, 74-100`; `src/actions/tags.ts:23-26, 28-38, 78-102`; `src/actions/users.ts:294-334`
-**Issue:** CLAUDE.md's code conventions require Zod schemas "reused for both
-form validation and Server Action input parsing". `pages`, `posts`,
-`newsletter`, and `contact` all follow it; these three actions do not:
-- `createCategory`/`createTag` accept `name: string` with no length cap and no
-  min — an empty-string name is inserted verbatim; `description` likewise
-  unbounded. Only the slug is validated (`validateSlug`).
-- `updateCategory`/`updateTag` use truthiness (`...(input.name ? { name: ... } : {})`)
-  for `name` but `!== undefined` for `description` — an update of
-  `{ name: "" }` silently no-ops instead of being rejected, an inconsistency
-  that will cost someone an debugging hour.
-- `updateUser` accepts `name`/`bio`/`avatar` with no validation at all — any
-  authenticated user (self-edit path) can persist arbitrarily large strings, or
-  an `avatar` value that is not a URL/CDN key, which the public author page
-  then consumes.
-These are permission-gated surfaces, so severity is capped at Warning, but a
-10 MB `name`/`bio` payload is a trivial DB-bloat DoS by any authenticated
-author, and the project convention is explicit.
-**Fix:** Add `categorySchema`/`tagSchema` (`name: z.string().min(1).max(120)`,
-`description: z.string().max(1000).optional()`) parsed first in each action,
-and a `userUpdateSchema` for `updateUser` (`name` max 255, `bio` max ~2000,
-`avatar` as URL-or-empty). Use `!== undefined` consistently for partial
-semantics and let Zod reject empty names instead of silently skipping.
-
-### WR-06: Last-hop XFF keying assumes exactly ONE appending proxy — the documented Cloudflare + Coolify topology collapses all visitors into shared 5/hour form buckets
-
-**File:** `src/lib/rate-limit/index.ts:48-53` (docblock) and `:61-64`; cross-ref `docs/adr/0001-isr-single-instance-scaling.md:34-36`
-**Issue:** `getClientIpFromXff` returns the last comma-separated entry. Under
-the project's documented production topology — ADR 0001 describes the publish
-loop running "on a single Coolify instance **plus Cloudflare CDN**" — the chain
-seen by the app is `client-spoofed…, realClientIP (appended by Cloudflare),
-cfEdgeIP (appended by the Coolify proxy)`. The last hop is then a **Cloudflare
-edge IP shared by every visitor**, so `contactFormLimiter` and
-`newsletterLimiter` key on it: the whole site shares a handful of 5-per-hour
-buckets. The helper's own docblock acknowledges the multi-proxy mode
-("adjacent callers then share one bucket… over-limits, never under-limits"),
-but the failure direction being "safe" does not make it acceptable — it means
-both public forms are effectively disabled site-wide (every 6th submission
-within an hour, globally, returns RATE_LIMITED). This must be resolved before
-or at deploy: either confirm the apex is DNS-only (grey cloud) so the Coolify
-proxy is the sole appending hop, or extend the helper to strip a configured
-number of trusted hops / prefer `CF-Connecting-IP` when present and trusted.
-**Fix (minimal):** make the trusted-hop count configurable, mirroring the
-auth limiter's approach:
-
-```ts
-// strip N rightmost hops that our own proxy chain appended (env: TRUSTED_XFF_HOP_COUNT, default 1)
-export function getClientIpFromXff(forwardedFor: string | null): string {
-  const hops = (forwardedFor ?? "").split(",").map((h) => h.trim()).filter(Boolean);
-  const n = Number(process.env.TRUSTED_XFF_HOP_COUNT ?? "1");
-  const ip = hops.length > n ? hops[hops.length - 1 - n] : hops[hops.length - 1];
-  return ip || "unknown";
-}
-```
-
-…and document the env var in the deploy runbook alongside
-`TRUSTED_PROXY_CIDR` (CR-01), with a post-deploy verification that two
-different clients get different buckets.
-
-### WR-07: Deploy runbook's core premise (git push main = automatic production deploy) contradicts the recorded owner decision that production deploys are manual and Docker is local-dev only
-
-**File:** `docs/operations/coolify-deploy.md:13-18` (header), `:271-279` (V3); cross-ref plan 07-04 close-out (commit `462e4e1`, 2026-07-29: "Tasks 2-3 deferred per owner manual-deploy decision") and the recorded deploy-approach decision (Dockerfile + docker-compose are LOCAL-DEV only; prod deploy is manual)
-**Issue:** The runbook opens with "There is NO staging environment and NO CI
-layer… A push to `main` builds and deploys directly to production at
-https://anydiscussion.com" and V3 instructs "Push to main: `git push origin
-main`" as the production deploy step. Per the owner's later recorded decision,
-the Docker pipeline is local-dev only and production deployment is manual.
-An operator following this runbook would wire up (and trigger) an
-auto-deploy-to-production path the owner explicitly deferred — the exact class
-of silent-divergence-between-docs-and-reality this runbook exists to prevent.
-**Fix:** Add a prominent status note at the top of the runbook: "SUPERSEDED
-(owner decision 2026-07-29): production deploys are MANUAL; the Docker/Coolify
-pipeline described here is local-dev dry-run material. Retain sections 5-6
-(runtime env, Redis service) as the production env-var reference." At minimum,
-reconcile the header and V3 with the recorded decision.
+**File:** `src/actions/newsletter.ts:249-253`
+**Issue:** `const safePage = Math.max(1, page);` does not sanitize non-numeric
+input: `Math.max(1, NaN)` is `NaN`, so `offset` becomes `NaN` and the bound
+parameter produces a pg `invalid input syntax for type integer` error (HTTP 500
+from the action). The only in-repo caller parses safely
+(`src/app/(admin)/dashboard/subscribers/page.tsx:44-46` uses `parseInt` +
+`Number.isFinite`), but every export of a `"use server"` module is a directly
+invocable endpoint, and the sibling `deleteSubscriber` in the same file Zod-gates
+its `id` — the inconsistency invites the next caller to skip validation.
+**Fix:** Guard numerically (`const safePage = Number.isFinite(page) && page >= 1 ? Math.floor(page) : 1;`) or Zod-gate `page` the way `deleteSubscriber` gates `id`.
 
 ## Info
 
-### IN-01: check-bundle-size.mjs scans only the top level of chunks/ — currently correct, fragile to build-shape changes
+### IN-01: Blank contact subject still ships as "Contact: " (prior IN-02, still open)
+
+**File:** `src/actions/contact.ts:136`; cross-ref `src/actions/contact-schema.ts:45`
+**Issue:** `subject: \`Contact: ${data.subject ?? data.name}\`` — the schema
+permmits `""` and the client always sends the field, so a blank subject produces
+the literal subject line `Contact: ` and the name fallback never fires (`""` is
+not nullish).
+**Fix:** `subject: \`Contact: ${data.subject?.trim() || data.name}\``.
+
+### IN-02: `createFirstAdmin` count-then-create TOCTOU window (prior IN-03, still open)
+
+**File:** `src/actions/users.ts:68-99`
+**Issue:** Two concurrent bootstrap requests can both observe `count(admins)===0`
+and both create an admin. First-run-only window; previously acknowledged.
+**Fix:** Close with a settings-row "bootstrap-closed" flag inserted via
+`onConflictDoNothing` and checked via insert-result, or accept and document.
+
+### IN-03: Ungated `"use server"` read exports remain publicly invocable (prior IN-04, still open)
+
+**File:** `src/actions/categories.ts:74-84` (`listCategories`); `src/actions/tags.ts:68-88` (`listTags`, `getPostTagIds`)
+**Issue:** Public-site data, low sensitivity, deliberate per prior round — but
+still an undocumented exposure on each export.
+**Fix:** Add a one-line "public data, deliberately ungated" comment per export,
+or gate with a lightweight session check.
+
+### IN-04: check-bundle-size.mjs scans only the top level of chunks/ (prior IN-01, still open)
 
 **File:** `scripts/check-bundle-size.mjs:84`
-**Issue:** `readdirSync(STATIC_DIR).filter((f) => f.endsWith(".js"))` is
-non-recursive. Verified against the current `.next/static/chunks` (Turbopack
-output): flat, no subdirectories — so today's totals are correct. But Webpack
-builds (an allowed opt-out per project context) and some Next versions emit
-nested chunk dirs (`chunks/app/`, `chunks/ssr/`), which would be silently
-skipped and under-count the gate's own metric.
-**Fix:** `readdirSync(STATIC_DIR, { recursive: true })` (Node ≥20.1) and keep
-the `.js` filter; totals stay identical on the current flat layout.
+**Issue:** Non-recursive `readdirSync` under-counts if a build ever emits nested
+chunk dirs (Webpack opt-out, future Turbopack shapes).
+**Fix:** `readdirSync(STATIC_DIR, { recursive: true })` (Node ≥20.1); totals
+unchanged on today's flat layout.
 
-### IN-02: Blank contact subject ships as "Contact: " — the `?? data.name` fallback is dead for real form payloads
+### IN-05: test-auth-ratelimit.mjs has no port preflight (prior IN-05, still open)
 
-**File:** `src/actions/contact.ts:119`; cross-ref `src/actions/contact-schema.ts:45`
-**Issue:** `subject: \`${data.subject ?? data.name}\`` uses nullish
-coalescing, but the schema (`z.string().max(255).optional()`) permits empty
-string, and the client form always sends the field (default `""`). A user who
-leaves subject blank produces the email subject `Contact: ` — the intended
-name fallback never fires because `""` is not nullish.
-**Fix:** `\`Contact: ${data.subject?.trim() || data.name}\`` (or add
-`.min(1)` + `.transform` to the schema to normalize blank to undefined).
+**File:** `scripts/test-auth-ratelimit.mjs:126-146, 173-186`
+**Issue:** A stale listener on 3940 is polled instead of the spawned server;
+verdicts would be misattributed.
+**Fix:** Probe the port (raw `net.connect`) before spawning and fail fast.
 
-### IN-03: createFirstAdmin has a count-then-create TOCTOU window
+### IN-06: client-ip.test.ts test title contradicts its stub — "hop count 2" test stubs 3
 
-**File:** `src/actions/users.ts:69-91`
-**Issue:** Two concurrent bootstrap requests can both observe `count(admins)===0`
-and both create an admin. There is no unique constraint that backstops the
-check. The window is the first-run setup moment only, and the codebase's
-threat model treats post-bootstrap calls as blocked, so this is low
-likelihood — but it is the one gap in an otherwise structurally-proven gate.
-**Fix:** Wrap in a transaction with `SELECT … FOR UPDATE` on the count (or a
-settings-row "bootstrap-closed" flag inserted with `onConflictDoNothing` and
-checked via insert-result), or accept and document the window.
+**File:** `src/lib/rate-limit/__tests__/client-ip.test.ts:83-88`
+**Issue:** The title says "hop count 2 on a chain shorter than the count (two
+entries)" but the test stubs `TRUSTED_XFF_HOP_COUNT=3`. With the title's value
+(2) on a two-entry chain the helper selects index 0 (the first hop) — no
+fallback — which is correct for a legitimately-formed chain but is exactly the
+case the title implies is covered by the fallback. A future maintainer reading
+the title will believe count==length falls back; it doesn't.
+**Fix:** Either change the title to "hop count above chain length" or add a
+dedicated test documenting that count==length selects index 0 (and why that is
+the correct, non-spoofable selection for a well-formed chain).
 
-### IN-04: Ungated "use server" read exports are publicly invocable endpoints
+### IN-07: Redis error listener re-attaches on every dev-HMR module evaluation
 
-**File:** `src/actions/tags.ts:70-76` (`getPostTagIds`), `:56-63` (`listTags`); `src/actions/categories.ts:62-72` (`listCategories`)
-**Issue:** Per the codebase's own stated threat model ("every export of a
-'use server' module is a publicly invocable endpoint" — newsletter.ts:15-17),
-these three reads are callable by any unauthenticated party. The data is
-public-site data (tag/category names, post↔tag id associations), so
-sensitivity is low, and the CLAUDE.md convention mandates checks on mutating
-actions. Flagging so the exposure is a documented decision rather than an
-accident. **Fix (optional):** add a lightweight `requireCan`/session gate or a
-comment pinning the "public data, deliberately ungated" rationale on each.
+**File:** `src/lib/redis/index.ts:49-59`
+**Issue:** The singleton survives HMR via `globalThis.__redisClient ??=`, but
+`.on("error", …)` runs on every module re-evaluation against the persisted
+instance — duplicate log lines per Redis error and an eventual
+MaxListenersExceededWarning after ~11 reloads. Dev-only (production loads the
+module once); the listener's crash-prevention job is unaffected.
+**Fix:** Attach the listener once at singleton creation (inside the `??=`
+initialization), or guard with `listenerCount("error") === 0`.
 
-### IN-05: test-auth-ratelimit.mjs has no port preflight — a stale listener on 3940 is polled and results are misattributed
+### IN-08: `createUser` (and `createFirstAdmin`) accept input with no Zod gate
 
-**File:** `scripts/test-auth-ratelimit.mjs:126-146` (waitForServer), `:173-186` (httpCheck)
-**Issue:** If any process (including an orphan from a pre-WR-06 run, or a dev
-server on the same port) already listens on 3940, `waitForServer` succeeds
-against it immediately, the four sign-in POSTs hit the foreign process, and
-the script's own spawned `next start` fails with EADDRINUSE visible only in
-captured stderr. Verdicts are then attributed to the wrong server. The WR-06
-cleanup work made orphans unlikely, but a preflight would make misattribution
-impossible.
-**Fix:** Before spawning, probe the port (e.g. a raw `net.connect` check) and
-fail fast with "port 3940 already in use — kill the stale listener" if
-occupied.
+**File:** `src/actions/users.ts:106-153`
+**Issue:** The only mutating action family left without the WR-05 treatment.
+Practical exposure is low: `requireCan({user:["create"]})` gates it, and Better
+Auth's admin route validates email/password per its config and rejects
+non-existent roles against the configured role map (verified in
+better-auth@1.6.23 dist/plugins/admin/routes.mjs — invalid role → BAD_REQUEST).
+`name` remains unbounded, and the convention (schema reused client+server) is
+violated.
+**Fix:** Add a `userCreateSchema` sibling (name ≤255, email, password, role
+enum) and safeParse it after the permission gate, mirroring `updateUser`.
+
+### IN-09: dns-email-deliverability.md step 7 misattributes the verification-email send to `sendOnSignUp`
+
+**File:** `docs/operations/dns-email-deliverability.md:137-141`
+**Issue:** Step 7.1 says the dashboard user-create flow "fires
+`sendVerificationEmail` (`sendOnSignUp: true` …)". Per `src/actions/users.ts`
+and the repo's own debug notes, the admin create-user path sends via the
+explicit `auth.api.sendVerificationEmail` call in the action;
+`sendOnSignUp` is consumed only by `/sign-up/email` and OAuth link-account. An
+operator debugging missing verification emails who toggles `sendOnSignUp` will
+change nothing on that path.
+**Fix:** Reword to "…which fires `sendVerificationEmail` (sent explicitly by the
+`createUser` action in `src/actions/users.ts`; `sendOnSignUp` does not apply to
+this path)".
 
 ---
 
-_Reviewed: 2026-08-26T17:43:49Z_
+_Reviewed: 2026-08-27T00:00:00Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
