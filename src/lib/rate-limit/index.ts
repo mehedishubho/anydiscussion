@@ -34,31 +34,74 @@ export {
 
 /**
  * getClientIpFromXff — extract the rate-limit client IP from an
- * X-Forwarded-For header value (Plan 07-06 / CR-01 leg 2).
+ * X-Forwarded-For header value (Plan 07-06 / CR-01 leg 2; Plan 07-07 / WR-06).
  *
- * Returns the LAST comma-separated entry of the chain, trimmed, falling back
- * to "unknown" for null / empty / blank results.
+ * Returns the entry at position (entry count − TRUSTED_XFF_HOP_COUNT), trimmed,
+ * falling back to "unknown" for null / empty / blank results.
  *
- * Why the LAST hop and not the first (07-REVIEW CR-01): the last hop is the
- * entry our OWN appending proxy added — the proxy's observation of the
- * connection it served, not client-controllable. Under a single-proxy topology
- * (this project's deployment shape) it IS the real client IP. The first hop,
+ * Why count-from-the-RIGHT and never the first hop (07-REVIEW CR-01): the
+ * tail entries are the ones our OWN appending proxies added — each proxy's
+ * observation of the connection it served, not client-controllable. With the
+ * default hop count 1 (a single appending proxy — this project's basic
+ * deployment shape), the selection IS the last entry, i.e. the real client IP;
+ * this is byte-identical to the pre-WR-06 last-hop behavior. The first hop,
  * by contrast, is client-supplied: a bot rotating fake X-Forwarded-For values
  * gets a fresh rate-limit budget per fake IP, so it must NEVER key a limiter.
  *
- * Multi-proxy topologies (chain longer than proxy + client): the last hop is
- * the ADJACENT proxy, not the client — adjacent callers then share one bucket.
- * That over-limits (fail-closed), never under-limits: it cannot be weaponized
- * into a bypass, which is the correct failure direction for abuse controls.
+ * TRUSTED_XFF_HOP_COUNT = the number of trusted appending proxies whose
+ * appended entries sit at the tail of the chain. Under the documented
+ * Cloudflare + Coolify topology (ADR 0001) the app sees
+ *   [client-spoofed prefix..., realClientIP (appended by Cloudflare),
+ *    cfEdgeIP (appended by the Coolify proxy)]
+ * — set the count to 2 so the selection lands on the Cloudflare-appended
+ * client IP instead of the shared edge IP (which would collapse every visitor
+ * into a handful of site-wide form buckets — WR-06).
+ *
+ * SEMANTICS CORRECTION vs the 07-REVIEW WR-06 sample formula: the review's
+ * `hops[hops.length - 1 - n]` indexes one position further left than intended —
+ * applied with its stated default (n=1) it would select the client-spoofable
+ * FIRST hop on two-entry chains, regressing exactly the anti-spoofing property
+ * CR-01 leg 2 established and breaking the pinned multi-hop test. The shipped
+ * selection is hops[len − n] with a last-entry fallback for negative indices.
+ *
+ * Misconfiguration failure modes (both directions):
+ *   - count set BELOW the real proxy count ⇒ the selection lands on an
+ *     intermediate/adjacent proxy IP — callers share one bucket (forms
+ *     over-limited site-wide; fail-closed, not weaponizable into a bypass).
+ *   - count set ABOVE the real proxy count ⇒ the selection moves LEFT into
+ *     the client-supplied prefix (spoofable — treat as misconfiguration).
+ * Residual limitation, honestly: without CIDR validation of the appending
+ * hops (the Better Auth `trustedProxies` mechanism — deliberately NOT
+ * duplicated here per the review's minimal fix) a hop count higher than the
+ * real chain is trusted on faith; the deploy runbook's two-client post-deploy
+ * verification is the operational backstop for exactly this.
+ *
+ * Robustness rules: a chain SHORTER than the count falls back to the LAST
+ * entry (over-limit/shared-bucket direction — never the spoofable prefix);
+ * non-numeric, NaN, or sub-1 values coerce to 1 (invalid configuration never
+ * widens trust toward the prefix).
  *
  * This is the single extraction style for the public-form limiters —
  * consumers must not invent a second one (the newsletter.ts docblock
  * contract). Better Auth's own auth-endpoint limiter uses a separate,
  * CIDR-based mechanism (`advanced.ipAddress.trustedProxies` in
  * src/lib/auth/index.ts) because it can strip the whole chain from the right;
- * Server Actions reading the raw header cannot, hence last-hop here.
+ * Server Actions reading the raw header count from the right instead.
  */
 export function getClientIpFromXff(forwardedFor: string | null): string {
-  const lastHop = forwardedFor?.split(",").pop()?.trim();
-  return lastHop || "unknown";
+  const hops = (forwardedFor ?? "")
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  if (hops.length === 0) {
+    return "unknown";
+  }
+  const parsed = Number(process.env.TRUSTED_XFF_HOP_COUNT ?? "1");
+  const hopCount = Number.isFinite(parsed) && parsed >= 1 ? Math.floor(parsed) : 1;
+  const clientIndex = hops.length - hopCount;
+  // Negative index (chain shorter than the count) → LAST entry: fail toward
+  // over-limiting (shared bucket), never toward the spoofable first hop.
+  const selected =
+    clientIndex >= 0 ? hops[clientIndex] : hops[hops.length - 1];
+  return selected || "unknown";
 }

@@ -21,6 +21,7 @@
 // fail-closed (sign-in blocked) — safer for brute-force protection. Documented
 // in scripts/test-auth-ratelimit.mjs.
 import Redis from "ioredis";
+import { log } from "@/lib/log";
 
 // Next.js dev-mode HMR hot-reload-safe singleton. Without globalThis, every HMR
 // cycle would spawn a new Redis connection and leak sockets.
@@ -41,16 +42,20 @@ globalThis.__redisClient ??= new Redis(
     lazyConnect: true,
   },
 );
-// Attach an error listener so a Redis outage emits a warning instead of an unhandled
-// "error" event (which crashes the Node process). Rate-limiting still fails closed on
-// the command path; this listener only prevents the crash.
+// Attach an error listener so a Redis outage is LOGGED instead of surfacing as
+// an unhandled "error" event (which crashes the Node process). Rate-limiting
+// still fails closed on the command path; this listener's crash-prevention job
+// is unchanged — only the logging changed (Plan 07-07 / WR-01).
 globalThis.__redisClient.on("error", (err) => {
-  if (process.env.NODE_ENV !== "production") {
-    console.warn(
-      "[redis] connection error — rate-limiting will fail closed:",
-      err?.message ?? err,
-    );
-  }
+  // UNCONDITIONAL structured logging: a production Redis outage must be visible
+  // in the container logs. The previous dev-only console warning (gated on the
+  // environment mode) was a no-op in production — the only environment where
+  // the outage path matters (fail-closed sign-in blocking) — making the deploy
+  // runbook's V5 diagnostic structurally impossible to observe (07-REVIEW
+  // WR-01).
+  log.error("redis connection error", {
+    message: err?.message ?? String(err),
+  });
 });
 
 export const redisClient = globalThis.__redisClient;
