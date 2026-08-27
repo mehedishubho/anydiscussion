@@ -35,6 +35,7 @@ const {
   updateUserMock,
   sendVerificationEmailMock,
   removeUserMock,
+  changePasswordMock,
   countResult,
   selectAllResult,
   updateSetWhere,
@@ -52,6 +53,7 @@ const {
   updateUserMock: vi.fn(),
   sendVerificationEmailMock: vi.fn(),
   removeUserMock: vi.fn(),
+  changePasswordMock: vi.fn(),
   countResult: vi.fn(),
   selectAllResult: vi.fn(),
   updateSetWhere: vi.fn(),
@@ -100,6 +102,10 @@ vi.mock("@/lib/auth", () => ({
       // removeUser — quick task 260824-ptx: the guarded deleteUser action's
       // terminal call (Better Auth admin plugin cascades sessions/accounts).
       removeUser: removeUserMock,
+      // changePassword — quick task 260827-869: the self-service password
+      // change endpoint (dist/api/routes/update-user.mjs:75 — gated by
+      // sensitiveSessionMiddleware, so the call MUST forward request headers).
+      changePassword: changePasswordMock,
       // getSession + userHasPermission are used inside requireCan/getSessionOrThrow;
       // stubbed per-test as needed via the permissions mock below.
       getSession: vi.fn(),
@@ -182,6 +188,7 @@ import {
   listUsers,
   updateUser,
   deleteUser,
+  changeOwnPassword,
 } from "../users";
 
 describe("AUTH-02 / D-08: createFirstAdmin — the security-critical bootstrap", () => {
@@ -1002,5 +1009,112 @@ describe("REGRESSION 260824-qtu: middleware-gated admin endpoints receive forwar
     // the AUTH-07 exact-match assertion on sendVerificationEmail above already
     // enforces headerless there.
     expect(createUserMock.mock.calls[0][0]).not.toHaveProperty("headers");
+  });
+});
+
+// ============================================================
+// Quick task 260827-869 Task 3 — changeOwnPassword (RED phase first)
+// [CITED: 260827-869-PLAN.md Task 3 <behavior> — the four self-service
+//  password-change assertions]
+//
+// Threat register coverage (see 260827-869-PLAN.md <threat_model>):
+//  - T-Q-869-01: getSessionOrThrow FIRST — self-service for any signed-in role,
+//    NO requireCan (no userId param → the action can never target another
+//    user); Better Auth re-verifies currentPassword against the credential
+//    hash server-side
+//  - T-Q-869-02: Zod length bounds reject short/empty input before the endpoint
+//  - T-Q-869-03: digest-only client contract (CR-02) — INVALID_PASSWORD maps to
+//    a stable digest; the raw APIError is never rethrown
+//  - T-Q-869-04: revokeOtherSessions: true — other devices signed out; the
+//    endpoint sets a fresh session cookie for the current one
+//  - 260824-qtu regression class: changePassword is gated by
+//    sensitiveSessionMiddleware (dist/api/routes/session.mjs:328 —
+//    getAuthoritativeSessionFromCtx), which resolves the session FROM REQUEST
+//    HEADERS — a headerless internal auth.api call 401s. The call MUST forward
+//    the caller's live request headers.
+// ============================================================
+describe("260827-869: changeOwnPassword — self-service password change (any signed-in role)", () => {
+  const validInput = {
+    currentPassword: "old-password",
+    newPassword: "new-password-123",
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Default: a signed-in session exists. Self-service needs NO permission
+    // check (the action takes no userId — it can only touch the caller's own
+    // credential), so requireCan must NEVER fire on this path.
+    getSessionOrThrowMock.mockResolvedValue({
+      user: { id: "self-1", role: "author" },
+      session: { id: "sess-self" },
+    });
+  });
+
+  it("no session: getSessionOrThrow rejects — auth.api.changePassword NEVER reached (T-Q-869-01)", async () => {
+    getSessionOrThrowMock.mockRejectedValue(new Error("UNAUTHORIZED"));
+    changePasswordMock.mockImplementation(() => {
+      throw new Error(
+        "MUST_NOT_BE_REACHED — session gate did not fire before auth.api.changePassword",
+      );
+    });
+
+    await expect(changeOwnPassword(validInput)).rejects.toThrow("UNAUTHORIZED");
+    expect(changePasswordMock).not.toHaveBeenCalled();
+    // Self-service: no capability statement fires (contrast deleteUser above).
+    expect(requireCanMock).not.toHaveBeenCalled();
+  });
+
+  it("short newPassword or empty currentPassword: throws INVALID_INPUT BEFORE auth.api.changePassword (T-Q-869-02)", async () => {
+    changePasswordMock.mockImplementation(() => {
+      throw new Error(
+        "MUST_NOT_BE_REACHED — Zod gate did not fire before auth.api.changePassword",
+      );
+    });
+
+    await expect(
+      changeOwnPassword({ currentPassword: "old-password", newPassword: "short" }),
+    ).rejects.toThrow("INVALID_INPUT");
+    await expect(
+      changeOwnPassword({ currentPassword: "", newPassword: "new-password-123" }),
+    ).rejects.toThrow("INVALID_INPUT");
+    expect(changePasswordMock).not.toHaveBeenCalled();
+  });
+
+  it("happy path: forwarded headers + body { currentPassword, newPassword, revokeOtherSessions: true } (260824-qtu + T-Q-869-04)", async () => {
+    changePasswordMock.mockResolvedValue({ status: true });
+
+    await expect(changeOwnPassword(validInput)).resolves.toEqual({ status: true });
+
+    expect(changePasswordMock).toHaveBeenCalledTimes(1);
+    expect(changePasswordMock).toHaveBeenCalledWith({
+      headers: expect.anything(),
+      body: {
+        currentPassword: validInput.currentPassword,
+        newPassword: validInput.newPassword,
+        revokeOtherSessions: true,
+      },
+    });
+    // Bug-class regression: the headers key MUST be present (headerless =
+    // live 401 under sensitiveSessionMiddleware).
+    expect(changePasswordMock.mock.calls[0][0].headers).toBeDefined();
+    // T-Q-04 convention — the success log fires only after the endpoint resolves.
+    expect(logInfoMock).toHaveBeenCalledWith("password changed");
+  });
+
+  it("wrong current password (endpoint INVALID_PASSWORD): digest-carrying friendly error, never the raw APIError (T-Q-869-03)", async () => {
+    // Better Auth APIError shape: the error code rides on err.body.code
+    // (dist/api/routes/update-user.mjs:167 — BASE_ERROR_CODES.INVALID_PASSWORD).
+    const apiError = Object.assign(new Error("APIError BAD_REQUEST"), {
+      body: { code: "INVALID_PASSWORD" },
+    });
+    changePasswordMock.mockRejectedValueOnce(apiError);
+
+    await expect(changeOwnPassword(validInput)).rejects.toMatchObject({
+      message: "Your current password is incorrect.",
+      digest: "INVALID_PASSWORD",
+    });
+    // The failure is observable in the server log; the success log never fired.
+    expect(logErrorMock).toHaveBeenCalled();
+    expect(logInfoMock).not.toHaveBeenCalled();
   });
 });
