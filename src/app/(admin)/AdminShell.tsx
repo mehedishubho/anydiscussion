@@ -7,6 +7,7 @@ import Backdrop from "@/layout/Backdrop";
 import QueryProvider from "./QueryProvider";
 import { Toaster } from "sonner";
 import React from "react";
+import type { HeaderUser } from "@/components/header/UserDropdown";
 
 /**
  * Client shell for the (admin) route group.
@@ -20,6 +21,13 @@ import React from "react";
  * Phase 4 D-05: forwards the viewer's `role` (passed from the server-side
  * AuthGate) into AppSidebar for the UX-only nav filter. The authoritative RBAC
  * still fires server-side in every mutating Server Action (Phase 2 Pitfall #1).
+ *
+ * Quick task 260827-869 Task 2: also forwards the viewer's session identity
+ * (`user` — name/email/avatar, derived in the AuthGate exactly like the
+ * profile page does) into AppHeader → UserDropdown, replacing the TailAdmin
+ * demo identity. Both the header and the profile page read from the same
+ * session source of truth; ProfileForm calls router.refresh() on save so the
+ * server-rendered layout re-fetches and the header updates immediately.
  *
  * Phase 4 D-28: wraps {children} with QueryProvider so TanStack Query is
  * available across all dashboard pages. The provider is INSIDE AdminShell
@@ -37,9 +45,11 @@ import React from "react";
 export default function AdminShell({
   children,
   role,
+  user,
 }: {
   children: React.ReactNode;
   role?: "admin" | "editor" | "author";
+  user: HeaderUser;
 }) {
   const { isExpanded, isHovered, isMobileOpen } = useSidebar();
 
@@ -60,7 +70,7 @@ export default function AdminShell({
         className={`flex-1 transition-all  duration-300 ease-in-out ${mainContentMargin}`}
       >
         {/* Header */}
-        <AppHeader />
+        <AppHeader user={user} />
         {/* Page Content — QueryProvider scoped to (admin) only (D-28) */}
         <div className="p-4 mx-auto max-w-(--breakpoint-2xl) md:p-6">
           <QueryProvider>{children}</QueryProvider>

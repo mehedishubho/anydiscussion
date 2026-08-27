@@ -17,6 +17,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { updateUser } from "@/actions/users";
 import MediaPicker from "@/components/dashboard/media/MediaPicker";
@@ -34,6 +35,11 @@ const INPUT_CLASS =
 
 export default function ProfileForm({ initialUser }: { initialUser: ProfileUser }) {
   const queryClient = useQueryClient();
+  // 260827-869 Task 2 — router.refresh() on success re-fetches the
+  // server-rendered (admin) layout (AuthGate → AdminShell → AppHeader), so the
+  // header thumb/display name update immediately after a profile save without
+  // a manual reload. Same session source of truth as the header.
+  const router = useRouter();
   const {
     register,
     handleSubmit,
@@ -67,6 +73,8 @@ export default function ProfileForm({ initialUser }: { initialUser: ProfileUser 
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["users"] });
+      // Re-render the server layout so the header identity syncs (260827-869).
+      router.refresh();
     },
   });
 

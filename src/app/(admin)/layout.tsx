@@ -60,7 +60,22 @@ async function AuthGate({ children }: { children: React.ReactNode }) {
   // null for legacy rows). Coerce to undefined when absent so the sidebar's
   // hasRole() helper hides role-restricted items rather than showing everything.
   const role = (session.user.role as "admin" | "editor" | "author" | null) ?? undefined;
-  return <AdminShell role={role}>{children}</AdminShell>;
+  // Quick task 260827-869 Task 2: session identity for the header (thumb,
+  // display name, dropdown). Derived EXACTLY the way dashboard/profile/page.tsx
+  // derives its ProfileUser — avatar is an AUTH-08 additionalField present on
+  // the row but typed loosely, cast through the same local shape. All values
+  // are serializable, so the object crosses the RSC boundary into the client
+  // AdminShell → AppHeader → UserDropdown chain without adapters.
+  const headerUser = {
+    name: session.user.name,
+    email: session.user.email,
+    avatar: (session.user as { avatar?: string | null }).avatar ?? null,
+  };
+  return (
+    <AdminShell role={role} user={headerUser}>
+      {children}
+    </AdminShell>
+  );
 }
 
 export default function AdminLayout({

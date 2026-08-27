@@ -1,13 +1,16 @@
 "use client";
 import { ThemeToggleButton } from "@/components/common/ThemeToggleButton";
 import NotificationDropdown from "@/components/header/NotificationDropdown";
-import UserDropdown from "@/components/header/UserDropdown";
+import UserDropdown, { type HeaderUser } from "@/components/header/UserDropdown";
 import { useSidebar } from "@/context/SidebarContext";
 import BrandLogo from "@/components/common/BrandLogo";
 import Link from "next/link";
 import React, { useState ,useEffect,useRef} from "react";
 
-const AppHeader: React.FC = () => {
+// 260827-869 Task 2 — session identity threaded AuthGate → AdminShell → here
+// → UserDropdown. Required: AppHeader only renders inside the authenticated
+// (admin) shell, so a session always exists by construction.
+const AppHeader: React.FC<{ user: HeaderUser }> = ({ user }) => {
   const [isApplicationMenuOpen, setApplicationMenuOpen] = useState(false);
 
   const { isMobileOpen, toggleSidebar, toggleMobileSidebar } = useSidebar();
@@ -156,7 +159,7 @@ const AppHeader: React.FC = () => {
             {/* <!-- Notification Menu Area --> */}
           </div>
           {/* <!-- User Area --> */}
-          <UserDropdown /> 
+          <UserDropdown user={user} />
     
         </div>
       </div>
