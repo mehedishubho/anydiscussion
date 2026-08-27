@@ -19,6 +19,9 @@ const {
   updateMock,
   revalidatePathMock,
   revalidateTagMock,
+  // 260827-se8 Task 6 — pagination/count additions
+  whereArgsMock,
+  countResultMock,
 } = vi.hoisted(() => ({
   requireCanMock: vi.fn(),
   assertUniqueSlugMock: vi.fn(),
@@ -28,6 +31,8 @@ const {
   updateMock: vi.fn(),
   revalidatePathMock: vi.fn(),
   revalidateTagMock: vi.fn(),
+  whereArgsMock: vi.fn(),
+  countResultMock: vi.fn(),
 }));
 
 // next/cache — Plan 07-03 Task 2 added revalidation calls to createCategory /
@@ -57,17 +62,58 @@ vi.mock("@/lib/auth", () => ({
 
 vi.mock("@/lib/db", () => ({
   db: {
-    // Chainable: select().from().where().{orderBy,limit}() — Plan 07-03 added a
-    // .where(...).limit(1) slug-fetch in updateCategory/softDeleteCategory/
-    // updateTag/softDeleteTag, so the chain must support both terminators.
-    select: vi.fn(() => ({
-      from: vi.fn(() => ({
-        where: (...a: unknown[]) => ({
-          orderBy: (...b: unknown[]) => selectMock(...a, ...b),
-          limit: (...b: unknown[]) => selectMock(...a, ...b),
+    // Chainable + LAZY-THENABLE (260827-se8 Task 6 rewrite). Four terminator
+    // shapes must coexist:
+    //   1. .where(a).orderBy(b)                     → selectMock(a, b)         (bare listCategories/listTags)
+    //   2. .where(a).limit(1)                       → selectMock(a, 1)         (slug fetch in update/delete)
+    //   3. .where(a).orderBy(b).limit(c).offset(d)  → selectMock(a, b, c, d)   (paginated list)
+    //   4. .where(a) awaited directly               → countResultMock()        (countCategories)
+    // Every node is a lazy thenable: the terminal mock fires ONLY when the
+    // action actually awaits (260827-se8 lesson — eagerly-evaluated promise
+    // chains invoke mocks even when the code path should never reach the DB,
+    // breaking MUST_NOT_BE_REACHED proofs). where args are also mirrored into
+    // whereArgsMock so count-shape queries (shape 4) stay assertable.
+    select: vi.fn(() => {
+      const lazyThen = (resolve: () => unknown) => ({
+        then: (
+          onFulfilled?: (v: unknown) => unknown,
+          onRejected?: (e: unknown) => unknown,
+        ) =>
+          Promise.resolve()
+            .then(() => resolve())
+            .then(onFulfilled, onRejected),
+      });
+      return {
+        from: vi.fn(() => {
+          const args: unknown[] = [];
+          let terminal: (() => unknown) | null = null;
+          const node = {
+            ...lazyThen(() => (terminal !== null ? terminal() : countResultMock())),
+            where: (...a: unknown[]) => {
+              whereArgsMock(...a);
+              args.push(...a);
+              return node;
+            },
+            orderBy: (...b: unknown[]) => {
+              args.push(...b);
+              terminal = () => selectMock(...args);
+              return node;
+            },
+            limit: (...c: unknown[]) => {
+              args.push(...c);
+              terminal = () => selectMock(...args);
+              return node;
+            },
+            offset: (...d: unknown[]) => {
+              args.push(...d);
+              terminal = () => selectMock(...args);
+              return node;
+            },
+          };
+          return node;
         }),
-      })),
-    })),
+      };
+    }),
     // insert().values().returning() chain — actions use .returning({ id, slug }) to get
     // the PK + slug for revalidation (Plan 07-03 Task 2).
     insert: vi.fn(() => ({
@@ -87,6 +133,7 @@ import {
   listCategories,
   updateCategory,
   softDeleteCategory,
+  countCategories,
 } from "../categories";
 import { createTag, listTags, softDeleteTag, updateTag } from "../tags";
 import { postSchema } from "../posts-schema";
@@ -354,6 +401,102 @@ describe("CONT-05/06: listCategories / listTags return sorted data for pickers (
     expect(selectMock).toHaveBeenCalled();
   });
 });
+
+// ============================================================
+// 260827-se8 Task 6 — URL-driven categories list mechanics.
+// listCategories(opts?) gains a q filter (ilike on name OR slug) and OPTIONAL
+// pagination; countCategories(opts) mirrors the same WHERE in count(*) shape.
+// BACK-COMAT CONTRACT (plan Task 6 <behavior>): a BARE listCategories() call —
+// what the post-editor CategoryPicker and the posts-page options fetch use —
+// MUST return the full list exactly as before (no limit/offset emitted).
+// Both reads stay ungated (the proxy + (admin) route-group gate is the
+// boundary — mirrors the existing listCategories comment).
+// ============================================================
+
+/** Structural walker — proves primitive values reach the drizzle SQL graph. */
+function contains(node: unknown, needle: string | number | boolean): boolean {
+  if (node === needle) return true;
+  if (Array.isArray(node)) return node.some((n) => contains(n, needle));
+  if (node !== null && typeof node === "object") {
+    return Object.values(node as Record<string, unknown>).some((v) => contains(v, needle));
+  }
+  return false;
+}
+const deepContains = (node: unknown, ...needles: (string | number | boolean)[]) =>
+  needles.every((n) => contains(node, n));
+
+describe("260827-se8 Task 6: listCategories(opts) — q filter + OPTIONAL pagination (bare calls stay unpaginated)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    selectMock.mockResolvedValue([
+      { id: 2, name: "Beta", slug: "beta" },
+      { id: 1, name: "Alpha", slug: "alpha" },
+      { id: 3, name: "Gamma", slug: "gamma" },
+    ]);
+    countResultMock.mockResolvedValue([{ value: 7 }]);
+  });
+
+  it("BARE listCategories() emits NO limit/offset (back-compat: pickers + posts-page options fetch the full list)", async () => {
+    const rows = await listCategories();
+    expect(rows.length).toBe(3);
+    expect(selectMock).toHaveBeenCalled();
+    // limit/offset args are bare numbers in the terminal spread — their absence
+    // proves the unpaginated shape survived the opts? extension.
+    const numericArgs = selectMock.mock.calls.flat().filter((a) => typeof a === "number");
+    expect(numericArgs).toEqual([]);
+  });
+
+  it("q reaches WHERE as %q% (ilike on name OR slug) while the soft-delete filter is preserved", async () => {
+    await listCategories({ q: "new" });
+    const whereArgs = whereArgsMock.mock.calls.at(-1);
+    expect(whereArgs).toBeTruthy();
+    expect(deepContains(whereArgs, "%new%")).toBe(true);
+    expect(deepContains(whereArgs, "deleted_at")).toBe(true);
+  });
+
+  it("page 2 with default pageSize 20 applies limit 20 + offset 20 AFTER asc(name)", async () => {
+    await listCategories({ page: 2 });
+    const lastCall = selectMock.mock.calls.at(-1);
+    expect(lastCall).toBeTruthy();
+    // [whereArgs..., asc("name"), 20 (limit), 20 (offset)] — the two trailing
+    // numbers are the pagination pair.
+    const numericArgs = lastCall!.filter((a) => unknown_isNumber(a));
+    expect(numericArgs).toEqual([20, 20]);
+    expect(deepContains(lastCall, "name")).toBe(true);
+  });
+
+  it("page/pageSize bounds are Zod-gated BEFORE any DB access (INVALID_INPUT)", async () => {
+    await expect(listCategories({ page: 1, pageSize: 0 })).rejects.toThrow("INVALID_INPUT");
+    await expect(listCategories({ q: "x".repeat(201) })).rejects.toThrow("INVALID_INPUT");
+    expect(whereArgsMock).not.toHaveBeenCalled();
+    expect(selectMock).not.toHaveBeenCalled();
+  });
+
+  it("countCategories: same WHERE (q + soft-delete), count(*) shape, Number(value) coercion", async () => {
+    const n = await countCategories({ q: "new" });
+    expect(n).toBe(7);
+    expect(countResultMock).toHaveBeenCalledTimes(1);
+    // Parity: the count query carries the SAME filter graph as the list query.
+    const whereArgs = whereArgsMock.mock.calls.at(-1);
+    expect(deepContains(whereArgs, "%new%")).toBe(true);
+    expect(deepContains(whereArgs, "deleted_at")).toBe(true);
+    // Count never paginates — no list terminal fired.
+    expect(selectMock).not.toHaveBeenCalled();
+  });
+
+  it("countCategories() bare counts all non-deleted rows (no q leg)", async () => {
+    const n = await countCategories();
+    expect(n).toBe(7);
+    const whereArgs = whereArgsMock.mock.calls.at(-1);
+    expect(deepContains(whereArgs, "deleted_at")).toBe(true);
+    expect(deepContains(whereArgs, "%")).toBe(false);
+  });
+});
+
+// tiny local predicate (typeof guard) kept next to its only consumer
+function unknown_isNumber(v: unknown): v is number {
+  return typeof v === "number";
+}
 
 describe("D-23: tagIds cap (8) enforced via postSchema.parse (server-side)", () => {
   it("postSchema rejects tagIds.length > 8 with TOO_MANY_TAGS", () => {
