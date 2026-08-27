@@ -34,6 +34,13 @@ const {
   headersMock,
   newsletterLimiterMock,
   clientIpHelperMock,
+  // 260827-se8 Task 1 — subscriber → admins notify hook mocks:
+  //   notifyUsersMock     — spy standing in for @/lib/notifications
+  //   selectResultMock    — awaited db.select().from().where() result (admin-ids)
+  //   selectLimitResultMock — db.select().from().where().limit() result (pre-read)
+  notifyUsersMock,
+  selectResultMock,
+  selectLimitResultMock,
 } = vi.hoisted(() => ({
   requireRoleMock: vi.fn(),
   // update chain: db.update(schema.settings).set(patch).where(eq) — set captures
@@ -61,6 +68,18 @@ const {
   // (the "do not invent a second style" contract), not just that the limiter
   // ends up keyed on the last hop.
   clientIpHelperMock: vi.fn(),
+  notifyUsersMock: vi.fn(),
+  selectResultMock: vi.fn(),
+  selectLimitResultMock: vi.fn(),
+}));
+
+// @/lib/notifications — 260827-se8 Task 1. subscribeNewsletter awaits
+// notifyUsers(adminIds, "new_subscriber", { subscriberEmail }) after a
+// non-active pre-read + successful upsert. The helper's own swallow contract
+// is proven against the REAL module in notifications.test.ts; here it is a
+// spy so the action's call shape (and its defense-in-depth catch) is testable.
+vi.mock("@/lib/notifications", () => ({
+  notifyUsers: (...a: unknown[]) => notifyUsersMock(...a),
 }));
 
 vi.mock("@/lib/permissions", () => ({
@@ -105,7 +124,16 @@ vi.mock("@/lib/db", () => {
     db: {
       select: vi.fn(() => ({
         from: vi.fn(() => ({
-          where: vi.fn(() => ({ limit: vi.fn(() => Promise.resolve([])) })),
+          // 260827-se8 Task 1 — where() is BOTH thenable (the admin-ids select
+          // awaits the chain directly → selectResultMock) AND carries .limit()
+          // (the subscriber pre-read resolves → selectLimitResultMock).
+          where: vi.fn(() => {
+            const p = Promise.resolve().then(() => selectResultMock());
+            (p as unknown as { limit: ReturnType<typeof vi.fn> }).limit = vi.fn(
+              () => Promise.resolve().then(() => selectLimitResultMock()),
+            );
+            return p;
+          }),
           orderBy: vi.fn(() => ({
             offset: vi.fn(() => ({ limit: vi.fn(() => Promise.resolve([])) })),
           })),
@@ -137,6 +165,8 @@ vi.mock("@/lib/db", () => {
     },
     schema: {
       settings: { key: "key", value: "value", updatedAt: "updated_at" },
+      // user columns — the admin-ids select (260827-se8) references id + role.
+      user: { id: "id", role: "role" },
       // subscribers columns as mock markers — assertions compare against these
       // strings (e.g. onConflictDoUpdate target === "email").
       subscribers: {
@@ -291,6 +321,13 @@ describe("260824-3l2 D-01/D-05/D-06: subscribeNewsletter — public subscribe ga
     });
     newsletterLimiterMock.mockResolvedValue({ success: true });
     insertOnConflictUpdateMock.mockResolvedValue(undefined);
+    // 260827-se8 defaults: no existing subscriber row (pre-read → []), no
+    // admins (admin-ids select → []), notify resolves. Empty admins means
+    // notifyUsers([]) never inserts — keeping the existing single-insert
+    // assertions intact.
+    selectLimitResultMock.mockResolvedValue([]);
+    selectResultMock.mockResolvedValue([]);
+    notifyUsersMock.mockResolvedValue(undefined);
     // Faithful default implementation of the shared last-hop helper (the real
     // module's contract is pinned in
     // src/lib/rate-limit/__tests__/client-ip.test.ts): trimmed last
@@ -463,5 +500,113 @@ describe("260824-3l2 D-03: listSubscribers / deleteSubscriber — admin gates fi
     await expect(deleteSubscriber(2.5)).rejects.toThrow();
     expect(deleteMock).not.toHaveBeenCalled();
     expect(deleteWhereMock).not.toHaveBeenCalled();
+  });
+});
+
+// ============================================================
+// 260827-se8 Task 1 — subscriber → admins notification hook
+// [CITED: 260827-se8-PLAN.md Task 1 <behavior> — subscribeNewsletter notify]
+// [CITED: research A1 — the tiny pre-read/upsert race is acceptable
+//  (display-only data; the per-IP rate limiter already bounds volume)]
+//
+// Threat register coverage (see 260827-se8-PLAN.md <threat_model>):
+//  - T-Q-se8-07: notifyUsers is awaited with its swallow contract honored —
+//    a notify failure NEVER fails the subscribe (status stays "success")
+//  - idempotency: an already-ACTIVE pre-read must NOT re-notify (duplicate
+//    subscribes are silent no-ops by D-01 design)
+// ============================================================
+describe("260827-se8: subscribeNewsletter — new-subscriber → admins notify", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    headersMock.mockResolvedValue({
+      get: (k: string) => (k === "x-forwarded-for" ? "203.0.113.7" : null),
+    });
+    newsletterLimiterMock.mockResolvedValue({ success: true });
+    insertOnConflictUpdateMock.mockResolvedValue(undefined);
+    selectLimitResultMock.mockResolvedValue([]);
+    selectResultMock.mockResolvedValue([]);
+    notifyUsersMock.mockResolvedValue(undefined);
+    clientIpHelperMock.mockImplementation(
+      (forwardedFor: string | null) =>
+        forwardedFor?.split(",").pop()?.trim() || "unknown",
+    );
+  });
+
+  it("first-time subscriber (pre-read finds NO row) → notifyUsers fires with ALL admin ids + 'new_subscriber' + the email", async () => {
+    // Pre-read → no row (first subscribe). Admins → two ids.
+    selectLimitResultMock.mockResolvedValue([]);
+    selectResultMock.mockResolvedValue([{ id: "a-1" }, { id: "a-2" }]);
+
+    const result = await subscribeNewsletter(
+      { status: "idle" },
+      subscribeForm("fresh@example.com"),
+    );
+
+    expect(result).toEqual({ status: "success" });
+    expect(notifyUsersMock).toHaveBeenCalledTimes(1);
+    expect(notifyUsersMock).toHaveBeenCalledWith(
+      ["a-1", "a-2"],
+      "new_subscriber",
+      { subscriberEmail: "fresh@example.com" },
+    );
+  });
+
+  it("re-subscribe after unsubscribe (pre-read row status 'unsubscribed') → notify fires (the upsert reactivated them)", async () => {
+    selectLimitResultMock.mockResolvedValue([{ status: "unsubscribed" }]);
+    selectResultMock.mockResolvedValue([{ id: "a-1" }]);
+
+    await subscribeNewsletter(
+      { status: "idle" },
+      subscribeForm("back@example.com"),
+    );
+
+    expect(notifyUsersMock).toHaveBeenCalledTimes(1);
+    expect(notifyUsersMock).toHaveBeenCalledWith(
+      ["a-1"],
+      "new_subscriber",
+      { subscriberEmail: "back@example.com" },
+    );
+  });
+
+  it("idempotent duplicate (pre-read row status 'active') → NO notify call at all", async () => {
+    selectLimitResultMock.mockResolvedValue([{ status: "active" }]);
+    selectResultMock.mockResolvedValue([{ id: "a-1" }]);
+
+    const result = await subscribeNewsletter(
+      { status: "idle" },
+      subscribeForm("already@example.com"),
+    );
+
+    expect(result).toEqual({ status: "success" });
+    expect(notifyUsersMock).not.toHaveBeenCalled();
+    // The admin-ids select never even fires (short-circuit before it).
+    expect(selectResultMock).not.toHaveBeenCalled();
+  });
+
+  it("notifyUsers rejection → subscribe STILL returns { status: 'success' } (notify can never fail the parent mutation, T-Q-se8-07)", async () => {
+    selectLimitResultMock.mockResolvedValue([]);
+    selectResultMock.mockResolvedValue([{ id: "a-1" }]);
+    notifyUsersMock.mockRejectedValue(new Error("insert failed"));
+
+    const result = await subscribeNewsletter(
+      { status: "idle" },
+      subscribeForm("still-ok@example.com"),
+    );
+
+    expect(result).toEqual({ status: "success" });
+  });
+
+  it("the upsert itself still runs exactly once alongside the notify hook (regression pin)", async () => {
+    selectLimitResultMock.mockResolvedValue([]);
+    selectResultMock.mockResolvedValue([{ id: "a-1" }]);
+
+    await subscribeNewsletter(
+      { status: "idle" },
+      subscribeForm("upsert@example.com"),
+    );
+
+    expect(insertValuesMock).toHaveBeenCalledTimes(1);
+    const values = insertValuesMock.mock.calls[0][0] as { email?: string };
+    expect(values.email).toBe("upsert@example.com");
   });
 });
