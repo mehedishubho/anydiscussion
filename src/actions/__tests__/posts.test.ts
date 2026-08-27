@@ -715,15 +715,20 @@ describe("260827-se8 Task 4: listPosts — URL-filter mechanics (ILIKE, desc(upd
     expect(deepContains(orderByArgsMock.mock.calls[0][0], "updated_at")).toBe(true);
   });
 
-  it("page 3 → offset (3-1)×20 = 40; pageSize 500 → capped to 100 by the Zod schema", async () => {
+  it("page 3 → offset (3-1)×20 = 40; explicit pageSize 50 passes through; pageSize 500 → Zod REJECTS (>100 gate)", async () => {
     await listPosts({ page: 3 });
     expect(limitArgsMock).toHaveBeenCalledWith(20);
     expect(offsetArgsMock).toHaveBeenCalledWith(40);
 
     vi.clearAllMocks();
     selectPostMock.mockResolvedValue([]);
-    await listPosts({ pageSize: 500 });
-    expect(limitArgsMock).toHaveBeenCalledWith(100);
+    await listPosts({ pageSize: 50 });
+    expect(limitArgsMock).toHaveBeenCalledWith(50);
+
+    // The 1-100 window is a hard gate (bounds DB work), not a silent clamp.
+    selectPostMock.mockClear();
+    await expect(listPosts({ pageSize: 500 })).rejects.toThrow();
+    expect(selectPostMock).not.toHaveBeenCalled();
   });
 
   it("invalid status enum → Zod throws BEFORE any db select", async () => {

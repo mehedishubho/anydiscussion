@@ -15,7 +15,7 @@
 // (it should only stream in once the auth-gated dynamic content renders).
 import type { Metadata } from "next";
 import Link from "next/link";
-import { listPosts } from "@/actions/posts";
+import { countPosts, listPosts } from "@/actions/posts";
 import { listMedia } from "@/actions/media";
 
 export const metadata: Metadata = {
@@ -35,7 +35,6 @@ export const instant = false;
 // enough that a normal volume of drafts/published posts is captured for the
 // counts; if the dashboard ever grows past these, Plan 04-02+ can add proper
 // count() actions (D-04 sanction: "listMedia().length is fine for a small team").
-const POSTS_READ_CAP = 500;
 const MEDIA_READ_CAP = 2000;
 const PENDING_REVIEW_PREVIEW = 5;
 
@@ -58,35 +57,43 @@ export default async function DashboardOverview() {
   // media:read — Phase 2 Pitfall #1); reaching this Server Component already
   // required the (admin) AuthGate to pass, but the action-level check is the
   // authoritative boundary.
-  let posts: Awaited<ReturnType<typeof listPosts>> = [];
+  //
+  // 260827-se8 Task 4 (Rule 1 adaptation): the old read-500-and-partition
+  // shape died with listPosts' pre-pagination signature. The overview's actual
+  // needs — per-status COUNTS for the tiles + a 5-row pending preview — map
+  // exactly onto countPosts/listPosts' new status-filter mechanics, with less
+  // data transferred than the old cap-read.
+  let statusCounts: Record<string, number> = {
+    draft: 0,
+    pending_review: 0,
+    published: 0,
+  };
+  let pendingPreview: Array<{
+    id: number;
+    title: string;
+    slug: string;
+    status: string;
+    updatedAt: Date | null;
+  }> = [];
   let mediaCount = 0;
   let loadError: string | null = null;
 
   try {
-    [posts, mediaCount] = await Promise.all([
-      listPosts({ limit: POSTS_READ_CAP }).catch((err) => {
-        throw err;
-      }),
+    const [draft, pending, published, pendingRows, media] = await Promise.all([
+      countPosts({ status: "draft" }),
+      countPosts({ status: "pending_review" }),
+      countPosts({ status: "published" }),
+      listPosts({ status: "pending_review", pageSize: PENDING_REVIEW_PREVIEW }),
       listMedia({ limit: MEDIA_READ_CAP })
         .then((rows) => rows.length)
         .catch(() => 0), // media count is best-effort — don't fail the overview
     ]);
+    statusCounts = { draft, pending_review: pending, published };
+    pendingPreview = pendingRows;
+    mediaCount = media;
   } catch (err) {
     loadError = err instanceof Error ? err.message : "Failed to load overview.";
   }
-
-  // Partition by status once. listPosts does not currently filter by status
-  // server-side (Phase 3 stub); partitioning client-side is the D-04 path.
-  const byStatus: Record<string, typeof posts> = {
-    draft: [],
-    pending_review: [],
-    published: [],
-  };
-  for (const p of posts) {
-    const bucket = byStatus[p.status] ?? byStatus.draft;
-    bucket.push(p);
-  }
-  const pendingPreview = byStatus.pending_review.slice(0, PENDING_REVIEW_PREVIEW);
 
   return (
     <div className="space-y-6">
@@ -121,7 +128,7 @@ export default async function DashboardOverview() {
                   {label}
                 </span>
                 <p className="mt-3 text-3xl font-semibold text-gray-800 dark:text-white/90">
-                  {byStatus[key]?.length ?? 0}
+                  {statusCounts[key] ?? 0}
                 </p>
                 <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                   posts

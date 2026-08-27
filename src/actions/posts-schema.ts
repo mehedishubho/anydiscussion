@@ -57,3 +57,20 @@ export const postSchema = z.object({
 
 export type PostSchemaInput = z.input<typeof postSchema>;
 export type PostSchemaOutput = z.output<typeof postSchema>;
+
+// 260827-se8 Task 4 — the dashboard list filter contract. The posts page
+// parses raw URL searchParams into these fields (manual coercion via
+// src/lib/list-filters per the (site)/search/page.tsx parseSearch ethos),
+// then passes the result here for the authoritative Zod gate. page/pageSize
+// defaults + the 1-100 pageSize cap bound the DB window (offset abuse).
+export const postListSchema = z.object({
+  q: z.string().max(200).optional(),
+  status: z.enum(["draft", "pending_review", "published"]).optional(),
+  categoryId: z.number().int().positive().optional(),
+  author: z.string().max(200).optional(),
+  page: z.number().int().min(1).default(1),
+  pageSize: z.number().int().min(1).max(100).default(20),
+});
+
+export type PostListInput = z.input<typeof postListSchema>;
+export type PostListQuery = z.output<typeof postListSchema>;
