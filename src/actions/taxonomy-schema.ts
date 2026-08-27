@@ -74,3 +74,24 @@ export type TagSchemaInput = z.input<typeof tagSchema>;
 export type TagSchemaOutput = z.output<typeof tagSchema>;
 export type TagUpdateSchemaInput = z.input<typeof tagUpdateSchema>;
 export type TagUpdateSchemaOutput = z.output<typeof tagUpdateSchema>;
+
+// ============================================================
+// Quick task 260827-se8 Task 6 — URL-driven categories list filters
+// [CITED: 260827-se8-PLAN.md Task 6 <action> step 1]
+//
+// The dashboard categories page parses raw URL searchParams into these fields
+// (manual coercion via src/lib/list-filters), then this Zod gate is the
+// authoritative contract. page's ABSENCE signals "no pagination": a bare
+// listCategories() call (post-editor CategoryPicker, posts-page options
+// fetch) must keep returning the FULL list — limit/offset apply only when
+// page is present. pageSize defaults to 20 whenever pagination is active.
+// ============================================================
+
+export const categoryListSchema = z.object({
+  q: z.string().max(200).optional(),
+  page: z.number().int().min(1).optional(),
+  pageSize: z.number().int().min(1).max(100).default(20),
+});
+
+export type CategoryListInput = z.input<typeof categoryListSchema>;
+export type CategoryListQuery = z.output<typeof categoryListSchema>;
