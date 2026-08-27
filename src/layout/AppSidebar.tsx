@@ -1,22 +1,22 @@
 "use client";
 // src/layout/AppSidebar.tsx
-// [CITED: 04-CONTEXT.md D-02 — CMS nav + collapsed Components reference group]
-// [CITED: 04-CONTEXT.md D-03 — chart/form/table demos deleted; (ui-elements) preserved]
 // [CITED: 04-CONTEXT.md D-05 — role filter is UX ONLY; authoritative RBAC stays server-side]
 // [CITED: CLAUDE.md "Roles & permissions" — never rely on UI hiding alone]
 //
-// The Phase-4 dashboard sidebar. Replaces the unmodified TailAdmin default (which
-// pointed at the deleted chart/form/table demo routes) with a focused CMS nav.
+// The CMS dashboard sidebar. Owner request 260827-869 REMOVED the TailAdmin demo
+// navigation (the "Components" showcase group and the Calendar entry) and
+// unified settings into ONE section — this supersedes 04-CONTEXT D-02/D-03's
+// preserve-the-showcase stance: the owner is now confident in the TailAdmin kit
+// and explicitly asked for removal. The showcase routes, the calendar page, and
+// their orphaned demo components were deleted together with the sidebar entries
+// (no dangling imports).
 //
-// navItems  = the CMS top nav: Posts, Categories, Tags, Media, Pages, Users
-//             (admin-only), Settings (admin-only, parent of Storage), Profile,
-//             Calendar. All hrefs are prefixed `/dashboard/*` (D-01).
-// othersItems = a collapsed "Components" reference group that links to the
-//               preserved (ui-elements) showcase (D-02 — the founder is not yet
-//               confident enough in the TailAdmin kit to drop the living reference).
-//               Decision: (ui-elements) stays at its current route-group path
-//               `(admin)/(ui-elements)/` so URLs remain `/alerts`, `/avatars`, etc.
-//               No `/dashboard/` prefix on these reference hrefs.
+// navItems     = the CMS top nav: Posts, Categories, Tags, Media, Pages, Users
+//                (admin-only), Subscribers (admin-only). All hrefs are prefixed
+//                `/dashboard/*` (D-01 — real CMS surfaces only).
+// settingsItems = the flat Settings section: Storage / SEO / Backup / Newsletter
+//                (all admin-only) + Profile (every role manages their own
+//                profile — D-09 self-service, NO role gate).
 //
 // Role filter (D-05):
 //   UX ONLY — every mutating Server Action still re-checks permissions server-side
@@ -32,14 +32,12 @@ import { useSidebar } from "../context/SidebarContext";
 import {
   BoxCubeIcon,
   BoxIcon,
-  CalenderIcon,
   ChevronDownIcon,
   GridIcon,
   HorizontaLDots,
   ListIcon,
   PageIcon,
   PlugInIcon,
-  TableIcon,
   UserCircleIcon,
   UserIcon,
 } from "../icons/index";
@@ -80,50 +78,53 @@ const navItems: NavItem[] = [
     path: "/dashboard/subscribers",
     requiredRole: "admin",
   },
-  {
-    icon: <PlugInIcon />,
-    name: "Settings",
-    requiredRole: "admin",
-    subItems: [
-      // Plan 04-05 ships the Storage route; the link is admin-gated here.
-      { name: "Storage", path: "/dashboard/settings/storage" },
-      // Plan 05-03 shipped the SEO route (D-11); this entry closes the Phase 5 UAT
-      // test 4 navigation gap (page was reachable by URL only). UX-only gate —
-      // saveSeoSettings re-checks requireRole('admin') FIRST server-side.
-      { name: "SEO", path: "/dashboard/settings/seo" },
-      // Plan 08-04 ships the Backup route; admin-only (BACKUP-05). UX-only gate — the Server
-      // Actions re-check requireRole('admin') FIRST (CLAUDE.md "never rely on UI hiding alone").
-      { name: "Backup", path: "/dashboard/settings/backup" },
-      // 260824-3l2 — footer newsletter configuration (D-02). UX-only gate —
-      // saveNewsletterSettings re-checks requireRole('admin') FIRST.
-      { name: "Newsletter", path: "/dashboard/settings/newsletter" },
-    ],
-  },
-  { icon: <UserIcon />, name: "Profile", path: "/dashboard/profile" },
-  { icon: <CalenderIcon />, name: "Calendar", path: "/dashboard/calendar" },
 ];
 
-// ─── Components reference group (D-02 — collapsed (ui-elements) showcase) ────
-// Hrefs point at the preserved (ui-elements) routes. URLs stay `/alerts`, etc.
-// because `(admin)` and `(ui-elements)` are both route groups (parens) — they
-// add no URL segment. We intentionally keep this folder at its current path
-// rather than moving under `/dashboard/*` to minimize churn (the showcase is a
-// reference tool, not a CMS surface — D-01's `/dashboard/*` mandate names only
-// the real CMS surfaces).
-const othersItems: NavItem[] = [
+// ─── Settings section (owner request 260827-869 — one unified flat group) ───
+// Direct links, NO submenu: the four admin-gated settings routes followed by
+// the all-roles Profile entry. Per-item history comments carried over from the
+// former Settings submenu + standalone Profile entry so provenance survives.
+// Icons reuse the existing import set (PlugInIcon stays — reassigned from the
+// removed Settings parent to Storage, the pluggable provider surface).
+const settingsItems: NavItem[] = [
+  // Plan 04-05 ships the Storage route; admin-gated (provider abstraction:
+  // local default / R2 / Cloudinary). UX-only gate — the storage Server
+  // Actions re-check requireRole('admin') FIRST server-side.
   {
-    icon: <TableIcon />,
-    name: "Components",
-    subItems: [
-      { name: "Alerts", path: "/alerts" },
-      { name: "Avatars", path: "/avatars" },
-      { name: "Badge", path: "/badge" },
-      { name: "Buttons", path: "/buttons" },
-      { name: "Images", path: "/images" },
-      { name: "Modals", path: "/modals" },
-      { name: "Videos", path: "/videos" },
-    ],
+    icon: <PlugInIcon />,
+    name: "Storage",
+    path: "/dashboard/settings/storage",
+    requiredRole: "admin",
   },
+  // Plan 05-03 shipped the SEO route (D-11); this entry closed the Phase 5 UAT
+  // test 4 navigation gap (page was reachable by URL only). UX-only gate —
+  // saveSeoSettings re-checks requireRole('admin') FIRST server-side.
+  {
+    icon: <PageIcon />,
+    name: "SEO",
+    path: "/dashboard/settings/seo",
+    requiredRole: "admin",
+  },
+  // Plan 08-04 ships the Backup route; admin-only (BACKUP-05). UX-only gate — the Server
+  // Actions re-check requireRole('admin') FIRST (CLAUDE.md "never rely on UI hiding alone").
+  {
+    icon: <BoxIcon />,
+    name: "Backup",
+    path: "/dashboard/settings/backup",
+    requiredRole: "admin",
+  },
+  // 260824-3l2 — footer newsletter configuration (D-02). UX-only gate —
+  // saveNewsletterSettings re-checks requireRole('admin') FIRST.
+  {
+    icon: <ListIcon />,
+    name: "Newsletter",
+    path: "/dashboard/settings/newsletter",
+    requiredRole: "admin",
+  },
+  // D-09 self-service: every role manages their own profile — NO role gate
+  // (the profile page + updateUser self-edit path are session-scoped, not
+  // admin-gated; changeOwnPassword likewise self-resolves the session).
+  { icon: <UserIcon />, name: "Profile", path: "/dashboard/profile" },
 ];
 
 // ─── Role helpers (D-05 — UX ONLY) ──────────────────────────────────────────
@@ -180,7 +181,7 @@ const AppSidebar: React.FC<AppSidebarProps> = ({ role }) => {
 
   // Apply the UX-only role filter (D-05) once per render.
   const visibleNavItems = navItems.filter((item) => hasRole(role, item.requiredRole));
-  const visibleOthersItems = othersItems.filter((item) =>
+  const visibleSettingsItems = settingsItems.filter((item) =>
     hasRole(role, item.requiredRole),
   );
 
@@ -316,7 +317,7 @@ const AppSidebar: React.FC<AppSidebarProps> = ({ role }) => {
     let submenuMatched = false;
     [
       { type: "main" as const, items: visibleNavItems },
-      { type: "others" as const, items: visibleOthersItems },
+      { type: "others" as const, items: visibleSettingsItems },
     ].forEach(({ type, items }) => {
       items.forEach((nav, index) => {
         if (nav.subItems) {
@@ -405,12 +406,12 @@ const AppSidebar: React.FC<AppSidebarProps> = ({ role }) => {
                 }`}
               >
                 {isExpanded || isHovered || isMobileOpen ? (
-                  "Reference"
+                  "Settings"
                 ) : (
                   <HorizontaLDots />
                 )}
               </h2>
-              {renderMenuItems(visibleOthersItems, "others")}
+              {renderMenuItems(visibleSettingsItems, "others")}
             </div>
           </div>
         </nav>
