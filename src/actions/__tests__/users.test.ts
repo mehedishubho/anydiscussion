@@ -1259,6 +1259,10 @@ describe("260827-se8 Task 5: listUsers — q/role/banned/verified URL filters (P
     await listUsers({ page: 2 });
     expect(offsetArgsMock).toHaveBeenCalledWith(20);
 
+    // Reset history so the not-called assertions below cover ONLY the
+    // invalid-role call (the parse must reject before the chain is awaited).
+    selectAllResult.mockClear();
+    countResult.mockClear();
     await expect(listUsers({ role: "superuser" } as never)).rejects.toThrow();
     expect(selectAllResult).not.toHaveBeenCalled();
     expect(countResult).not.toHaveBeenCalled();

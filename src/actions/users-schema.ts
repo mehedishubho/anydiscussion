@@ -144,3 +144,27 @@ export const CHANGE_PASSWORD_ERROR_MESSAGES: Record<ChangePasswordDigest, string
   INVALID_PASSWORD: "Your current password is incorrect.",
   CHANGE_FAILED: "Failed to update password — please try again.",
 };
+
+// ============================================================
+// Quick task 260827-se8 Task 5 — URL-driven users list filters
+// [CITED: 260827-se8-PLAN.md Task 5 <action> step 1]
+//
+// The dashboard users page parses raw URL searchParams into these fields
+// (manual coercion via src/lib/list-filters), then this Zod gate is the
+// authoritative contract. banned/verified stay STRING enums in the URL layer
+// ("" = absent = any) and are coerced to booleans INSIDE the action after
+// the permission gate — the documented manual-parse ethos (no Zod boolean
+// preprocess drift).
+// ============================================================
+
+export const userListSchema = z.object({
+  q: z.string().max(200).optional(),
+  role: z.enum(["admin", "editor", "author"]).optional(),
+  banned: z.enum(["true", "false"]).optional(),
+  verified: z.enum(["true", "false"]).optional(),
+  page: z.number().int().min(1).default(1),
+  pageSize: z.number().int().min(1).max(100).default(20),
+});
+
+export type UserListInput = z.input<typeof userListSchema>;
+export type UserListQuery = z.output<typeof userListSchema>;

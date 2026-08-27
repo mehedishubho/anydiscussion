@@ -17,7 +17,7 @@ import { revalidatePath, revalidateTag } from "next/cache";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { db, schema } from "@/lib/db";
-import { eq, count } from "drizzle-orm";
+import { and, count, desc, eq, ilike, or, sql } from "drizzle-orm";
 import { log } from "@/lib/log";
 import { requireCan, getSessionOrThrow } from "@/lib/permissions";
 import {
@@ -27,8 +27,11 @@ import {
   CHANGE_PASSWORD_ERROR_MESSAGES,
   userUpdateSchema,
   changePasswordSchema,
+  userListSchema,
   type UserDeleteDigest,
   type ChangePasswordDigest,
+  type UserListInput,
+  type UserListQuery,
 } from "./users-schema";
 
 // The admin plugin exposes its endpoints FLAT on `auth.api` (verified at runtime
@@ -244,25 +247,55 @@ export async function revokeSessions(input: { userId: string }) {
 // ============================================================
 
 /**
+ * buildUserListWhere — 260827-se8 Task 5. Shared WHERE builder for listUsers +
+ * countUsers (identical filters ⇒ the count always matches the page window).
+ * banned/verified are URL STRING enums ("true"/"false") coerced to booleans
+ * HERE — after the permission gate, per the documented manual-parse ethos.
+ */
+function buildUserListWhere(filters: UserListQuery) {
+  const conds = [];
+  if (filters.q) {
+    const pattern = `%${filters.q}%`;
+    conds.push(
+      or(ilike(schema.user.name, pattern), ilike(schema.user.email, pattern)),
+    );
+  }
+  if (filters.role) conds.push(eq(schema.user.role, filters.role));
+  if (filters.banned !== undefined) {
+    conds.push(eq(schema.user.banned, filters.banned === "true"));
+  }
+  if (filters.verified !== undefined) {
+    conds.push(eq(schema.user.emailVerified, filters.verified === "true"));
+  }
+  return conds.length > 0 ? and(...conds) : undefined;
+}
+
+/**
  * listUsers — admin-gated user listing for the /dashboard/users table (D-07).
  *
- * Returns the columns the UI table needs (no passwordHash; emailVerified IS
- * projected since quick task 260824-ptx — the three-state Status badge needs it).
- * Permission check FIRST (Pitfall #1 — non-admin → FORBIDDEN BEFORE any db.select,
- * proven structurally by the MUST_NOT_BE_REACHED test in users.test.ts).
+ * 260827-se8 Task 5: URL-driven filters (q ilike name/email, role equality,
+ * banned/verified tri-state) + deterministic desc(createdAt) ordering + the
+ * page window (default 20, cap 100). Returns the columns the UI table needs
+ * (no passwordHash; emailVerified IS projected since quick task 260824-ptx —
+ * the three-state Status badge needs it). Permission check FIRST (Pitfall #1
+ * — non-admin → FORBIDDEN BEFORE any db.select, proven structurally by the
+ * MUST_NOT_BE_REACHED test in users.test.ts).
  *
  * @returns Array of user rows with role/bio/avatar/email/name/banned/emailVerified fields.
  * @throws Error("UNAUTHORIZED") when no session.
  * @throws Error("FORBIDDEN") when the role lacks user:read.
  */
-export async function listUsers() {
+export async function listUsers(opts?: UserListInput) {
   // Permission check FIRST (Pitfall #1). Sidebar (Plan 04-01) is UX-only.
   await requireCan({ user: ["read"] });
+
+  const filters = userListSchema.parse(opts ?? {});
+  const where = buildUserListWhere(filters);
 
   // Select only the columns the dashboard table renders. Omitting passwordHash /
   // account credentials keeps the surface lean (T-04-15 — admin-only, low risk,
   // but no need to ship a passwordHash column to the client bundle).
-  return db
+  const base = db
     .select({
       id: schema.user.id,
       name: schema.user.name,
@@ -276,6 +309,30 @@ export async function listUsers() {
       emailVerified: schema.user.emailVerified,
     })
     .from(schema.user);
+  const filtered = where ? base.where(where) : base;
+  return filtered
+    .orderBy(desc(schema.user.createdAt))
+    .limit(filters.pageSize)
+    .offset((filters.page - 1) * filters.pageSize);
+}
+
+/**
+ * countUsers — 260827-se8 Task 5. Identical gate + identical WHERE as
+ * listUsers (shared builder), `select({ value: sql`count(*)` })` shape
+ * (newsletter.ts countSubscribers precedent). No page window — the count is
+ * the TOTAL for pagination math.
+ *
+ * @throws Error("FORBIDDEN") when the role lacks user:read (requireCan FIRST).
+ */
+export async function countUsers(opts?: UserListInput): Promise<number> {
+  await requireCan({ user: ["read"] }); // FIRST (Pitfall #1)
+  const filters = userListSchema.parse(opts ?? {});
+  const where = buildUserListWhere(filters);
+  const base = db
+    .select({ value: sql<number>`count(*)` })
+    .from(schema.user);
+  const [row] = await (where ? base.where(where) : base);
+  return Number(row?.value ?? 0);
 }
 
 /**
