@@ -45,6 +45,11 @@ const {
   revalidateTagMock,
   logInfoMock,
   logErrorMock,
+  // 260827-se8 Task 5 — list-mechanics chain-step recorders:
+  whereArgsMock,
+  orderByArgsMock,
+  limitArgsMock,
+  offsetArgsMock,
 } = vi.hoisted(() => ({
   createUserMock: vi.fn(),
   banUserMock: vi.fn(),
@@ -63,6 +68,10 @@ const {
   revalidateTagMock: vi.fn(),
   logInfoMock: vi.fn(),
   logErrorMock: vi.fn(),
+  whereArgsMock: vi.fn(),
+  orderByArgsMock: vi.fn(),
+  limitArgsMock: vi.fn(),
+  offsetArgsMock: vi.fn(),
 }));
 
 // next/cache — Plan 07-03 Task 2 added revalidation calls to updateUser (profile
@@ -115,24 +124,59 @@ vi.mock("@/lib/auth", () => ({
   },
 }));
 
-// db — the Drizzle query builder. Two distinct read shapes exist in users.ts:
+// db — the Drizzle query builder. Read shapes in users.ts:
 //   (1) createFirstAdmin: db.select({n:count()}).from(user).where(...) → countResult()
-//   (2) listUsers (Plan 04-03): db.select({...}).from(user) → selectAllResult() (no .where)
-// The mock makes `.from()` return a Promise (awaitable → resolves to selectAllResult())
-// with `.where` attached so createFirstAdmin's chain still resolves to countResult().
-// The update(...).set(...).where(...) chain (updateUser bio/avatar/role persist) is also wired.
+//   (2) listUsers (Plan 04-03, bare): db.select({...}).from(user) → selectAllResult()
+//   (3) 260827-se8 Task 5: listUsers(opts)/countUsers(opts) chain
+//       where/orderBy/limit/offset — each step recorded into its ArgsMock.
+//
+// 260827-se8: from() returns a LAZY thenable node P (then → selectAllResult)
+// carrying orderBy/limit/offset (record + return P); where() records and
+// returns node W (then → countResult) carrying the same chain steps. Awaiting
+// at from() (bare listUsers) → selectAllResult; awaiting at/after where()
+// (createFirstAdmin count, countUsers, filtered listUsers) → countResult.
+// Lazy = the terminal fires only when actually awaited (gate-ordering proofs
+// stay honest; no floating-promise eager evaluation).
 vi.mock("@/lib/db", () => {
+  const lazyThenable = (fn: () => unknown) => ({
+    then(
+      onFulfilled?: (v: unknown) => unknown,
+      onRejected?: (e: unknown) => unknown,
+    ) {
+      return Promise.resolve()
+        .then(fn)
+        .then(onFulfilled, onRejected);
+    },
+  });
+  const attachSteps = (
+    node: Record<string, unknown>,
+    next: () => Record<string, unknown>,
+  ) => {
+    node.orderBy = (...a: unknown[]) => {
+      orderByArgsMock(...a);
+      return next();
+    };
+    node.limit = (...a: unknown[]) => {
+      limitArgsMock(...a);
+      return next();
+    };
+    node.offset = (...a: unknown[]) => {
+      offsetArgsMock(...a);
+      return next();
+    };
+    return node;
+  };
   return {
     db: {
       select: vi.fn(() => ({
-        // from() returns a thenable so `await db.select(...).from(...)` (listUsers)
-        // resolves to selectAllResult(), AND `.where(...)` (createFirstAdmin) still
-        // works as a chained method returning countResult().
         from: vi.fn(() => {
-          const p = Promise.resolve().then(() => selectAllResult());
-          // Attach .where for the count-check path (createFirstAdmin).
+          const p = attachSteps(lazyThenable(() => selectAllResult()), () => p);
           (p as unknown as { where: ReturnType<typeof vi.fn> }).where = vi.fn(
-            () => countResult(),
+            (...a: unknown[]) => {
+              whereArgsMock(...a);
+              const w = attachSteps(lazyThenable(() => countResult()), () => w);
+              return w;
+            },
           );
           return p;
         }),
@@ -145,6 +189,8 @@ vi.mock("@/lib/db", () => {
     },
     // schema.user.{id,role,name,bio,avatar,email} are referenced by eq/set paths —
     // plain string keys suffice because eq() just reads the column symbol.
+    // banned/emailVerified/createdAt are dereferenced by the 260827-se8 list
+    // filters + desc(createdAt) ordering.
     // posts.authorId is dereferenced by deleteUser's has-posts guard
     // (eq(schema.posts.authorId, userId) — quick task 260824-ptx).
     schema: {
@@ -155,6 +201,9 @@ vi.mock("@/lib/db", () => {
         bio: "bio",
         avatar: "avatar",
         email: "email",
+        banned: "banned",
+        emailVerified: "email_verified",
+        createdAt: "created_at",
       },
       posts: {
         authorId: "authorId",
@@ -186,6 +235,7 @@ import {
   unbanUser,
   revokeSessions,
   listUsers,
+  countUsers,
   updateUser,
   deleteUser,
   changeOwnPassword,
@@ -1116,5 +1166,130 @@ describe("260827-869: changeOwnPassword — self-service password change (any si
     // The failure is observable in the server log; the success log never fired.
     expect(logErrorMock).toHaveBeenCalled();
     expect(logInfoMock).not.toHaveBeenCalled();
+  });
+});
+
+// ===========================================================================
+// 260827-se8 Task 5 — URL-driven users list mechanics
+// [CITED: 260827-se8-PLAN.md Task 5 <behavior> — q/role/banned/verified filters]
+// [CITED: src/actions/__tests__/posts.test.ts — the same chain-recorder +
+//  deepContains structural-proof pattern (260827-se8 Task 4)]
+// ===========================================================================
+
+/**
+ * deepContains — walk an object graph for an exact primitive (string/number/
+ * boolean). drizzle eq()/ilike()/and() embed runtime values inside SQL nodes;
+ * this proves a filter value reached the WHERE without drizzle internals.
+ */
+function deepContains(value: unknown, needle: string | number | boolean): boolean {
+  const seen = new Set<unknown>();
+  const walk = (v: unknown): boolean => {
+    if (v === null || v === undefined) return false;
+    if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
+      return v === needle;
+    }
+    if (typeof v !== "object") return false;
+    if (seen.has(v)) return false;
+    seen.add(v);
+    if (Array.isArray(v)) return v.some(walk);
+    return Object.values(v).some(walk);
+  };
+  return walk(value);
+}
+
+describe("260827-se8 Task 5: listUsers — q/role/banned/verified URL filters (Plan Task 5)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    requireCanMock.mockResolvedValue({ user: { id: "admin-1", role: "admin" } });
+    selectAllResult.mockResolvedValue([]);
+    countResult.mockResolvedValue([]);
+  });
+
+  it("non-privileged call → FORBIDDEN before any db select (MUST_NOT_BE_REACHED)", async () => {
+    requireCanMock.mockImplementation(() => {
+      throw new Error("FORBIDDEN");
+    });
+    selectAllResult.mockImplementation(() => {
+      throw new Error("MUST_NOT_BE_REACHED");
+    });
+    countResult.mockImplementation(() => {
+      throw new Error("MUST_NOT_BE_REACHED");
+    });
+
+    await expect(listUsers({ q: "x" })).rejects.toThrow("FORBIDDEN");
+    expect(selectAllResult).not.toHaveBeenCalled();
+    expect(countResult).not.toHaveBeenCalled();
+    expect(requireCanMock).toHaveBeenCalledWith({ user: ["read"] });
+  });
+
+  it("q='alice' → WHERE embeds %alice% (name OR email ilike); page 1 defaults → limit 20 / offset 0", async () => {
+    await listUsers({ q: "alice" });
+
+    expect(whereArgsMock).toHaveBeenCalled();
+    expect(deepContains(whereArgsMock.mock.calls[0][0], "%alice%")).toBe(true);
+    expect(limitArgsMock).toHaveBeenCalledWith(20);
+    expect(offsetArgsMock).toHaveBeenCalledWith(0);
+  });
+
+  it("role='editor' equality reaches the WHERE clause", async () => {
+    await listUsers({ role: "editor" });
+
+    expect(deepContains(whereArgsMock.mock.calls[0][0], "editor")).toBe(true);
+  });
+
+  it("banned/verified string enums coerce to BOOLEANS inside the action (documented URL-layer coercion)", async () => {
+    await listUsers({ banned: "true", verified: "false" });
+
+    const whereArg = whereArgsMock.mock.calls[0][0];
+    expect(deepContains(whereArg, true)).toBe(true);
+    expect(deepContains(whereArg, false)).toBe(true);
+    // The raw strings never reach the query as strings.
+    expect(deepContains(whereArg, "true")).toBe(false);
+    expect(deepContains(whereArg, "false")).toBe(false);
+  });
+
+  it("deterministic desc(createdAt) ordering", async () => {
+    await listUsers({});
+
+    expect(orderByArgsMock).toHaveBeenCalled();
+    expect(deepContains(orderByArgsMock.mock.calls[0][0], "created_at")).toBe(true);
+  });
+
+  it("page 2 → offset 20; invalid role → Zod throws BEFORE any db select", async () => {
+    await listUsers({ page: 2 });
+    expect(offsetArgsMock).toHaveBeenCalledWith(20);
+
+    await expect(listUsers({ role: "superuser" } as never)).rejects.toThrow();
+    expect(selectAllResult).not.toHaveBeenCalled();
+    expect(countResult).not.toHaveBeenCalled();
+  });
+});
+
+describe("260827-se8 Task 5: countUsers — same gate + same WHERE, count shape, NO page window", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    requireCanMock.mockResolvedValue({ user: { id: "admin-1", role: "admin" } });
+    countResult.mockResolvedValue([{ value: 9 }]);
+  });
+
+  it("non-privileged call → FORBIDDEN before any db select", async () => {
+    requireCanMock.mockImplementation(() => {
+      throw new Error("FORBIDDEN");
+    });
+    countResult.mockImplementation(() => {
+      throw new Error("MUST_NOT_BE_REACHED");
+    });
+
+    await expect(countUsers({})).rejects.toThrow("FORBIDDEN");
+    expect(countResult).not.toHaveBeenCalled();
+  });
+
+  it("applies the SAME q filter; NO limit/offset (count is the total); returns Number(row.value)", async () => {
+    const n = await countUsers({ q: "alice" });
+
+    expect(n).toBe(9);
+    expect(deepContains(whereArgsMock.mock.calls[0][0], "%alice%")).toBe(true);
+    expect(limitArgsMock).not.toHaveBeenCalled();
+    expect(offsetArgsMock).not.toHaveBeenCalled();
   });
 });
