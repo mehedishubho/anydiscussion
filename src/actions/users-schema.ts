@@ -86,3 +86,61 @@ export const userUpdateSchema = z.object({
 
 export type UserUpdateSchemaInput = z.input<typeof userUpdateSchema>;
 export type UserUpdateSchemaOutput = z.output<typeof userUpdateSchema>;
+
+// ============================================================
+// Quick task 260827-869 Task 3 — self-service password change
+// [CITED: 260827-869-PLAN.md Task 3 <action> step 1 — schema + digests]
+// [CITED: better-auth@1.6.23 dist/api/routes/update-user.mjs:75-184 — the
+//  /change-password endpoint: body { currentPassword (verified against the
+//  credential hash), newPassword (min/max length enforced — default min 8;
+//  src/lib/auth/index.ts sets no custom password config), revokeOtherSessions?
+//  (deletes all sessions, creates a fresh one, sets the session cookie) }]
+//
+// Threat register coverage (see 260827-869-PLAN.md <threat_model>):
+//  - T-Q-869-02: length bounds reject degenerate input before the endpoint
+//  - T-Q-869-03: digest-only client contract (CR-02) — INVALID_PASSWORD and
+//    CHANGE_FAILED digests carry no internal detail; the friendly copy below
+//    is what the PRODUCTION client renders (PasswordForm maps err.digest)
+// ============================================================
+
+/**
+ * changePasswordSchema — the shared client+server input gate for
+ * changeOwnPassword. min 8 on newPassword mirrors Better Auth's default
+ * minPasswordLength (the endpoint enforces its own bounds too — this Zod gate
+ * is the early contract so the client form and the server action agree).
+ */
+export const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1, "Current password is required").max(128),
+  newPassword: z
+    .string()
+    .min(8, "New password must be at least 8 characters")
+    .max(128),
+});
+
+export type ChangePasswordSchemaInput = z.input<typeof changePasswordSchema>;
+export type ChangePasswordSchemaOutput = z.output<typeof changePasswordSchema>;
+
+/**
+ * CHANGE_PASSWORD_DIGESTS — stable digest tokens changeOwnPassword attaches to
+ * its mapped errors (values identical to keys, self-documenting in logs).
+ * INVALID_PASSWORD = the endpoint verified the current password against the
+ * credential hash and it did not match; CHANGE_FAILED = anything else.
+ */
+export const CHANGE_PASSWORD_DIGESTS = {
+  INVALID_PASSWORD: "INVALID_PASSWORD",
+  CHANGE_FAILED: "CHANGE_FAILED",
+} as const;
+
+export type ChangePasswordDigest =
+  (typeof CHANGE_PASSWORD_DIGESTS)[keyof typeof CHANGE_PASSWORD_DIGESTS];
+
+/**
+ * CHANGE_PASSWORD_ERROR_MESSAGES — digest → the friendly copy PasswordForm
+ * renders client-side (same legal cross-boundary pattern as
+ * USER_DELETE_ERROR_MESSAGES → UsersTable). The thrown .message is
+ * dev-flight/server-log material only (CR-02).
+ */
+export const CHANGE_PASSWORD_ERROR_MESSAGES: Record<ChangePasswordDigest, string> = {
+  INVALID_PASSWORD: "Your current password is incorrect.",
+  CHANGE_FAILED: "Failed to update password — please try again.",
+};

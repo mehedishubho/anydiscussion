@@ -23,8 +23,12 @@ import { requireCan, getSessionOrThrow } from "@/lib/permissions";
 import {
   USER_DELETE_DIGESTS,
   USER_DELETE_ERROR_MESSAGES,
+  CHANGE_PASSWORD_DIGESTS,
+  CHANGE_PASSWORD_ERROR_MESSAGES,
   userUpdateSchema,
+  changePasswordSchema,
   type UserDeleteDigest,
+  type ChangePasswordDigest,
 } from "./users-schema";
 
 // The admin plugin exposes its endpoints FLAT on `auth.api` (verified at runtime
@@ -533,5 +537,110 @@ export async function deleteUser(userId: string) {
   } catch (err) {
     log.error("deleteUser failed", { userId, err: String(err) });
     throw deleteUserGuardError(USER_DELETE_DIGESTS.DELETE_FAILED);
+  }
+}
+
+// ============================================================
+// Quick task 260827-869 Task 3 — changeOwnPassword (GREEN phase)
+// [CITED: 260827-869-PLAN.md Task 3 <action> — session-first self-service]
+// [CITED: better-auth@1.6.23 dist/api/routes/update-user.mjs:75-184 — the
+//  /change-password endpoint: currentPassword verified against the credential
+//  hash; newPassword length-bounded (default min 8 — src/lib/auth/index.ts
+//  sets no custom password config); revokeOtherSessions deletes every session,
+//  creates a fresh one, and sets the session cookie]
+//
+// Threat register coverage (see 260827-869-PLAN.md <threat_model>):
+//   T-Q-869-01: getSessionOrThrow FIRST; NO requireCan and NO userId parameter
+//               — the action is self-service for any signed-in role and can
+//               never target another user's credential; the endpoint still
+//               verifies currentPassword server-side
+//   T-Q-869-02: changePasswordSchema bounds gate degenerate input early
+//   T-Q-869-03: digest-only client contract — the raw APIError is never
+//               rethrown; INVALID_PASSWORD → stable digest + friendly copy
+//   T-Q-869-04: revokeOtherSessions:true — other devices signed out, fresh
+//               cookie for the current one
+// ============================================================
+
+/**
+ * changePasswordGuardError — digest-carrying error builder, mirroring
+ * deleteUserGuardError above (same CR-02 rationale: production flights forward
+ * digests, never .message).
+ */
+function changePasswordGuardError(
+  digest: ChangePasswordDigest,
+): Error & { digest: ChangePasswordDigest } {
+  const err = new Error(
+    CHANGE_PASSWORD_ERROR_MESSAGES[digest],
+  ) as Error & { digest: ChangePasswordDigest };
+  err.digest = digest;
+  return err;
+}
+
+/**
+ * changeOwnPassword — self-service password change for ANY signed-in role.
+ *
+ * Execution order (enforced structurally by the four-case block in
+ * users.test.ts — 260827-869):
+ *   1. getSessionOrThrow() — FIRST (Pitfall #1). Self-service: NO requireCan —
+ *      this is the caller's own credential, and there is no userId parameter,
+ *      so the action can never target another user.
+ *   2. changePasswordSchema.safeParse — INVALID_INPUT on failure (T-Q-869-02).
+ *   3. auth.api.changePassword with the caller's forwarded request headers
+ *      (the endpoint is gated by sensitiveSessionMiddleware, which resolves
+ *      the session FROM REQUEST HEADERS — the 260824-qtu headerless-401 bug
+ *      class) and body { currentPassword, newPassword, revokeOtherSessions:
+ *      true } (T-Q-869-04 standard post-change hardening).
+ *   4. Endpoint rejection → mapped to a digest-carrying Error (T-Q-869-03):
+ *      body.code INVALID_PASSWORD (wrong current password) → INVALID_PASSWORD;
+ *      anything else → CHANGE_FAILED. The raw APIError is never rethrown.
+ *      log.info "password changed" fires only after the endpoint resolves
+ *      (T-Q-04 convention); log.error on failure.
+ *
+ * @param input { currentPassword, newPassword } — validated by the shared
+ *        changePasswordSchema (also the client form's contract).
+ * @throws Error("UNAUTHORIZED") when no session.
+ * @throws Error("INVALID_INPUT") when the input fails changePasswordSchema.
+ * @throws Error + digest INVALID_PASSWORD when the current password is wrong.
+ * @throws Error + digest CHANGE_FAILED when the endpoint rejects otherwise.
+ */
+export async function changeOwnPassword(input: {
+  currentPassword: string;
+  newPassword: string;
+}) {
+  // T-Q-869-01 — session check FIRST. The returned session is not needed for
+  // identity (the endpoint re-resolves it from the forwarded headers), so the
+  // await is purely the gate.
+  await getSessionOrThrow();
+
+  // T-Q-869-02 — Zod gate BEFORE the endpoint call.
+  const parsed = changePasswordSchema.safeParse(input);
+  if (!parsed.success) {
+    throw new Error("INVALID_INPUT");
+  }
+
+  try {
+    const result = await auth.api.changePassword({
+      // sensitiveSessionMiddleware resolves the session from request headers —
+      // forward the caller's own live headers (see the next/headers note).
+      headers: await headers(),
+      body: {
+        currentPassword: parsed.data.currentPassword,
+        newPassword: parsed.data.newPassword,
+        // T-Q-869-04 — other devices signed out; the endpoint sets a fresh
+        // session cookie for the current one.
+        revokeOtherSessions: true,
+      },
+    });
+    log.info("password changed");
+    return result;
+  } catch (err) {
+    // T-Q-869-03 — map the Better Auth error code (rides on err.body.code)
+    // to the production-safe digest contract; never rethrow the raw APIError.
+    const code = (err as { body?: { code?: string } }).body?.code;
+    log.error("changeOwnPassword failed", { code, err: String(err) });
+    if (code === "INVALID_PASSWORD") {
+      throw changePasswordGuardError(CHANGE_PASSWORD_DIGESTS.INVALID_PASSWORD);
+    }
+    throw changePasswordGuardError(CHANGE_PASSWORD_DIGESTS.CHANGE_FAILED);
   }
 }

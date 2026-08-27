@@ -15,6 +15,7 @@ import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 import { getSession } from "@/lib/auth";
 import { Metadata } from "next";
 import { redirect } from "next/navigation";
+import PasswordForm from "./PasswordForm";
 import ProfileForm from "./ProfileForm";
 
 export const metadata: Metadata = {
@@ -73,6 +74,20 @@ export default async function ProfilePage() {
           </p>
         </div>
         <ProfileForm initialUser={user} />
+      </div>
+      {/* 260827-869 Task 3 — self-service password change card. No props: the
+          changeOwnPassword action self-resolves the session server-side. */}
+      <div className="mt-6 rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] lg:p-6">
+        <div className="mb-5">
+          <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
+            Change password
+          </h3>
+          <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+            Requires your current password. Other signed-in devices will be
+            signed out.
+          </p>
+        </div>
+        <PasswordForm />
       </div>
     </div>
   );
