@@ -1,4 +1,4 @@
-// src/db/schema.ts (13 tables — 8 Phase-1 + user/session/account/verification Phase-2 + subscribers)
+// src/db/schema.ts (14 tables — 8 Phase-1 + user/session/account/verification Phase-2 + subscribers + notifications)
 // [CITED: CLAUDE.md schema reference + drizzle-orm/pg-core verified builders
 //  + better-auth/cli-generated auth-schema.ts (Phase 2)]
 // The single source of truth for the database schema.
@@ -334,6 +334,38 @@ export const userRelations = relations(user, ({ many }) => ({
   sessions: many(session),
   accounts: many(account),
 }));
+
+// === Quick task 260827-se8: notifications (dashboard bell feed) ==============
+// [CITED: 260827-se8-PLAN.md Task 1 <action> step 1 — table shape + index]
+//
+// Notification is NON-AUTHORITATIVE display data: mark-as-read (readAt set)
+// is the ONLY state change, nothing deletes rows in this task, so NO deletedAt
+// (soft-delete is for content tables per D-08 — this is a utility display
+// table like subscribers, which also carries no deletedAt).
+//   - userId → user.id, cascade: a deleted user's feed disappears with them
+//   - payload jsonb: { postId?, postTitle?, subscriberEmail? } per event type
+//   - type strings: "post_submitted" | "post_published" | "post_returned"
+//     | "new_subscriber" (a text column, NOT pgEnum — types are an open set
+//     the UI maps to friendly copy; an enum would require a migration for
+//     every future event)
+export const notifications = pgTable(
+  "notifications",
+  {
+    id: serial("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    type: text("type").notNull(),
+    payload: jsonb("payload"),
+    // NULL = unread (unread semantics live here, not a separate boolean).
+    readAt: timestamp("read_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  // Composite index mirroring the session_userId_idx pattern (schema.ts L290):
+  // both read paths filter by (userId, unread) — countUnreadNotifications
+  // (userId + readAt IS NULL) and markNotificationsRead's update WHERE.
+  (t) => [index("notifications_user_read_idx").on(t.userId, t.readAt)],
+);
 
 export const sessionRelations = relations(session, ({ one }) => ({
   user: one(user, {

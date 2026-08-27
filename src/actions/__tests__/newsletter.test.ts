@@ -127,11 +127,32 @@ vi.mock("@/lib/db", () => {
           // 260827-se8 Task 1 — where() is BOTH thenable (the admin-ids select
           // awaits the chain directly → selectResultMock) AND carries .limit()
           // (the subscriber pre-read resolves → selectLimitResultMock).
+          // LAZY thenable, not Promise.resolve().then(fn): a floating promise
+          // invokes fn on the next microtask EVEN IF the caller only takes
+          // .limit() and never awaits the outer chain — which would break the
+          // idempotent-duplicate test's "admin-ids select never fires"
+          // assertion. Here fn runs only when .then is actually called.
           where: vi.fn(() => {
-            const p = Promise.resolve().then(() => selectResultMock());
-            (p as unknown as { limit: ReturnType<typeof vi.fn> }).limit = vi.fn(
-              () => Promise.resolve().then(() => selectLimitResultMock()),
-            );
+            const p = {
+              then(
+                onFulfilled?: (v: unknown) => unknown,
+                onRejected?: (e: unknown) => unknown,
+              ) {
+                return Promise.resolve()
+                  .then(() => selectResultMock())
+                  .then(onFulfilled, onRejected);
+              },
+              limit: vi.fn(() => ({
+                then(
+                  onFulfilled?: (v: unknown) => unknown,
+                  onRejected?: (e: unknown) => unknown,
+                ) {
+                  return Promise.resolve()
+                    .then(() => selectLimitResultMock())
+                    .then(onFulfilled, onRejected);
+                },
+              })),
+            };
             return p;
           }),
           orderBy: vi.fn(() => ({

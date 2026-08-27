@@ -215,6 +215,9 @@ describe("260827-se8 Task 1: countUnreadNotifications — session-first, session
   beforeEach(() => {
     vi.clearAllMocks();
     getSessionOrThrowMock.mockResolvedValue(sessionFor("u-reader"));
+    // Benign default (see markRead describe note): neutralizes any throwing
+    // implementation leaked from a previous test's MUST_NOT_BE_REACHED guard.
+    selectResultMock.mockResolvedValue([{ n: 0 }]);
   });
 
   it("no session → UNAUTHORIZED thrown BEFORE any db call (MUST_NOT_BE_REACHED)", async () => {
@@ -291,6 +294,12 @@ describe("260827-se8 Task 1: markNotificationsRead — session-scoped update of 
     vi.clearAllMocks();
     getSessionOrThrowMock.mockResolvedValue(sessionFor("u-reader"));
     updateTerminalMock.mockResolvedValue(undefined);
+    // Benign default implementation: vi.clearAllMocks() clears CALL HISTORY
+    // but NOT implementations, so the "no session" test's throwing
+    // mockImplementation on updateSetMock would otherwise leak into the
+    // happy-path test below (mockResolvedValue cannot neutralize it because
+    // set() is called for its side-effect chain, not awaited directly).
+    updateSetMock.mockImplementation(() => undefined);
   });
 
   it("no session → UNAUTHORIZED thrown BEFORE any db.update (MUST_NOT_BE_REACHED)", async () => {

@@ -50,6 +50,13 @@
       "when": 1787518962798,
       "tag": "0006_add_subscribers",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1787847461610,
+      "tag": "0007_gifted_silver_sable",
+      "breakpoints": true
     }
   ]
 }
