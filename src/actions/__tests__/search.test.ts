@@ -188,18 +188,19 @@ describe("260827-se8 Task 8: globalSearch — role-safe scoping (session-derived
     const session = sessionOf("author");
     getSessionOrThrowMock.mockResolvedValue(session);
     requireCanMock.mockResolvedValue(session);
-    selectResultMock.mockImplementation(() => {
-      throw new Error("MUST_NOT_BE_REACHED");
-    });
+    // A throwing terminal cannot be used here: posts/categories/tags legs DO
+    // run for non-admins. The structural proof is routing-based instead — the
+    // user table must never appear in any from() call, and the users group
+    // must be empty even though the shared terminal returns rows.
+    selectResultMock.mockResolvedValue([{ id: "u1", name: "A", email: "a@x.com" }]);
 
     const result = await globalSearch("title");
 
-    // The throwing terminal must only be reachable by legs that RUN — prove the
-    // user table was never routed to, then re-check with a benign terminal.
     expect(fromTableMock.mock.calls.some((c) => c[0] === schema.user)).toBe(false);
-    selectResultMock.mockResolvedValue([]);
-    const again = await globalSearch("title");
-    expect(again.users).toEqual([]);
+    // The shared terminal returned a row for every leg that RAN — users stayed
+    // empty ONLY because the leg never executed (role gate, not data).
+    expect(result.users).toEqual([]);
+    expect(result.posts).toEqual([{ id: "u1", name: "A", email: "a@x.com" }]);
   });
 
   it("ADMIN: users leg runs with name OR email ilike + limit 5 and returns the rows", async () => {
