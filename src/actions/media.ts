@@ -27,7 +27,7 @@
 // Server-only — top directive mandatory for Server Actions.
 "use server";
 import { db, schema } from "@/lib/db";
-import { eq, isNull, and, desc, or, sql } from "drizzle-orm";
+import { eq, isNull, and, desc, ilike, like, or, sql } from "drizzle-orm";
 import { log } from "@/lib/log";
 import { requireCan } from "@/lib/permissions";
 import { getActiveProvider, getProviderByName } from "@/lib/storage/registry";
@@ -35,6 +35,7 @@ import {
   mediaUploadSchema,
   mediaListSchema,
   MEDIA_MAX_SIZE_BYTES,
+  type MediaListInput,
 } from "./media-schema";
 
 /**
@@ -113,30 +114,79 @@ export async function uploadMedia(input: {
   };
 }
 
+// ============================================================
+// 260827-se8 Task 7 — URL-driven list mechanics (q/kind + page/pageSize)
+// [CITED: 260827-se8-PLAN.md Task 7 <behavior>/<action> step 2]
+//
+// listMedia parses the uniform mediaListSchema AFTER the permission gate;
+// countMedia mirrors the same gate + WHERE in count(*) shape. kind matches
+// the mimeType PREFIX (like 'image/%') since the column stores full types;
+// q matches altText OR providerKey; the exact mimeType filter stays
+// available (replaces nothing).
+// ============================================================
+
+/**
+ * buildMediaListWhere — shared WHERE builder so listMedia and countMedia
+ * always carry the SAME filter graph: soft-delete exclusion (D-08), optional
+ * exact mimeType, optional kind prefix, and optional q OR-leg.
+ */
+function buildMediaListWhere(filters: {
+  q?: string;
+  kind?: "image" | "video" | "audio" | "application";
+  mimeType?: string;
+}) {
+  const conditions = [isNull(schema.media.deletedAt)];
+  if (filters.mimeType) {
+    conditions.push(eq(schema.media.mimeType, filters.mimeType));
+  }
+  if (filters.kind) {
+    conditions.push(like(schema.media.mimeType, `${filters.kind}/%`));
+  }
+  if (filters.q) {
+    conditions.push(
+      or(
+        ilike(schema.media.altText, `%${filters.q}%`),
+        ilike(schema.media.providerKey, `%${filters.q}%`),
+      )!,
+    );
+  }
+  return and(...conditions);
+}
+
 /**
  * listMedia — dashboard media library browser (MEDIA-02 read).
  *
  * Requires media:read capability (dashboard-only — no public access to the
- * library metadata). Excludes soft-deleted rows (deletedAt IS NULL).
+ * library metadata). Excludes soft-deleted rows (deletedAt IS NULL). URL-driven
+ * pagination: limit = pageSize (default 20, cap 100), offset = (page-1)*pageSize.
  */
-export async function listMedia(
-  opts?: { limit?: number; offset?: number; mimeType?: string },
-) {
+export async function listMedia(opts?: MediaListInput) {
   await requireCan({ media: ["read"] });
   const parsed = mediaListSchema.parse(opts ?? {});
-
-  const conditions = [isNull(schema.media.deletedAt)];
-  if (parsed.mimeType) {
-    conditions.push(eq(schema.media.mimeType, parsed.mimeType));
-  }
 
   return db
     .select()
     .from(schema.media)
-    .where(and(...conditions))
+    .where(buildMediaListWhere(parsed))
     .orderBy(desc(schema.media.createdAt))
-    .limit(parsed.limit)
-    .offset(parsed.offset);
+    .limit(parsed.pageSize)
+    .offset((parsed.page - 1) * parsed.pageSize);
+}
+
+/**
+ * countMedia — the pagination count for the media library (260827-se8 Task 7).
+ * Identical gate + WHERE builder as listMedia; count(*) shape with
+ * Number(value ?? 0) coercion (pg returns count as string).
+ */
+export async function countMedia(opts?: MediaListInput) {
+  await requireCan({ media: ["read"] });
+  const parsed = mediaListSchema.parse(opts ?? {});
+
+  const [row] = await db
+    .select({ value: sql<number>`count(*)` })
+    .from(schema.media)
+    .where(buildMediaListWhere(parsed));
+  return Number(row?.value ?? 0);
 }
 
 /**

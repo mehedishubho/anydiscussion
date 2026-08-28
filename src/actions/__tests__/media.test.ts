@@ -398,7 +398,8 @@ describe("listMedia: requires media:read capability (dashboard-only)", () => {
   it("returns media rows when authorized", async () => {
     requireCanMock.mockResolvedValue(adminSession());
     selectMediaMock.mockResolvedValue([{ id: 1, providerKey: "k" }]);
-    const rows = await listMedia({ limit: 10, offset: 0 });
+    // 260827-se8 Task 7: raw limit/offset fields are gone — page/pageSize shape.
+    const rows = await listMedia({ page: 1, pageSize: 10 });
     expect(rows).toEqual([{ id: 1, providerKey: "k" }]);
   });
 });

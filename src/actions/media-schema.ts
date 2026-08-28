@@ -28,12 +28,29 @@ export const mediaUploadSchema = z.object({
   altText: z.string().max(500).optional(),
 });
 
+// ============================================================
+// 260827-se8 Task 7 — the uniform URL-driven list shape.
+// [CITED: 260827-se8-PLAN.md Task 7 <action> step 1]
+//
+// q (free text), kind (a mimeType PREFIX group), page/pageSize (default 20,
+// cap 100 — replaces the raw limit/offset fields). The exact mimeType filter
+// stays available for compatibility. The dashboard media page parses raw URL
+// searchParams into these fields via src/lib/list-filters, then this Zod gate
+// is the authoritative contract AFTER the action's permission gate.
+// ============================================================
+
 /**
- * List schema — pagination + optional mime filter for the media library browser.
- * Limit capped at 100 to prevent unbounded result sets.
+ * List schema — URL-driven search + pagination for the media library browser.
+ * pageSize capped at 100 to prevent unbounded result sets. `kind` matches the
+ * mimeType PREFIX (the column stores full types like "image/png").
  */
 export const mediaListSchema = z.object({
-  limit: z.number().int().positive().max(100).default(20),
-  offset: z.number().int().min(0).default(0),
+  q: z.string().max(200).optional(),
+  kind: z.enum(["image", "video", "audio", "application"]).optional(),
+  page: z.number().int().min(1).default(1),
+  pageSize: z.number().int().min(1).max(100).default(20),
   mimeType: z.string().optional(),
 });
+
+export type MediaListInput = z.input<typeof mediaListSchema>;
+export type MediaListQuery = z.output<typeof mediaListSchema>;

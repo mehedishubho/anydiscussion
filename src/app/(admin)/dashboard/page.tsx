@@ -16,7 +16,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { countPosts, listPosts } from "@/actions/posts";
-import { listMedia } from "@/actions/media";
+import { countMedia } from "@/actions/media";
 
 export const metadata: Metadata = {
   title: "Dashboard | Any Discussion",
@@ -31,11 +31,10 @@ export const metadata: Metadata = {
 // Allowed-to-block is correct for session-gated content; a static shell buys nothing.
 export const instant = false;
 
-// Caps for the small-team dashboard (PROJECT.md: 2–5 person team). Set high
-// enough that a normal volume of drafts/published posts is captured for the
-// counts; if the dashboard ever grows past these, Plan 04-02+ can add proper
-// count() actions (D-04 sanction: "listMedia().length is fine for a small team").
-const MEDIA_READ_CAP = 2000;
+// Caps for the small-team dashboard (PROJECT.md: 2–5 person team).
+// 260827-se8 Task 7: the media tile now uses countMedia() — a real count(*)
+// — instead of the old capped listMedia({limit: MEDIA_READ_CAP}).length read
+// (the raw limit field no longer exists in mediaListSchema).
 const PENDING_REVIEW_PREVIEW = 5;
 
 const STATUS_BADGE: Record<string, string> = {
@@ -84,9 +83,7 @@ export default async function DashboardOverview() {
       countPosts({ status: "pending_review" }),
       countPosts({ status: "published" }),
       listPosts({ status: "pending_review", pageSize: PENDING_REVIEW_PREVIEW }),
-      listMedia({ limit: MEDIA_READ_CAP })
-        .then((rows) => rows.length)
-        .catch(() => 0), // media count is best-effort — don't fail the overview
+      countMedia().catch(() => 0), // media count is best-effort — don't fail the overview
     ]);
     statusCounts = { draft, pending_review: pending, published };
     pendingPreview = pendingRows;
