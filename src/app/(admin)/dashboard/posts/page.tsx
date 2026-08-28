@@ -12,6 +12,12 @@
 // 05-06: reads the viewer's role via getSession and renders PostRowActions
 // (Publish / Submit-for-review / Return link-buttons) in the Actions cell
 // next to Edit — the list-side half of the UAT gap 1 publish wiring.
+//
+// 260828-gyt: Author column (authorName now rides on every listPosts row),
+// per-row View link (public /blog/{slug} when published, /preview/{token}
+// for tokened drafts — both _blank), a "Scheduled" badge for draft + future
+// publishedAt (A6 derived state — no new enum), and the row Unpublish action
+// inside PostRowActions.
 import Link from "next/link";
 import { countPosts, listPosts } from "@/actions/posts";
 import { listCategories } from "@/actions/categories";
@@ -44,6 +50,12 @@ const STATUS_BADGE: Record<string, string> = {
   pending_review: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
   published: "bg-success-100 text-success-700 dark:bg-success-900/30 dark:text-success-300",
 };
+
+// 260828-gyt — draft + future publishedAt IS the scheduled state (A6 decision:
+// no new status enum). Blue palette keeps it visually separable from the three
+// status colors above (gray draft / amber pending / success published).
+const SCHEDULED_BADGE =
+  "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300";
 
 /** Raw Next.js 16 searchParams shape (Promise — awaited in the component). */
 type RawSearchParams = Record<string, string | string[] | undefined>;
@@ -92,6 +104,10 @@ export default async function PostsListPage({
     slug: string;
     status: string;
     updatedAt: Date | null;
+    // 260828-gyt — listPosts rows now carry these alongside the full post row.
+    authorName: string | null;
+    publishedAt: Date | null;
+    previewToken: string | null;
   }> = [];
   let total = 0;
   let categoryOptions: Array<{ value: string; label: string }> = [];
@@ -202,21 +218,39 @@ export default async function PostsListPage({
               <TableHeader>
                 <TableRow className="border-b border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-900/50">
                   <TableCell isHeader className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Title</TableCell>
+                  <TableCell isHeader className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Author</TableCell>
                   <TableCell isHeader className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Status</TableCell>
                   <TableCell isHeader className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">Updated</TableCell>
                   <TableCell isHeader className="px-4 py-3 text-right text-xs font-semibold uppercase text-gray-500">Actions</TableCell>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {posts.map((post) => (
+                {posts.map((post) => {
+                  // 260828-gyt — A6 derived state: a DRAFT whose publishedAt is
+                  // in the future is "Scheduled" (the worker flips it at due time).
+                  const scheduled =
+                    post.status === "draft" &&
+                    post.publishedAt != null &&
+                    new Date(post.publishedAt).getTime() > Date.now();
+                  return (
                   <TableRow key={post.id} className="border-b border-gray-100 last:border-0 dark:border-gray-800">
                     <TableCell className="px-4 py-3 text-sm font-medium text-gray-800 dark:text-white/90">
                       {post.title}
                     </TableCell>
+                    {/* 260828-gyt — Author column from the joined user. */}
+                    <TableCell className="px-4 py-3 text-sm text-gray-500">
+                      {post.authorName ?? "—"}
+                    </TableCell>
                     <TableCell className="px-4 py-3">
-                      <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_BADGE[post.status] ?? STATUS_BADGE.draft}`}>
-                        {post.status}
-                      </span>
+                      {scheduled ? (
+                        <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${SCHEDULED_BADGE}`}>
+                          Scheduled
+                        </span>
+                      ) : (
+                        <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_BADGE[post.status] ?? STATUS_BADGE.draft}`}>
+                          {post.status}
+                        </span>
+                      )}
                     </TableCell>
                     <TableCell className="px-4 py-3 text-sm text-gray-500">
                       {post.updatedAt ? new Date(post.updatedAt).toLocaleDateString() : "—"}
@@ -224,8 +258,26 @@ export default async function PostsListPage({
                     <TableCell className="px-4 py-3 text-right">
                       {/* 05-06 + 260827-se8 — Publish / Submit-for-review /
                           Return row actions next to Edit; renders nothing when
-                          role+status don't qualify. */}
+                          role+status don't qualify. 260828-gyt adds the View
+                          link (public page or draft preview) + row Unpublish. */}
                       <div className="flex items-center justify-end gap-3">
+                        {/* 260828-gyt — View: the public /blog/{slug} page when
+                            published, else the draft /preview/{token} page when
+                            a token exists; rows with neither render no link. */}
+                        {(post.status === "published" || post.previewToken != null) && (
+                          <Link
+                            href={
+                              post.status === "published"
+                                ? `/blog/${post.slug}`
+                                : `/preview/${post.previewToken}`
+                            }
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-sm font-medium text-brand-500 hover:text-brand-600"
+                          >
+                            View
+                          </Link>
+                        )}
                         <PostRowActions postId={post.id} status={post.status} role={role} />
                         <Link
                           href={`/dashboard/posts/${post.id}/edit`}
@@ -236,7 +288,8 @@ export default async function PostsListPage({
                       </div>
                     </TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
               </TableBody>
             </Table>
           </div>
