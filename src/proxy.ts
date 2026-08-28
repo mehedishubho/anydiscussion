@@ -91,15 +91,12 @@ async function getRedirectRows(): Promise<RedirectSnapshotRow[]> {
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const sessionCookie = getSessionCookie(request);
-  const isAuthPage =
-    pathname === "/signin" ||
-    pathname === "/signup" ||
-    pathname === "/forgot-password";
 
-  // 1. Already-authed user hitting an auth page → redirect to dashboard (D-20 reverse).
-  if (isAuthPage && sessionCookie) {
-    return NextResponse.redirect(new URL("/dashboard", request.url));
-  }
+  // 1. No proxy-level authed→/dashboard bounce (previously: isAuthPage && cookie → /dashboard).
+  //    That optimistic cookie check caused a redirect loop with stale/expired cookies:
+  //    proxy (stale cookie EXISTS → /dashboard) ↔ (admin) AuthGate (session INVALID → /signin).
+  //    Auth pages now handle the "already signed in" case authoritatively via
+  //    getSession() + redirect("/dashboard") — only a DB-validated session redirects.
 
   // 2. Unauthenticated user hitting (admin) → redirect to /signin with deep-link
   //    return param (D-19). The (admin) route group renders under /dashboard/*.
@@ -140,27 +137,34 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // Match dashboard paths + auth pages. Exclude _next/static, _next/image, favicon
-  // (Next handles those before the proxy runs). NOTE: (admin)/(site)/(auth) are
+  // Match dashboard paths. The redirects-table portion also needs public-page
+  // invocations (fifth entry) — the standard "run on all pages, skip assets"
+  // pattern for slug-change SEO continuity. NOTE: (admin)/(site)/(auth) are
   // ROUTE GROUPS (parentheses) — they do NOT appear in the URL (R6).
-  // NOTE: /reset-password is intentionally NOT in this list. It is reached via an
-  // email reset link by a logged-out user carrying a token in the URL query param.
-  // The token is the authorization — validated server-side by Better Auth's
-  // resetPassword endpoint (POST /reset-password). Adding it here would break the
-  // flow for a user with a stale session cookie from another device/tab.
   //
-  // The fifth entry (negative lookahead) extends proxy to ALL public page
-  // paths so the redirects-table check above runs for them — the standard "run
-  // on all pages, skip assets" pattern. It excludes framework internals
-  // (_next/static, _next/image), favicon.ico, api/ routes, and file-extension-like
-  // assets (svg, png, jpg, jpeg, gif, webp, ico, txt, xml, json, webmanifest,
-  // woff2). Known limitation (acceptable): redirect rows whose old_path looks
-  // like an asset will not fire — slug changes are always path-like.
+  // Auth pages (/signin /signup /forgot-password) are intentionally NOT
+  // listed here anymore. Their "already signed in → /dashboard" decision is
+  // DB-validated in each page's own getSession() gate — the loop fix removed
+  // the optimistic getSessionCookie() bounce from the proxy (see branches
+  // 1/2 above). Keeping them in the matcher would pay needless DB roundtrips
+  // on the negative-lookahead entry's behalf only.
+  //
+  // NOTE: /reset-password is intentionally NOT in this list. It is reached
+  // via an email reset link by a logged-out user carrying a token in the URL
+  // query param. The token is the authorization — validated server-side by
+  // Better Auth's resetPassword endpoint (POST /reset-password). Adding it
+  // here would break the flow for a user with a stale session cookie from
+  // another device/tab.
+  //
+  // The second entry (negative lookahead) extends proxy to ALL public page
+  // paths so the redirects-table check above runs for them. It excludes
+  // framework internals (_next/static, _next/image), favicon.ico, api/ routes,
+  // and file-extension-like assets (svg, png, jpg, jpeg, gif, webp, ico, txt,
+  // xml, json, webmanifest, woff2). Known limitation (acceptable): redirect
+  // rows whose old_path looks like an asset will not fire — slug changes are
+  // always path-like.
   matcher: [
     "/dashboard/:path*",
-    "/signin",
-    "/signup",
-    "/forgot-password",
     "/((?!_next/static|_next/image|favicon\\.ico|api/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|txt|xml|json|webmanifest|woff2)$).*)",
   ],
 };

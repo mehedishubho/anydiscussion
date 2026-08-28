@@ -52,21 +52,24 @@ describe("AUTH-03: proxy.ts UX-only cookie gate", () => {
     expect(res.headers.get("location")).toBeNull();
   });
 
-  it("reverse redirect: GET /signin WITH session cookie → 302 to /dashboard", async () => {
+  it("no proxy-level reverse redirect: GET /signin WITH session cookie → pass-through (DB-validated redirect lives in the page)", async () => {
     (getSessionCookie as unknown as { mockReturnValue: (v: unknown) => void }).mockReturnValue(
       { value: "fake-session-cookie" },
     );
     const req = makeReq("/signin");
     const res = await proxy(req);
-    expect(res).toBeInstanceOf(NextResponse);
-    expect(res.status).toBe(307);
-    const location = res.headers.get("location") ?? "";
-    expect(location).toContain("/dashboard");
+    // /signin is no longer in the matcher — it still matches the catch-all
+    // negative-lookahead entry and falls through the proxy with x-incoming-path.
+    expect(res.status).toBe(200);
+    expect(res.headers.get("location")).toBeNull();
   });
 
-  it("config.matcher gates dashboard + auth pages only", () => {
+  it("config.matcher gates dashboard + public-page catch-all (auth pages use page-level DB gates)", () => {
     expect(config.matcher).toContain("/dashboard/:path*");
-    expect(config.matcher).toContain("/signin");
-    expect(config.matcher).toContain("/signup");
+    // Auth pages are DB-gated in their own Server Components — not in the proxy.
+    expect(config.matcher).not.toContain("/signin");
+    expect(config.matcher).not.toContain("/signup");
+    expect(config.matcher).not.toContain("/forgot-password");
+    expect(config.matcher.some((m: string) => m.includes("_next/static"))).toBe(true);
   });
 });

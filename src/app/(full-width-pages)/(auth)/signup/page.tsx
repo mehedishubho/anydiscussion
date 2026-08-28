@@ -19,6 +19,8 @@ import { db, schema } from "@/lib/db";
 import { eq, count } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
+import { connection } from "next/server";
+import { getSession } from "@/lib/auth/server";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
@@ -29,6 +31,13 @@ export const metadata: Metadata = {
 
 /** Inner async component — reads count(admins) and redirects or renders the form. */
 async function SetupGate() {
+  // D-20 reverse redirect (DB-validated): an already-signed-in user with a
+  // VALID session is bounced to /dashboard here — the proxy no longer does
+  // this optimistically on cookie existence (stale-cookie loop fix).
+  await connection();
+  const session = await getSession();
+  if (session) redirect("/dashboard");
+
   // D-06/D-07/D-08 — count(admins) server-side. If an admin already exists, the
   // setup route self-closes (redirect to /signin). The createFirstAdmin action
   // re-checks this defensively (Pitfall #1 — no layer trusts the one above it).
