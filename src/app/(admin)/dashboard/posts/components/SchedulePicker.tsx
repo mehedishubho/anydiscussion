@@ -29,6 +29,14 @@
 // returns WITHOUT invoking the action: setSchedule requires a non-null Date, and
 // flatpickr's default readonly input makes a UI clear unreachable — defensive guard
 // only; the persisted value simply stays.
+//
+// 260828-gyt: setSchedule is now SEMANTICS-AWARE — scheduling a PUBLISHED post
+// to a future date also takes it offline (published→draft + public-surface
+// revalidation server-side; the every-minute worker republishes at due time).
+// The success toast must say so: { unpublished: true } renders
+// "Post unpublished — scheduled for {local date}" instead of the plain
+// "Schedule saved". Past dates on published posts reject SCHEDULE_IN_PAST and
+// the raw message reaches the error toast below.
 import { useEffect, useRef, useState } from "react";
 import flatpickr from "flatpickr";
 import { toast } from "sonner";
@@ -99,10 +107,18 @@ export default function SchedulePicker({
           debounceRef.current = null;
           void (async () => {
             try {
-              await setSchedule(postId, date);
-              toast.success("Schedule saved");
+              // 260828-gyt — capture the result: unpublished=true means the
+              // server ALSO took a published post offline (it comes back at
+              // the scheduled minute). The toast must make that visible.
+              const result = await setSchedule(postId, date);
+              if (result?.unpublished) {
+                toast.success(`Post unpublished — scheduled for ${date.toLocaleString()}`);
+              } else {
+                toast.success("Schedule saved");
+              }
             } catch (err) {
-              // Raw action message (FORBIDDEN / network text) — 05-06 convention.
+              // Raw action message (FORBIDDEN / SCHEDULE_IN_PAST / network
+              // text) — 05-06 convention.
               toast.error(
                 err instanceof Error ? err.message : "Failed to save schedule",
               );
@@ -138,7 +154,9 @@ export default function SchedulePicker({
         />
       </div>
       <p className="text-xs text-gray-500 dark:text-gray-400">
-        Leave empty to publish immediately. Time stored as UTC.
+        Leave empty to publish immediately. Time stored as UTC. Scheduling a
+        published post takes it offline until the scheduled time (it republishes
+        automatically).
       </p>
     </div>
   );
