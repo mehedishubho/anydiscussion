@@ -4,7 +4,8 @@
       "powershell",
       "Shell(cd /d \"D:\\Devsroom-Work\\anydiscussion\" && npx tsc --noEmit > tsc.log 2>&1 ; echo EXIT=%ERRORLEVEL%)",
       "Shell(cd /d \"D:\\Devsroom-Work\\anydiscussion\" && npx tsc --noEmit 2>&1 > tsc.log; type tsc.log)",
-      "Shell(type:*)"
+      "Shell(type:*)",
+      "Shell(findstr:*)"
     ],
     "deny": [],
     "defaultMode": "default"

@@ -202,6 +202,7 @@ describe("T-05-05 + RSS_LIMIT: exclusion + cap", () => {
       body: null,
       excerpt: `Excerpt ${i}`,
       publishedAt: new Date(`2026-06-${String(30 - i).padStart(2, "0")}T00:00:00Z`),
+      categorySlug: "engineering", // 260828-blog-url: required by the new shape
     }));
     const body = await readBody(await GET());
     const itemCount = (body.match(/<item>/g) || []).length;
