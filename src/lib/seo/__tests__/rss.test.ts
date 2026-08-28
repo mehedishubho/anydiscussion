@@ -29,25 +29,36 @@ const { schemaMock } = vi.hoisted(() => ({
       publishedAt: "published_at",
       status: "status",
       deletedAt: "deleted_at",
+      categoryId: "category_id",
+    },
+    // 260828-blog-url: RSS now leftJoins categories for the per-item URL.
+    // The mock doesn't match on the table key — the per-row categorySlug is
+    // supplied by the fixture (fakeRssPosts).
+    categories: {
+      id: "id",
+      slug: "slug",
     },
   },
 }));
 
 // Module-scoped result so individual tests can swap the fixture posts.
-let postsResult: Array<{
-  title: string;
-  slug: string;
-  body: unknown;
-  excerpt: string | null;
-  publishedAt: Date | null;
-}> = fakeRssPosts;
+let postsResult: typeof fakeRssPosts = fakeRssPosts;
 
 vi.mock("@/lib/db", () => ({
   db: {
     select: vi.fn(() => ({
       from: vi.fn((table: unknown) => {
         if (table === schemaMock.posts) {
+          // 260828-blog-url: chain is now
+          //   from(posts).leftJoin(categories,…).where(…).orderBy(…).limit(…)
           return {
+            leftJoin: vi.fn(() => ({
+              where: vi.fn(() => ({
+                orderBy: vi.fn(() => ({
+                  limit: vi.fn(() => Promise.resolve(postsResult)),
+                })),
+              })),
+            })),
             where: vi.fn(() => ({
               orderBy: vi.fn(() => ({
                 limit: vi.fn(() => Promise.resolve(postsResult)),
@@ -116,15 +127,25 @@ describe("SEO-07: GET /rss.xml — RSS 2.0 feed shape", () => {
     expect(itemCount).toBe(fakeRssPosts.length);
   });
 
-  it("each item has title, link {base}/blog/{slug}, guid, description, content:encoded, pubDate", async () => {
+  it("each item has title, link {base}/blog/{categorySlug|uncategorized}/{slug}, guid, description, content:encoded, pubDate (260828-blog-url)", async () => {
     const body = await readBody(await GET());
     const post = fakeRssPosts[0];
     expect(body).toContain(`<title>${post.title}</title>`);
-    expect(body).toContain(`<link>${fakeSettings.canonicalBaseUrl}/blog/${post.slug}</link>`);
+    expect(body).toContain(
+      `<link>${fakeSettings.canonicalBaseUrl}/blog/engineering/${post.slug}</link>`,
+    );
     expect(body).toContain('<guid isPermaLink="true">');
     expect(body).toContain(`<description>${post.excerpt}</description>`);
     expect(body).toContain("<content:encoded>");
     expect(body).toContain("<pubDate>");
+  });
+
+  it("post without a category → link uses the 'uncategorized' segment (260828-blog-url fallback)", async () => {
+    const body = await readBody(await GET());
+    const post = fakeRssPosts[1];
+    expect(body).toContain(
+      `<link>${fakeSettings.canonicalBaseUrl}/blog/uncategorized/${post.slug}</link>`,
+    );
   });
 
   it("content:encoded body is wrapped in CDATA (T-05-02 defense-in-depth)", async () => {
@@ -197,13 +218,15 @@ describe("Pure helpers: escapeXml + buildRssItem", () => {
     expect(escapeXml("hello world")).toBe("hello world");
   });
 
-  it("buildRssItem returns a well-formed <item> string with all fields", () => {
+  it("buildRssItem returns a well-formed <item> string with all fields (260828-blog-url)", () => {
     const post = fakeRssPosts[0];
     const item = buildRssItem(post, fakeSettings.canonicalBaseUrl, MOCK_RENDERED_BODY);
     expect(item).toContain("<item>");
     expect(item).toContain("</item>");
     expect(item).toContain(`<title>${post.title}</title>`);
-    expect(item).toContain(`<link>${fakeSettings.canonicalBaseUrl}/blog/${post.slug}</link>`);
+    expect(item).toContain(
+      `<link>${fakeSettings.canonicalBaseUrl}/blog/engineering/${post.slug}</link>`,
+    );
     expect(item).toContain('isPermaLink="true"');
     expect(item).toContain("<description>");
     expect(item).toContain("<content:encoded>");

@@ -37,12 +37,20 @@ const { schemaMock } = vi.hoisted(() => ({
       status: "status",
       deletedAt: "deleted_at",
       publishedAt: "published_at",
+      categoryId: "category_id",
     },
     pages: {
       slug: "slug",
       updatedAt: "updated_at",
       status: "status",
       deletedAt: "deleted_at",
+    },
+    // 260828-blog-url: sitemap now leftJoins categories. The mock needs the
+    // table to exist so the chain `from(posts).leftJoin(categories,…)` is
+    // navigable; the actual key isn't matched — only `posts`/`pages` are.
+    categories: {
+      id: "id",
+      slug: "slug",
     },
   },
 }));
@@ -56,7 +64,16 @@ vi.mock("@/lib/db", () => ({
     select: vi.fn(() => ({
       from: vi.fn((table: unknown) => {
         if (table === schemaMock.posts) {
+          // 260828-blog-url: chain is now
+          //   from(posts).leftJoin(categories,…).where(…).orderBy(…)
+          // The mock returns the same postsResult regardless of the join;
+          // the per-row `categorySlug` is supplied by the fixture itself.
           return {
+            leftJoin: vi.fn(() => ({
+              where: vi.fn(() => ({
+                orderBy: vi.fn(() => Promise.resolve(postsResult)),
+              })),
+            })),
             where: vi.fn(() => ({
               orderBy: vi.fn(() => Promise.resolve(postsResult)),
             })),
@@ -111,16 +128,25 @@ describe("SEO-02 / SEO-08: app/sitemap.ts — published posts + pages + home", (
     expect(home.url).toBe(fakeSettings.canonicalBaseUrl);
   });
 
-  it("each post entry: priority 0.8, weekly, url {base}/blog/{slug}, lastModified from updatedAt", async () => {
+  it("each post entry: priority 0.8, weekly, url {base}/blog/{categorySlug|uncategorized}/{slug} (260828-blog-url), lastModified from updatedAt", async () => {
     const entries = await sitemapFn();
     const postEntry = findEntry(entries, "understanding-cache-components");
     expect(postEntry).toBeDefined();
     expect(postEntry!.priority).toBe(0.8);
     expect(postEntry!.changeFrequency).toBe("weekly");
     expect(postEntry!.url).toBe(
-      `${fakeSettings.canonicalBaseUrl}/blog/understanding-cache-components`,
+      `${fakeSettings.canonicalBaseUrl}/blog/engineering/understanding-cache-components`,
     );
     expect(postEntry!.lastModified).toEqual(new Date("2026-06-20T12:00:00Z"));
+  });
+
+  it("post without a category → URL uses the 'uncategorized' segment (260828-blog-url fallback)", async () => {
+    const entries = await sitemapFn();
+    const postEntry = findEntry(entries, "drizzle-full-text-search");
+    expect(postEntry).toBeDefined();
+    expect(postEntry!.url).toBe(
+      `${fakeSettings.canonicalBaseUrl}/blog/uncategorized/drizzle-full-text-search`,
+    );
   });
 
   it("each page entry: priority 0.5, monthly, url {base}/{slug}", async () => {
@@ -162,25 +188,39 @@ describe("SEO-08: pure sitemap entry builders (testable without DB)", () => {
     expect(home.lastModified).toBeInstanceOf(Date);
   });
 
-  it("buildPostSitemapEntry returns priority 0.8 / weekly / {base}/blog/{slug}", () => {
+  it("buildPostSitemapEntry returns priority 0.8 / weekly / {base}/blog/{categorySlug|uncategorized}/{slug} (260828-blog-url)", () => {
     const entry = buildPostSitemapEntry(
       "my-post",
+      "tech",
       new Date("2026-06-20T00:00:00Z"),
       fakeSettings.canonicalBaseUrl,
     );
     expect(entry.priority).toBe(0.8);
     expect(entry.changeFrequency).toBe("weekly");
-    expect(entry.url).toBe(`${fakeSettings.canonicalBaseUrl}/blog/my-post`);
+    expect(entry.url).toBe(`${fakeSettings.canonicalBaseUrl}/blog/tech/my-post`);
     expect(entry.lastModified).toEqual(new Date("2026-06-20T00:00:00Z"));
+  });
+
+  it("buildPostSitemapEntry falls back to 'uncategorized' when categorySlug is null (260828-blog-url)", () => {
+    const entry = buildPostSitemapEntry(
+      "my-post",
+      null,
+      new Date("2026-06-20T00:00:00Z"),
+      fakeSettings.canonicalBaseUrl,
+    );
+    expect(entry.url).toBe(`${fakeSettings.canonicalBaseUrl}/blog/uncategorized/my-post`);
   });
 
   it("cross-check: buildPostMetadata derived canonical matches buildPostSitemapEntry URL (CR-01 drift guard)", () => {
     // The derived (no canonicalUrl override) metadata canonical + metadataBase
     // must equal the sitemap entry URL exactly — the two derivations must never
     // drift apart again (CR-01: metadata said /{slug} while sitemap said /blog/{slug}).
+    // 260828-blog-url: both sides now derive /blog/{category}/{slug} (or
+    // /blog/uncategorized/{slug} when the post has no category).
     const m = buildPostMetadata(fakePost, null, fakeSettings);
     const entry = buildPostSitemapEntry(
       fakePost.slug,
+      fakePost.categorySlug ?? null,
       fakePost.updatedAt,
       fakeSettings.canonicalBaseUrl,
     );

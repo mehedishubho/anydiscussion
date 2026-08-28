@@ -34,7 +34,7 @@ import {
   listPublished,
   countPublished,
 } from "@/lib/queries/posts";
-import { toPostCardProps, type PostCardJoinedRow } from "@/lib/post-card";
+import { toPostCardProps, postUrl, type PostCardJoinedRow } from "@/lib/post-card";
 
 /** Homepage grid page size (locked decision 1 — 12 PostCards per page). */
 export const HOME_PAGE_SIZE = 12;
@@ -172,7 +172,7 @@ function FeaturedCard({ hero }: { hero: PostCardProps }) {
     <section className="flex flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900 lg:flex-row">
       {featureImage ? (
         <Link
-          href={`/blog/${slug}`}
+          href={postUrl({ categorySlug, slug })}
           className="relative block aspect-[16/10] w-full overflow-hidden bg-gray-100 dark:bg-gray-800 lg:aspect-auto lg:w-[45%] lg:shrink-0"
           tabIndex={-1}
           aria-hidden="true"
@@ -201,7 +201,7 @@ function FeaturedCard({ hero }: { hero: PostCardProps }) {
         ) : null}
 
         <h1 className="text-2xl font-bold leading-tight text-gray-900 dark:text-white sm:text-3xl lg:text-4xl">
-          <Link href={`/blog/${slug}`} className="hover:underline">
+          <Link href={postUrl({ categorySlug, slug })} className="hover:underline">
             {title}
           </Link>
         </h1>
@@ -267,7 +267,7 @@ function FeaturedCard({ hero }: { hero: PostCardProps }) {
         ) : null}
 
         <Link
-          href={`/blog/${slug}`}
+          href={postUrl({ categorySlug, slug })}
           className="mt-6 inline-flex items-center gap-1 text-sm font-semibold text-brand-600 hover:underline dark:text-brand-400"
         >
           Read More

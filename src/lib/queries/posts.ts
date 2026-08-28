@@ -25,21 +25,45 @@ import { and, eq, isNull, desc, sql, ne, inArray, not } from "drizzle-orm";
 /**
  * getPostForPublic — cached published+slug fetch for the single-post page.
  *
- * Left-joins posts + postSeo + user so the route gets all data in one query.
- * Returns null for non-existent, draft, or soft-deleted posts (T-06-02).
+ * 260828-blog-url: signature now takes (category, slug) matching the new
+ * route shape /blog/[category]/[slug]. The category param is the URL segment:
+ *   - a real category slug, OR
+ *   - the literal "uncategorized" (UNCATEGORIZED_SLUG) to match posts whose
+ *     categoryId IS NULL.
+ * Posts where categoryId IS NULL only resolve under the "uncategorized" param
+ * (and vice versa) — no cross-matching, so /blog/uncategorized/{slug} can
+ * never accidentally serve a post that DOES have a category.
  *
- * cacheTag(`post-${id}`) + cacheTag(`author-${aid}`) match publishPost's existing
- * revalidateTag calls so published edits appear without a container restart.
+ * Left-joins posts + postSeo + user + categories so the route gets all data
+ * in one query (mirrors the listPublished / listFeatured / listRelated
+ * categories-join pattern). Returns null for non-existent, draft, or
+ * soft-deleted posts (T-06-02).
+ *
+ * cacheTag(`post-${id}`) + cacheTag(`author-${aid}`) + cacheTag(`category-${cid}`)
+ * match publishPost's existing revalidateTag calls so published edits appear
+ * without a container restart.
  */
-export async function getPostForPublic(slug: string) {
+export async function getPostForPublic(category: string, slug: string) {
   "use cache";
+  const categoryFilter =
+    category === "uncategorized"
+      ? isNull(schema.posts.categoryId)
+      : and(
+          eq(schema.categories.slug, category),
+          eq(schema.posts.categoryId, schema.categories.id),
+        );
   const [row] = await db
     .select()
     .from(schema.posts)
     .leftJoin(schema.postSeo, eq(schema.postSeo.postId, schema.posts.id))
     .leftJoin(schema.user, eq(schema.user.id, schema.posts.authorId))
+    .leftJoin(
+      schema.categories,
+      eq(schema.categories.id, schema.posts.categoryId),
+    )
     .where(
       and(
+        categoryFilter,
         eq(schema.posts.slug, slug),
         eq(schema.posts.status, "published"),
         isNull(schema.posts.deletedAt),
@@ -49,6 +73,7 @@ export async function getPostForPublic(slug: string) {
   if (!row) return null;
   cacheTag(`post-${row.posts.id}`);
   if (row.posts.authorId) cacheTag(`author-${row.posts.authorId}`);
+  if (row.posts.categoryId) cacheTag(`category-${row.posts.categoryId}`);
   return row;
 }
 

@@ -27,6 +27,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { postUrl } from "@/lib/post-card";
 
 /** Props for PostCard — the minimal shape every list/related query returns. */
 export interface PostCardProps {
@@ -85,7 +86,7 @@ export default function PostCard({
     <article className="group flex flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition hover:shadow-md dark:border-gray-800 dark:bg-gray-900">
       {featureImage ? (
         <Link
-          href={`/blog/${slug}`}
+          href={postUrl({ categorySlug, slug })}
           className="relative block aspect-[16/9] overflow-hidden bg-gray-100 dark:bg-gray-800"
           tabIndex={-1}
           aria-hidden="true"
@@ -113,7 +114,7 @@ export default function PostCard({
         ) : null}
 
         <h3 className="text-lg font-semibold leading-snug text-gray-900 dark:text-white">
-          <Link href={`/blog/${slug}`} className="hover:underline">
+          <Link href={postUrl({ categorySlug, slug })} className="hover:underline">
             {title}
           </Link>
         </h3>

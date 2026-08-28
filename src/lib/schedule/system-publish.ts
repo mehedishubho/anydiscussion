@@ -73,6 +73,10 @@ export async function publishDueScheduledPosts(): Promise<number> {
     // D-25 revalidation — SAME concrete paths + 2-arg tags as the user publishPost
     // action (Pitfall #3 parity). The scheduler must keep cached pages in sync just
     // like a manual publish does.
+    // 260828-blog-url: revalidate the new /blog/{category}/{slug} path as well
+    // as the legacy /blog/{slug} (stub now 404s, but the path is still in the
+    // router so the cache layer needs to drop any stale entry).
+    revalidatePath(`/blog/${post.categorySlug || "uncategorized"}/${post.slug}`);
     revalidatePath(`/blog/${post.slug}`);
     revalidatePath("/");
     revalidatePath("/blog");

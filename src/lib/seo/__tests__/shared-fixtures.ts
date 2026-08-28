@@ -38,6 +38,9 @@ export const fakePost: PostLike = {
   publishedAt: new Date("2026-06-15T10:00:00Z"),
   updatedAt: new Date("2026-06-20T12:00:00Z"),
   authorName: "Mehedi Shubho",
+  // 260828-blog-url: category slug drives the /blog/{category}/{slug} canonical
+  // + sitemap URL. Matched with the fakeSitemapPosts[0] entry below.
+  categorySlug: "engineering",
 };
 
 /** A fake post with NO feature image (exercises the OG fallback chain). */
@@ -90,13 +93,25 @@ export const fakePage: PageLike = {
  * `status='published' AND deletedAt IS NULL`). Two published posts — the draft
  * and soft-deleted fixtures below simulate rows that the query EXCLUDES, so the
  * test can assert their slugs never appear in the output.
+ *
+ * 260828-blog-url: each row now also carries the joined categories.slug so the
+ * sitemap entry URL becomes /blog/{categorySlug}/{slug}.
  */
 export const fakeSitemapPosts: Array<{
   slug: string;
   updatedAt: Date;
+  categorySlug: string | null;
 }> = [
-  { slug: "understanding-cache-components", updatedAt: new Date("2026-06-20T12:00:00Z") },
-  { slug: "drizzle-full-text-search", updatedAt: new Date("2026-06-18T10:00:00Z") },
+  {
+    slug: "understanding-cache-components",
+    updatedAt: new Date("2026-06-20T12:00:00Z"),
+    categorySlug: "engineering",
+  },
+  {
+    slug: "drizzle-full-text-search",
+    updatedAt: new Date("2026-06-18T10:00:00Z"),
+    categorySlug: null, // exercises the "uncategorized" fallback path
+  },
 ];
 
 /** Published page rows for the sitemap (one managed page). */
@@ -115,8 +130,10 @@ export const SOFT_DELETED_POST_SLUG = "soft-deleted-post-excluded";
 
 /**
  * RSS post rows — the full shape the RSS Route Handler selects
- * (title, slug, body, excerpt, publishedAt). Two published posts with realistic
- * dates; the body is minimal Tiptap JSON (renderPostBody is mocked in rss.test.ts).
+ * (title, slug, body, excerpt, publishedAt, categorySlug). Two published
+ * posts with realistic dates; the body is minimal Tiptap JSON (renderPostBody
+ * is mocked in rss.test.ts). 260828-blog-url: categorySlug added so the
+ * per-item URL becomes /blog/{categorySlug|uncategorized}/{slug}.
  */
 export const fakeRssPosts: Array<{
   title: string;
@@ -124,6 +141,7 @@ export const fakeRssPosts: Array<{
   body: unknown;
   excerpt: string | null;
   publishedAt: Date | null;
+  categorySlug: string | null;
 }> = [
   {
     title: "First Published Post",
@@ -131,6 +149,7 @@ export const fakeRssPosts: Array<{
     body: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "Hello world" }] }] },
     excerpt: "First post excerpt",
     publishedAt: new Date("2026-06-20T08:00:00Z"),
+    categorySlug: "engineering",
   },
   {
     title: "Second Published Post",
@@ -138,6 +157,7 @@ export const fakeRssPosts: Array<{
     body: null,
     excerpt: "Second post excerpt",
     publishedAt: new Date("2026-06-18T08:00:00Z"),
+    categorySlug: null, // exercises the "uncategorized" fallback
   },
 ];
 
@@ -153,6 +173,7 @@ export const fakeRssPostWithSpecialChars = {
   body: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "body" }] }] },
   excerpt: `Excerpt with < & > 'and' "quotes"`,
   publishedAt: new Date("2026-06-19T08:00:00Z"),
+  categorySlug: "engineering",
 } as const;
 
 /** The fixed sanitized-HTML string the renderPostBody mock returns in rss.test.ts. */

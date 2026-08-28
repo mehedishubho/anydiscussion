@@ -98,6 +98,9 @@ beforeEach(() => {
       publishedAt: new Date(Date.now() - DAY_MS),
       previewToken: "tok-live",
       authorName: "Jane Author",
+      // 260828-blog-url: categorySlug drives the new /blog/{category}/{slug}
+      // View-link shape. Null exercises the "uncategorized" fallback.
+      categorySlug: "engineering",
     },
     {
       id: 2,
@@ -107,6 +110,7 @@ beforeEach(() => {
       updatedAt: new Date(Date.now() - DAY_MS),
       publishedAt: new Date(Date.now() + DAY_MS), // FUTURE — the scheduled signal
       previewToken: "tok-2",
+      categorySlug: null,
       authorName: null,
     },
     {
@@ -146,11 +150,13 @@ describe("260828-gyt: posts list — Author column, View action, Scheduled badge
     expect(screen.getAllByText("—").length).toBe(2);
   });
 
-  it("published row's View link targets the public /blog/{slug} page in a new tab", async () => {
+  it("published row's View link targets the public /blog/{category}/{slug} page in a new tab (260828-blog-url)", async () => {
     await renderPage();
 
+    // 260828-blog-url: the View link now points at /blog/{categorySlug}/{slug}.
+    // The "live-one" fixture row carries categorySlug: "engineering".
     const viewLink = document.querySelector(
-      'a[href="/blog/live-one"]',
+      'a[href="/blog/engineering/live-one"]',
     ) as HTMLAnchorElement | null;
     expect(viewLink).not.toBeNull();
     expect(viewLink?.getAttribute("target")).toBe("_blank");

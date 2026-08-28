@@ -52,6 +52,7 @@ import { permanentRedirect, redirect } from "next/navigation";
 import { db, schema } from "@/lib/db";
 import { eq } from "drizzle-orm";
 import { listPublished } from "@/lib/queries/posts";
+import { postUrl } from "@/lib/post-card";
 
 /**
  * RedirectChecker — async component that queries the redirects table for the
@@ -135,11 +136,16 @@ async function SuggestedPosts(): Promise<React.ReactElement | null> {
         {posts.map((row) => {
           // listPublished returns a union: plain posts row (no tagId) or a joined
           // { posts, postTags } row (with tagId). Normalize to the posts shape.
+          // 260828-blog-url: BOTH branches left-join categories (see
+          // src/lib/queries/posts.ts), so `row.categories.slug` is always
+          // structurally present. Reading it off the row gives the link
+          // generator the segment it needs for /blog/{category}/{slug}.
           const post = "posts" in row ? row.posts : row;
+          const categorySlug = row.categories?.slug ?? null;
           return (
             <li key={post.id}>
               <Link
-                href={`/blog/${post.slug}`}
+                href={postUrl({ categorySlug, slug: post.slug })}
                 className="text-sm font-medium text-brand-500 hover:underline dark:text-brand-400"
               >
                 {post.title}

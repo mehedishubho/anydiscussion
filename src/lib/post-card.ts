@@ -64,3 +64,27 @@ export function toPostCardProps(row: PostCardJoinedRow): PostCardProps {
     readTime: deriveReadingTime(row.posts.body),
   };
 }
+
+/**
+ * URL shape for a single post: /blog/{category-slug}/{post-slug}.
+ *
+ * 260828-blog-url: when a post has no category (categoryId IS NULL), the
+ * category segment falls back to the literal "uncategorized". The single-post
+ * route at /blog/[category]/[slug] accepts the same fallback and matches
+ * posts where categoryId IS NULL. There is intentionally NO categories row
+ * seeded with slug 'uncategorized' — /category/uncategorized is expected to
+ * 404 (it isn't a user-facing archive).
+ *
+ * Centralized here so every link consumer (PostCard, HomeFeed, ShareButtons,
+ * not-found.tsx SuggestedPosts) produces the same URL string.
+ */
+export const UNCATEGORIZED_SLUG = "uncategorized";
+
+/** Build the canonical single-post URL from a category slug + post slug. */
+export function postUrl(input: {
+  categorySlug?: string | null;
+  slug: string;
+}): string {
+  const cat = input.categorySlug || UNCATEGORIZED_SLUG;
+  return `/blog/${cat}/${input.slug}`;
+}

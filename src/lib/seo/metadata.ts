@@ -26,6 +26,14 @@ export interface PostLike {
   publishedAt: Date | null;
   updatedAt: Date;
   authorName: string | null;
+  /**
+   * 260828-blog-url: category slug for canonical-URL derivation. Falls back to
+   * the literal "uncategorized" when the post has no category (mirrors the
+   * postUrl() helper in lib/post-card.ts). Nullable to stay drop-in compatible
+   * with the few older call sites that don't supply it yet (they'll just emit
+   * the old /blog/{slug} canonical — a metadata bug, not a routing bug).
+   */
+  categorySlug?: string | null;
 }
 
 /** Fields from `post_seo` the post builder reads (null when no SEO row exists). */
@@ -92,9 +100,14 @@ export function buildPostMetadata(
   const title = seo?.metaTitle || post.title;
   const description =
     seo?.metaDescription || post.excerpt || s.siteDescription;
-  // D-04 — canonical override: respect post_seo.canonicalUrl else derive from the
-  // /blog/[slug] route (matches sitemap.ts, rss.xml, publishPost revalidatePath).
-  const canonical = seo?.canonicalUrl || `/blog/${post.slug}`;
+  // D-04 — canonical override: respect post_seo.canonicalUrl else derive from
+  // the /blog/[category]/[slug] route (matches sitemap.ts, rss.xml, publishPost
+  // revalidatePath). 260828-blog-url: the legacy /blog/{slug} shape is no
+  // longer a route; the proxy redirects-table (src/proxy.ts L117) returns 308
+  // for old URLs, so the canonical can safely point at the new shape.
+  const canonical =
+    seo?.canonicalUrl ||
+    `/blog/${post.categorySlug || "uncategorized"}/${post.slug}`;
   // D-09 — OG fallback chain: post_seo.ogImage → posts.featureImage → site default.
   const ogImage = seo?.ogImage || post.featureImage || s.defaultOgImage;
   const hasImage = Boolean(ogImage);

@@ -157,10 +157,13 @@ describe("CONT-09 / D-12: publishDueScheduledPosts — system-level publish (no 
     expect(logInfoMock).toHaveBeenCalledWith("system-publish", { postId: 20 });
   });
 
-  it("revalidates concrete literal paths per due post (D-25 — Pitfall #3)", async () => {
+  it("revalidates concrete literal paths per due post (D-25 — Pitfall #3; 260828-blog-url adds /blog/{category}/{slug})", async () => {
     selectDueMock.mockResolvedValue([duePost({ id: 5, slug: "my-post" })]);
     await publishDueScheduledPosts();
     const paths = revalidatePathMock.mock.calls.map((c) => c[0]);
+    // 260828-blog-url: the new single-post path is the primary revalidation
+    // target; the legacy /blog/{slug} path is kept as a safety net.
+    expect(paths).toContain("/blog/news/my-post");
     expect(paths).toContain("/blog/my-post");
     expect(paths).toContain("/");
     expect(paths).toContain("/blog");

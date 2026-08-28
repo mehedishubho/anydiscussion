@@ -294,16 +294,29 @@ export async function listPosts(opts?: PostListInput) {
   const base = db
     .select()
     .from(schema.posts)
-    .leftJoin(schema.user, eq(schema.posts.authorId, schema.user.id));
+    .leftJoin(schema.user, eq(schema.user.id, schema.posts.authorId))
+    // 260828-blog-url: leftJoin categories so the dashboard View link can
+    // build the new /blog/{category}/{slug} URL. Mirrors the pattern in
+    // listPublished (lib/queries/posts.ts) and buildPostSitemapEntry.
+    .leftJoin(
+      schema.categories,
+      eq(schema.categories.id, schema.posts.categoryId),
+    );
   const filtered = where ? base.where(where) : base;
   const rows = await filtered
     .orderBy(desc(schema.posts.updatedAt))
     .limit(filters.pageSize)
     .offset((filters.page - 1) * filters.pageSize);
-  // leftJoin nests each row as { posts, user } — return the plain post rows
-  // spread with authorName (260828-gyt: every post field remains; the joined
-  // user's name rides along, null when the join has no match).
-  return rows.map((row) => ({ ...row.posts, authorName: row.user?.name ?? null }));
+  // leftJoin nests each row as { posts, user, categories } — return the
+  // plain post rows spread with authorName (260828-gyt) + categorySlug
+  // (260828-blog-url). The categorySlug lets the dashboard View link route
+  // to /blog/{category}/{slug}; the per-card "uncategorized" fallback is
+  // applied at the link site (postUrl() in lib/post-card.ts).
+  return rows.map((row) => ({
+    ...row.posts,
+    authorName: row.user?.name ?? null,
+    categorySlug: row.categories?.slug ?? null,
+  }));
 }
 
 /**
@@ -499,6 +512,12 @@ async function revalidatePublicPostSurfaces(postId: number): Promise<void> {
   }
 
   // D-25 / Pitfall #3 — concrete literal paths, NEVER template-string patterns.
+  // 260828-blog-url: single-post route moved to /blog/{category}/{slug}. The
+  // legacy /blog/{slug} path is also revalidated so the legacy stub page (which
+  // simply calls notFound) is not served from a stale cache if any layer ever
+  // caches it. The redirects table itself is served from a 5s TTL snapshot
+  // inside src/proxy.ts and does not need revalidation here.
+  revalidatePath(`/blog/${post.categorySlug || "uncategorized"}/${post.slug}`);
   revalidatePath(`/blog/${post.slug}`);
   revalidatePath("/");
   revalidatePath("/blog");
@@ -558,6 +577,10 @@ export async function publishPost(postId: number) {
   if (!post) throw new Error("NOT_FOUND");
 
   // 4. D-25 — concrete literal paths (Pitfall #3). NEVER template-string patterns.
+  // 260828-blog-url: also revalidate the new /blog/{category}/{slug} path; the
+  // legacy /blog/{slug} path is kept in the revalidation set as a safety net
+  // for the legacy 404 stub.
+  revalidatePath(`/blog/${post.categorySlug || "uncategorized"}/${post.slug}`);
   revalidatePath(`/blog/${post.slug}`);
   revalidatePath("/");
   revalidatePath("/blog");

@@ -119,37 +119,51 @@ import {
 describe("T-06-02 / published-only: getPostForPublic", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("returns null when no published post matches the slug", async () => {
+  it("returns null when no published post matches the (category, slug) pair", async () => {
     selectMock.mockResolvedValue([]);
-    const result = await getPostForPublic("nonexistent-slug");
+    const result = await getPostForPublic("tech", "nonexistent-slug");
     expect(result).toBeNull();
   });
 
-  it("returns the post + seo + author data for a published slug", async () => {
+  it("returns the post + seo + author + categories data for a published (category, slug) pair", async () => {
     const mockRow = {
       posts: { id: 1, slug: "hello-world", title: "Hello", status: "published", authorId: "u1" },
       post_seo: { metaTitle: "Hello SEO" },
       user: { id: "u1", name: "Author" },
+      categories: { slug: "tech", name: "Tech" },
     };
     selectMock.mockResolvedValue([mockRow]);
-    const result = await getPostForPublic("hello-world");
+    const result = await getPostForPublic("tech", "hello-world");
     expect(result).toEqual(mockRow);
   });
 
   it("calls cacheTag with post-${id} matching publishPost's revalidateTag", async () => {
     selectMock.mockResolvedValue([
-      { posts: { id: 42, authorId: "u1" }, post_seo: null, user: null },
+      { posts: { id: 42, authorId: "u1" }, post_seo: null, user: null, categories: null },
     ]);
-    await getPostForPublic("hello");
+    await getPostForPublic("tech", "hello");
     expect(cacheTagMock).toHaveBeenCalledWith("post-42");
   });
 
   it("calls cacheTag with author-${authorId} when authorId exists", async () => {
     selectMock.mockResolvedValue([
-      { posts: { id: 42, authorId: "u7" }, post_seo: null, user: null },
+      { posts: { id: 42, authorId: "u7" }, post_seo: null, user: null, categories: null },
     ]);
-    await getPostForPublic("hello");
+    await getPostForPublic("tech", "hello");
     expect(cacheTagMock).toHaveBeenCalledWith("author-u7");
+  });
+
+  it("calls cacheTag with category-${categoryId} when the joined category exists (260828-blog-url)", async () => {
+    selectMock.mockResolvedValue([
+      {
+        posts: { id: 42, authorId: "u7", categoryId: 3 },
+        post_seo: null,
+        user: null,
+        categories: { slug: "tech", name: "Tech" },
+      },
+    ]);
+    await getPostForPublic("tech", "hello");
+    expect(cacheTagMock).toHaveBeenCalledWith("category-3");
   });
 });
 

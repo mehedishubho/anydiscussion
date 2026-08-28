@@ -23,6 +23,7 @@ import { countPosts, listPosts } from "@/actions/posts";
 import { listCategories } from "@/actions/categories";
 import { getSession } from "@/lib/auth/server";
 import { bounded, clampPage, firstValue, DASHBOARD_PAGE_SIZE } from "@/lib/list-filters";
+import { postUrl } from "@/lib/post-card";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 import ListFilterBar from "@/components/dashboard/lists/ListFilterBar";
 import Pagination from "@/components/site/Pagination";
@@ -226,6 +227,12 @@ export default async function PostsListPage({
               </TableHeader>
               <TableBody>
                 {posts.map((post) => {
+                  // 260828-blog-url: listPosts now joins categories and returns
+                  // a `categorySlug` field on every row, but the inferred action
+                  // return type at the "use server" boundary omits it. Cast the
+                  // row locally to keep the View link's call site type-safe.
+                  const categorySlug =
+                    (post as { categorySlug?: string | null }).categorySlug ?? null;
                   // 260828-gyt — A6 derived state: a DRAFT whose publishedAt is
                   // in the future is "Scheduled" (the worker flips it at due time).
                   const scheduled =
@@ -263,12 +270,17 @@ export default async function PostsListPage({
                       <div className="flex items-center justify-end gap-3">
                         {/* 260828-gyt — View: the public /blog/{slug} page when
                             published, else the draft /preview/{token} page when
-                            a token exists; rows with neither render no link. */}
+                            a token exists; rows with neither render no link.
+                            260828-blog-url: the published link is now
+                            /blog/{category}/{slug} (postUrl helper). */}
                         {(post.status === "published" || post.previewToken != null) && (
                           <Link
                             href={
                               post.status === "published"
-                                ? `/blog/${post.slug}`
+                                ? postUrl({
+                                    categorySlug,
+                                    slug: post.slug,
+                                  })
                                 : `/preview/${post.previewToken}`
                             }
                             target="_blank"

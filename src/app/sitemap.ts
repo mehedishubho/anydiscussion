@@ -16,6 +16,7 @@ import type { MetadataRoute } from "next";
 import { db, schema } from "@/lib/db";
 import { eq, and, isNull, desc } from "drizzle-orm";
 import { getSeoSettings } from "@/lib/seo/settings";
+import { UNCATEGORIZED_SLUG } from "@/lib/post-card";
 
 /**
  * The dynamic sitemap — home + every published post + every published page.
@@ -38,13 +39,25 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const home = buildHomeSitemapEntry(base);
 
   // Published posts — exclude drafts + soft-deleted (T-05-05).
+  // 260828-blog-url: left-join categories so the entry URL can include the
+  // category slug (/blog/{category}/{slug}). Posts without a category use the
+  // literal "uncategorized" segment — matches the single-post route's WHERE
+  // filter in src/lib/queries/posts.ts#getPostForPublic.
   const publishedPosts = await db
-    .select({ slug: schema.posts.slug, updatedAt: schema.posts.updatedAt })
+    .select({
+      slug: schema.posts.slug,
+      updatedAt: schema.posts.updatedAt,
+      categorySlug: schema.categories.slug,
+    })
     .from(schema.posts)
+    .leftJoin(
+      schema.categories,
+      eq(schema.categories.id, schema.posts.categoryId),
+    )
     .where(and(eq(schema.posts.status, "published"), isNull(schema.posts.deletedAt)))
     .orderBy(desc(schema.posts.publishedAt));
   const postEntries: MetadataRoute.Sitemap = publishedPosts.map((p) =>
-    buildPostSitemapEntry(p.slug, p.updatedAt, base),
+    buildPostSitemapEntry(p.slug, p.categorySlug, p.updatedAt, base),
   );
 
   // Published pages — same status + soft-delete filter.
@@ -74,15 +87,22 @@ export function buildHomeSitemapEntry(base: string): MetadataRoute.Sitemap[numbe
 }
 
 /**
- * Post sitemap entry — priority 0.8, weekly, url {base}/blog/{slug} (SEO-08 / D-05).
+ * Post sitemap entry — priority 0.8, weekly, url
+ * {base}/blog/{categorySlug|uncategorized}/{slug} (SEO-08 / D-05).
+ *
+ * 260828-blog-url: categorySlug is the categories.slug value, falling back to
+ * the literal "uncategorized" for posts whose categoryId IS NULL. The
+ * single-post route at /blog/[category]/[slug] accepts the same fallback
+ * (see lib/queries/posts.ts — `category === "uncategorized" ? isNull(...) : ...`).
  */
 export function buildPostSitemapEntry(
   slug: string,
+  categorySlug: string | null,
   updatedAt: Date,
   base: string,
 ): MetadataRoute.Sitemap[number] {
   return {
-    url: `${base}/blog/${slug}`,
+    url: `${base}/blog/${categorySlug || UNCATEGORIZED_SLUG}/${slug}`,
     lastModified: updatedAt,
     changeFrequency: "weekly",
     priority: 0.8,

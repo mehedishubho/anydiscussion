@@ -18,6 +18,7 @@ import { db, schema } from "@/lib/db";
 import { eq, isNull, desc, and } from "drizzle-orm";
 import { renderPostBody } from "@/lib/post-render";
 import { getSeoSettings } from "@/lib/seo/settings";
+import { UNCATEGORIZED_SLUG } from "@/lib/post-card";
 
 /** D-07 — sensible cap in the 20-50 range. */
 export const RSS_LIMIT = 30;
@@ -41,8 +42,17 @@ export async function GET(): Promise<Response> {
       body: schema.posts.body,
       excerpt: schema.posts.excerpt,
       publishedAt: schema.posts.publishedAt,
+      // 260828-blog-url: category slug for the per-item <link> / <guid> URL.
+      // Left-joined so a post with no category (categoryId IS NULL) still
+      // appears in the feed — categorySlug will simply be null and the
+      // buildRssItem helper substitutes the "uncategorized" literal segment.
+      categorySlug: schema.categories.slug,
     })
     .from(schema.posts)
+    .leftJoin(
+      schema.categories,
+      eq(schema.categories.id, schema.posts.categoryId),
+    )
     .where(and(eq(schema.posts.status, "published"), isNull(schema.posts.deletedAt)))
     .orderBy(desc(schema.posts.publishedAt))
     .limit(RSS_LIMIT);
@@ -56,7 +66,13 @@ export async function GET(): Promise<Response> {
       // fallback when body is null (T-05-02: renderPostBody double-sanitizes).
       const bodyHtml = p.body ? renderPostBody(p.body) : (p.excerpt ?? "");
       return buildRssItem(
-        { title: p.title, slug: p.slug, excerpt: p.excerpt, publishedAt: p.publishedAt },
+        {
+          title: p.title,
+          slug: p.slug,
+          excerpt: p.excerpt,
+          publishedAt: p.publishedAt,
+          categorySlug: p.categorySlug,
+        },
         base,
         bodyHtml,
       );
@@ -99,11 +115,18 @@ export function buildRssItem(
     slug: string;
     excerpt: string | null;
     publishedAt: Date | null;
+    /**
+     * 260828-blog-url: category slug for the per-item URL. Falls back to the
+     * literal "uncategorized" segment when the post has no category, matching
+     * the single-post route at /blog/[category]/[slug] (see
+     * src/lib/queries/posts.ts — `category === "uncategorized" ? isNull(...) : ...`).
+     */
+    categorySlug: string | null;
   },
   base: string,
   renderedBody: string,
 ): string {
-  const url = `${base}/blog/${post.slug}`;
+  const url = `${base}/blog/${post.categorySlug || UNCATEGORIZED_SLUG}/${post.slug}`;
   const pubDate = post.publishedAt
     ? new Date(post.publishedAt).toUTCString()
     : new Date().toUTCString();

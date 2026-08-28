@@ -16,12 +16,21 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { postUrl } from "@/lib/post-card";
 
 interface ShareButtonsProps {
   /** Post slug — used to construct the share URL from window.location.origin. */
   slug: string;
   /** Post title — used in the share text/title parameter. */
   title: string;
+  /**
+   * 260828-blog-url: the post's category slug. Used together with `slug` to
+   * build the new /blog/{category}/{slug} share URL. Optional — when omitted
+   * (older call sites) the share URL falls back to the literal "uncategorized"
+   * segment via the postUrl helper. Routes still resolve correctly because
+   * the route accepts "uncategorized" as the null-category marker.
+   */
+  categorySlug?: string | null;
 }
 
 /**
@@ -34,7 +43,7 @@ interface ShareButtonsProps {
  * with JS disabled). The copy-link button requires JS (degrades gracefully —
  * it just doesn't render its "Copied!" state).
  */
-export default function ShareButtons({ slug, title }: ShareButtonsProps) {
+export default function ShareButtons({ slug, title, categorySlug }: ShareButtonsProps) {
   // Avoid SSR/client hydration mismatch — build the share hrefs after mount.
   const [shareUrl, setShareUrl] = useState<string>("");
   const [copied, setCopied] = useState<boolean>(false);
@@ -43,8 +52,8 @@ export default function ShareButtons({ slug, title }: ShareButtonsProps) {
     if (typeof window === "undefined") return;
     // SSR-safe: window.location isn't available during SSR; derive the share URL after mount.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setShareUrl(`${window.location.origin}/blog/${slug}`);
-  }, [slug]);
+    setShareUrl(`${window.location.origin}${postUrl({ categorySlug, slug })}`);
+  }, [slug, categorySlug]);
 
   // Pre-build the share URLs once shareUrl resolves.
   const encodedUrl = encodeURIComponent(shareUrl);

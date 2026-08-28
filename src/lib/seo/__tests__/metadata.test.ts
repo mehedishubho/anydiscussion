@@ -61,15 +61,20 @@ describe("SEO-01 / SEO-04 / D-04: buildPostMetadata — canonical override + fal
     expect(m.alternates?.canonical).toBe(fakePostSeo.canonicalUrl);
   });
 
-  it("derives canonical from the /blog/{slug} route when postSeo is null (CR-01)", () => {
+  it("derives canonical from the /blog/{category}/{slug} route when postSeo is null (CR-01; 260828-blog-url)", () => {
     const m = buildPostMetadata(fakePost, null, fakeSettings);
-    expect(m.alternates?.canonical).toBe(`/blog/${fakePost.slug}`);
+    expect(m.alternates?.canonical).toBe(`/blog/engineering/${fakePost.slug}`);
   });
 
-  it("derives canonical from the /blog/{slug} route when postSeo.canonicalUrl is empty (CR-01)", () => {
+  it("derives canonical from the /blog/{category}/{slug} route when postSeo.canonicalUrl is empty (CR-01; 260828-blog-url)", () => {
     const m = buildPostMetadata(fakePost, { ...fakePostSeo, canonicalUrl: "" }, fakeSettings);
-    // Empty string is falsy — falls through to the /blog/{slug} route derivation.
-    expect(m.alternates?.canonical).toBe(`/blog/${fakePost.slug}`);
+    // Empty string is falsy — falls through to the /blog/{category}/{slug} derivation.
+    expect(m.alternates?.canonical).toBe(`/blog/engineering/${fakePost.slug}`);
+  });
+
+  it("falls back to 'uncategorized' segment when the post has no category (260828-blog-url)", () => {
+    const m = buildPostMetadata({ ...fakePost, categorySlug: null }, null, fakeSettings);
+    expect(m.alternates?.canonical).toBe(`/blog/uncategorized/${fakePost.slug}`);
   });
 
   it("uses postSeo.metaTitle when set, else post.title", () => {

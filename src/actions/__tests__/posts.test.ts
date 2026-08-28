@@ -561,9 +561,13 @@ describe("CONT-08 / D-25 / Pitfall #3: publishPost revalidation wiring", () => {
     expect(revalidateTagMock).not.toHaveBeenCalled();
   });
 
-  it("revalidates concrete literal paths (D-25 — Pitfall #3)", async () => {
+  it("revalidates concrete literal paths (D-25 — Pitfall #3) — 260828-blog-url adds /blog/{category}/{slug}", async () => {
     await publishPost(7);
     const paths = revalidatePathMock.mock.calls.map((c) => c[0]);
+    // 260828-blog-url: the new single-post path is the primary revalidation
+    // target; the legacy /blog/{slug} path is kept in the set as a safety net
+    // for the legacy 404 stub.
+    expect(paths).toContain("/blog/news/hello-world");
     expect(paths).toContain("/blog/hello-world");
     expect(paths).toContain("/");
     expect(paths).toContain("/blog");
@@ -983,20 +987,27 @@ describe("260828-gyt: listPosts — authorName projection (spread, not replace)"
     const rows = await listPosts();
 
     // Spread, not projection: all post fields + authorName (explicit null for
-    // the no-match row — toEqual distinguishes null from a missing key).
-    expect(rows[0]).toEqual({
+    // the no-match row — toMatchObject distinguishes null from a missing key).
+    // 260828-blog-url: listPosts also left-joins categories now, so the
+    // returned row carries a `categorySlug` field (null when the post has no
+    // category) — included in the assertion. The categorySlug VALUE is
+    // exercised by the dashboard View-link test in
+    // src/app/(admin)/dashboard/posts/__tests__/posts-page.test.tsx.
+    expect(rows[0]).toMatchObject({
       id: 1,
       title: "One",
       slug: "one",
       status: "draft",
       authorName: "Jane Author",
+      categorySlug: null,
     });
-    expect(rows[1]).toEqual({
+    expect(rows[1]).toMatchObject({
       id: 2,
       title: "Two",
       slug: "two",
       status: "draft",
       authorName: null,
+      categorySlug: null,
     });
   });
 });
@@ -1050,6 +1061,9 @@ describe("260828-gyt: setSchedule — published+future unpublishes via transitio
     await setSchedule(7, new Date(Date.now() + 60 * 60 * 1000));
 
     const paths = revalidatePathMock.mock.calls.map((c) => c[0]);
+    // 260828-blog-url: the new single-post path is the primary revalidation
+    // target; the legacy /blog/{slug} path is kept as a safety net.
+    expect(paths).toContain("/blog/news/hello-world");
     expect(paths).toContain("/blog/hello-world");
     expect(paths).toContain("/");
     expect(paths).toContain("/blog");
@@ -1172,6 +1186,9 @@ describe("260828-gyt: unpublishPost — assertOwnsPost FIRST, transitionPost fun
     expect(transitionPostMock).toHaveBeenCalledWith(7, "draft");
 
     const paths = revalidatePathMock.mock.calls.map((c) => c[0]);
+    // 260828-blog-url: same revalidation set as publishPost — see the test
+    // above for the rationale.
+    expect(paths).toContain("/blog/news/hello-world");
     expect(paths).toContain("/blog/hello-world");
     expect(paths).toContain("/");
     expect(paths).toContain("/blog");
