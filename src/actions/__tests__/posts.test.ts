@@ -238,6 +238,7 @@ import {
   returnForRevision,
   setSchedule,
   revokePreviewToken,
+  unpublishPost,
 } from "../posts";
 
 const adminSession = () => ({ user: { id: "u-admin", role: "admin" }, session: { id: "s1" } });
@@ -612,6 +613,11 @@ describe("D-15: setSchedule requires post:publish capability (authors blocked)",
     assertOwnsPostMock.mockResolvedValue(adminSession());
     requireCanMock.mockResolvedValue(adminSession());
     updateMock.mockResolvedValue(undefined);
+    // 260828-gyt — setSchedule is now status-aware: it fetches the post's
+    // status BEFORE any write. Fixture: a DRAFT post (the 2026-08-01 test
+    // date below is in the past — the SCHEDULE_IN_PAST guard only applies to
+    // PUBLISHED posts, so draft + past date keeps existing semantics).
+    selectPostMock.mockResolvedValue([{ id: 7, status: "draft" }]);
   });
 
   it("calls requireCan({post:['publish']}) (D-15)", async () => {
@@ -943,5 +949,265 @@ describe("260827-se8 Task 4: publishPost notifies the author (actor excluded)", 
 
     await publishPost(7);
     expect(notifyUsersMock).not.toHaveBeenCalled();
+  });
+});
+
+// ===========================================================================
+// 260828-gyt Task 1 — setSchedule status-aware semantics, unpublishPost,
+// listPosts authorName projection
+// [CITED: 260828-gyt-PLAN.md Task 1 <behavior>]
+// [CITED: T-Q-gyt-02 — the schedule .set() payload carries NO status key; the
+//  published→draft flip funnels through transitionPost (R7)]
+// [CITED: T-Q-gyt-03 — unpublish/schedule-unpublish fire the FULL publishPost
+//  revalidation parity set (the post WAS public)]
+// [CITED: T-Q-gyt-05 — past dates on published posts reject BEFORE any write]
+// ===========================================================================
+
+describe("260828-gyt: listPosts — authorName projection (spread, not replace)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    requireCanMock.mockResolvedValue(adminSession());
+  });
+
+  it("rows carry authorName from the joined user (null when no join match); every post field remains", async () => {
+    // leftJoin row shape: { posts, user } — the unified chain mock resolves
+    // whatever selectPostMock returns, so this doubles as the joined fixture.
+    selectPostMock.mockResolvedValue([
+      {
+        posts: { id: 1, title: "One", slug: "one", status: "draft" },
+        user: { name: "Jane Author" },
+      },
+      { posts: { id: 2, title: "Two", slug: "two", status: "draft" }, user: null },
+    ]);
+
+    const rows = await listPosts();
+
+    // Spread, not projection: all post fields + authorName (explicit null for
+    // the no-match row — toEqual distinguishes null from a missing key).
+    expect(rows[0]).toEqual({
+      id: 1,
+      title: "One",
+      slug: "one",
+      status: "draft",
+      authorName: "Jane Author",
+    });
+    expect(rows[1]).toEqual({
+      id: 2,
+      title: "Two",
+      slug: "two",
+      status: "draft",
+      authorName: null,
+    });
+  });
+});
+
+describe("260828-gyt: setSchedule — published+future unpublishes via transitionPost; published+past rejects before any write", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    assertOwnsPostMock.mockResolvedValue(adminSession());
+    requireCanMock.mockResolvedValue(adminSession());
+    transitionPostMock.mockResolvedValue(undefined);
+    updateMock.mockResolvedValue(undefined);
+    revalidatePathMock.mockReturnValue(undefined);
+    revalidateTagMock.mockReturnValue(undefined);
+    // ONE fixture serves BOTH selects under the unified chain mock (every
+    // awaited select resolves selectPostMock()): setSchedule's status fetch
+    // AND revalidatePublicPostSurfaces' revalidation fetch get the same row.
+    selectPostMock.mockResolvedValue([
+      {
+        id: 7,
+        status: "published",
+        slug: "hello-world",
+        authorId: "u-a1",
+        categoryId: 3,
+        categorySlug: "news",
+      },
+    ]);
+  });
+
+  it("published + FUTURE date → { ok: true, unpublished: true }; date write FIRST with NO status key, then transitionPost(7,'draft')", async () => {
+    const future = new Date(Date.now() + 60 * 60 * 1000);
+    const result = await setSchedule(7, future);
+
+    expect(result).toEqual({ ok: true, unpublished: true });
+
+    // The schedule update carries ONLY publishedAt + updatedAt — status
+    // writes belong to transitionPost alone (R7 / T-Q-gyt-02).
+    expect(updateSetMock).toHaveBeenCalledTimes(1);
+    const setPayload = updateSetMock.mock.calls[0][0] as Record<string, unknown>;
+    expect("status" in setPayload).toBe(false);
+    expect(setPayload.publishedAt).toBe(future);
+
+    // Ordering proof: the bare date write happens BEFORE the transition
+    // (the worker must never observe draft + a stale past date).
+    expect(transitionPostMock).toHaveBeenCalledWith(7, "draft");
+    const updateOrder = updateMock.mock.invocationCallOrder[0];
+    const transitionOrder = transitionPostMock.mock.invocationCallOrder[0];
+    expect(updateOrder).toBeLessThan(transitionOrder);
+  });
+
+  it("published + FUTURE date → full publishPost revalidation parity (concrete paths + 2-arg tags incl. posts-list)", async () => {
+    await setSchedule(7, new Date(Date.now() + 60 * 60 * 1000));
+
+    const paths = revalidatePathMock.mock.calls.map((c) => c[0]);
+    expect(paths).toContain("/blog/hello-world");
+    expect(paths).toContain("/");
+    expect(paths).toContain("/blog");
+    expect(paths).toContain("/category/news");
+    expect(paths).toContain("/sitemap.xml");
+    expect(paths).toContain("/rss.xml");
+
+    const tags = revalidateTagMock.mock.calls.map((c) => c[0]);
+    expect(tags).toContain("post-7");
+    expect(tags).toContain("author-u-a1");
+    expect(tags).toContain("category-3");
+    expect(tags).toContain("posts-list");
+    for (const call of revalidateTagMock.mock.calls) {
+      expect(call.length).toBe(2);
+      expect(call[1]).toBe("max");
+    }
+  });
+
+  it("published + PAST date → rejects SCHEDULE_IN_PAST BEFORE any write (db.update + transitionPost MUST_NOT_BE_REACHED)", async () => {
+    updateMock.mockImplementation(() => {
+      throw new Error("MUST_NOT_BE_REACHED");
+    });
+    transitionPostMock.mockImplementation(() => {
+      throw new Error("MUST_NOT_BE_REACHED");
+    });
+    revalidatePathMock.mockImplementation(() => {
+      throw new Error("MUST_NOT_BE_REACHED");
+    });
+
+    const past = new Date(Date.now() - 60 * 60 * 1000);
+    await expect(setSchedule(7, past)).rejects.toThrow("SCHEDULE_IN_PAST");
+    expect(updateMock).not.toHaveBeenCalled();
+    expect(transitionPostMock).not.toHaveBeenCalled();
+    expect(revalidatePathMock).not.toHaveBeenCalled();
+  });
+
+  it("DRAFT post + any date → { ok: true, unpublished: false }; NO transition, NO public revalidation (existing behavior)", async () => {
+    selectPostMock.mockResolvedValue([
+      {
+        id: 8,
+        status: "draft",
+        slug: "draft-one",
+        authorId: "u-a1",
+        categoryId: 3,
+        categorySlug: "news",
+      },
+    ]);
+
+    const result = await setSchedule(8, new Date(Date.now() + 60 * 60 * 1000));
+
+    expect(result).toEqual({ ok: true, unpublished: false });
+    expect(transitionPostMock).not.toHaveBeenCalled();
+    expect(revalidatePathMock).not.toHaveBeenCalled();
+    expect(revalidateTagMock).not.toHaveBeenCalled();
+  });
+
+  it("missing post id → rejects NOT_FOUND before any write", async () => {
+    selectPostMock.mockResolvedValue([]);
+    updateMock.mockImplementation(() => {
+      throw new Error("MUST_NOT_BE_REACHED");
+    });
+    transitionPostMock.mockImplementation(() => {
+      throw new Error("MUST_NOT_BE_REACHED");
+    });
+
+    await expect(setSchedule(999, new Date(Date.now() + 60_000))).rejects.toThrow(
+      "NOT_FOUND",
+    );
+    expect(updateMock).not.toHaveBeenCalled();
+    expect(transitionPostMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("260828-gyt: unpublishPost — assertOwnsPost FIRST, transitionPost funnel, publishPost revalidation parity, no notify", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    assertOwnsPostMock.mockResolvedValue(adminSession());
+    requireCanMock.mockResolvedValue(adminSession());
+    transitionPostMock.mockResolvedValue(undefined);
+    updateMock.mockResolvedValue(undefined);
+    revalidatePathMock.mockReturnValue(undefined);
+    revalidateTagMock.mockReturnValue(undefined);
+    notifyUsersMock.mockResolvedValue(undefined);
+    // The revalidation fetch fixture (revalidatePublicPostSurfaces' select).
+    selectPostMock.mockResolvedValue([
+      {
+        id: 7,
+        slug: "hello-world",
+        authorId: "u-a1",
+        categoryId: 3,
+        categorySlug: "news",
+      },
+    ]);
+  });
+
+  it("assertOwnsPost FIRST — FORBIDDEN before transitionPost/db/notify (MUST_NOT_BE_REACHED)", async () => {
+    assertOwnsPostMock.mockImplementation(() => {
+      throw new Error("FORBIDDEN");
+    });
+    transitionPostMock.mockImplementation(() => {
+      throw new Error("MUST_NOT_BE_REACHED");
+    });
+    selectPostMock.mockImplementation(() => {
+      throw new Error("MUST_NOT_BE_REACHED");
+    });
+    notifyUsersMock.mockImplementation(() => {
+      throw new Error("MUST_NOT_BE_REACHED");
+    });
+
+    await expect(unpublishPost(7)).rejects.toThrow("FORBIDDEN");
+    expect(transitionPostMock).not.toHaveBeenCalled();
+    expect(updateMock).not.toHaveBeenCalled();
+    expect(notifyUsersMock).not.toHaveBeenCalled();
+  });
+
+  it("happy path → transitionPost(7,'draft') + full publishPost parity revalidation + { ok: true }", async () => {
+    const result = await unpublishPost(7);
+
+    expect(result).toEqual({ ok: true });
+    expect(transitionPostMock).toHaveBeenCalledWith(7, "draft");
+
+    const paths = revalidatePathMock.mock.calls.map((c) => c[0]);
+    expect(paths).toContain("/blog/hello-world");
+    expect(paths).toContain("/");
+    expect(paths).toContain("/blog");
+    expect(paths).toContain("/category/news");
+    expect(paths).toContain("/sitemap.xml");
+    expect(paths).toContain("/rss.xml");
+
+    const tags = revalidateTagMock.mock.calls.map((c) => c[0]);
+    expect(tags).toContain("post-7");
+    expect(tags).toContain("author-u-a1");
+    expect(tags).toContain("category-3");
+    expect(tags).toContain("posts-list");
+    for (const call of revalidateTagMock.mock.calls) {
+      expect(call.length).toBe(2);
+      expect(call[1]).toBe("max");
+    }
+  });
+
+  it("notifyUsers is NEVER called (no notify in v1)", async () => {
+    await unpublishPost(7);
+    expect(notifyUsersMock).not.toHaveBeenCalled();
+  });
+
+  it("transitionPost rejection (INVALID_TRANSITION) → error propagates, NO revalidation fires", async () => {
+    transitionPostMock.mockImplementation(() => {
+      throw new Error("INVALID_TRANSITION:published→draft");
+    });
+    revalidatePathMock.mockImplementation(() => {
+      throw new Error("MUST_NOT_BE_REACHED");
+    });
+    revalidateTagMock.mockImplementation(() => {
+      throw new Error("MUST_NOT_BE_REACHED");
+    });
+
+    await expect(unpublishPost(7)).rejects.toThrow("INVALID_TRANSITION");
+    expect(revalidatePathMock).not.toHaveBeenCalled();
+    expect(revalidateTagMock).not.toHaveBeenCalled();
   });
 });
