@@ -6,8 +6,11 @@
 // The single QueryClient for the (admin) route group. Created ONCE per mount
 // via useState's lazy initializer (avoids re-creating on every render, which
 // would also discard the cache). Wraps children with QueryClientProvider so
-// every dashboard page/components can useMutation/useQuery without
-// prop-drilling. React Query devtools render ONLY in development.
+// every dashboard page/component can useMutation/useQuery without
+// prop-drilling — and, since 260828-g2h, AdminShell mounts it around
+// AppHeader + the page content (the header's GlobalSearch/NotificationDropdown
+// islands need the client during SSR). React Query devtools render ONLY in
+// development.
 //
 // Scope boundary (D-28 — PERF-02 bundle isolation):
 //   This component is imported ONLY by `(admin)/AdminShell.tsx`. It MUST NOT
