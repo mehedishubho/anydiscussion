@@ -29,11 +29,15 @@ import type { HeaderUser } from "@/components/header/UserDropdown";
  * session source of truth; ProfileForm calls router.refresh() on save so the
  * server-rendered layout re-fetches and the header updates immediately.
  *
- * Phase 4 D-28: wraps {children} with QueryProvider so TanStack Query is
- * available across all dashboard pages. The provider is INSIDE AdminShell
- * (and thus inside `(admin)`) — never added to the root app/layout.tsx and
- * never imported from `(site)`. This keeps TanStack JS out of the public
- * bundle (PERF-02 isolation, audited in Phase 7).
+ * Phase 4 D-28, updated by quick task 260828-g2h: QueryProvider wraps the
+ * header AND the page content so the 260827-se8 header islands (GlobalSearch,
+ * NotificationDropdown) get the QueryClient during SSR — their prior
+ * outside-the-provider placement threw "No QueryClient set" at server render
+ * and forced the client-render fallback with a recoverable-error banner on
+ * every dashboard page. The D-28 guarantee itself is unchanged: the provider
+ * is INSIDE AdminShell (and thus inside `(admin)`) — never added to the root
+ * app/layout.tsx and never imported from `(site)`. This keeps TanStack JS
+ * out of the public bundle (PERF-02 isolation, audited in Phase 7).
  *
  * Phase 5 gap closure (Plan 05-06, UAT test 3 — silent saves): sonner's
  * <Toaster> mounted here, NEXT TO QueryProvider, with the same D-28-style
@@ -69,12 +73,17 @@ export default function AdminShell({
       <div
         className={`flex-1 transition-all  duration-300 ease-in-out ${mainContentMargin}`}
       >
-        {/* Header */}
-        <AppHeader user={user} />
-        {/* Page Content — QueryProvider scoped to (admin) only (D-28) */}
-        <div className="p-4 mx-auto max-w-(--breakpoint-2xl) md:p-6">
-          <QueryProvider>{children}</QueryProvider>
-        </div>
+        {/* QueryProvider wraps the header AND page content (260828-g2h) so
+            the header islands (GlobalSearch, NotificationDropdown) get the
+            QueryClient during SSR. (admin)-scoped only (D-28). */}
+        <QueryProvider>
+          {/* Header */}
+          <AppHeader user={user} />
+          {/* Page Content */}
+          <div className="p-4 mx-auto max-w-(--breakpoint-2xl) md:p-6">
+            {children}
+          </div>
+        </QueryProvider>
       </div>
       {/* sonner Toaster — (admin)-scoped only (05-06 gap closure, D-28-style
           isolation). richColors + top-right per the plan; theme left default. */}
