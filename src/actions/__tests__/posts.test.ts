@@ -34,6 +34,16 @@ const {
   insertValuesMock,
   revalidatePathMock,
   revalidateTagMock,
+  // 260827-se8 Task 4 — list-mechanics + notify-hook mocks:
+  //   notifyUsersMock    — spy standing in for @/lib/notifications
+  //   where/leftJoin/orderBy/limit/offset ArgsMocks — the chain-step recorders
+  //   of the unified select builder (structural filter proofs via deepContains)
+  notifyUsersMock,
+  whereArgsMock,
+  leftJoinArgsMock,
+  orderByArgsMock,
+  limitArgsMock,
+  offsetArgsMock,
 } = vi.hoisted(() => ({
   requireCanMock: vi.fn(),
   assertOwnsPostMock: vi.fn(),
@@ -54,11 +64,27 @@ const {
   insertValuesMock: vi.fn(),
   revalidatePathMock: vi.fn(),
   revalidateTagMock: vi.fn(),
+  notifyUsersMock: vi.fn(),
+  whereArgsMock: vi.fn(),
+  leftJoinArgsMock: vi.fn(),
+  orderByArgsMock: vi.fn(),
+  limitArgsMock: vi.fn(),
+  offsetArgsMock: vi.fn(),
 }));
 
 vi.mock("@/lib/permissions", () => ({
   requireCan: (...a: unknown[]) => requireCanMock(...a),
   assertOwnsPost: (...a: unknown[]) => assertOwnsPostMock(...a),
+}));
+
+// @/lib/notifications — 260827-se8 Task 4. submitForReview / publishPost /
+// returnForRevision await notifyUsers after their transitions. The helper's
+// own swallow contract is proven against the REAL module in
+// notifications.test.ts; here it is a spy so the per-action call shapes
+// (recipients, type, actor exclusion) and the actions' defense-in-depth
+// catches are testable.
+vi.mock("@/lib/notifications", () => ({
+  notifyUsers: (...a: unknown[]) => notifyUsersMock(...a),
 }));
 
 vi.mock("@/lib/permissions/post-transitions", () => ({
@@ -95,27 +121,64 @@ vi.mock("next/cache", () => ({
   revalidateTag: (...a: unknown[]) => revalidateTagMock(...a),
 }));
 
-vi.mock("./posts-schema", () => ({
+// 260827-se8 Task 4 — postSchema stays mocked (savePost tests override its
+// parse); the NEW postListSchema stays REAL (importOriginal) so listPosts /
+// countPosts tests exercise the actual Zod coercion (defaults, enum gates,
+// pageSize cap) rather than a passthrough.
+vi.mock("./posts-schema", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../posts-schema")>()),
   // postSchema.parse(input) returns the input shape — tests override via mockResolvedValue.
   postSchema: { parse: (input: unknown) => postSchemaParseMock(input) },
 }));
 
 // Chainable Drizzle select builder.
 vi.mock("@/lib/db", () => {
-  // Chainable Drizzle builder mock: supports select().from().where().limit(),
-  // select().from().leftJoin().where().limit() (publishPost category join),
-  // select().from().limit(), insert().values().returning(), update().set().where().
-  const chainableSelect = () => ({
-    leftJoin: vi.fn(() => ({
-      where: () => ({ limit: (...a: unknown[]) => selectPostMock(...a) }),
-    })),
-    where: () => ({ limit: (...a: unknown[]) => selectPostMock(...a) }),
-    limit: (...a: unknown[]) => selectPostMock(...a),
-  });
+  // 260827-se8 Task 4 — UNIFIED lazy chain node: every builder method
+  // (leftJoin/where/orderBy/limit/offset) records its args into a dedicated
+  // ArgsMock and returns the SAME node; the node is a lazy thenable — awaiting
+  // at ANY point (where for countPosts, offset for listPosts, limit for the
+  // legacy single-row fetches) resolves selectPostMock(). Lazy = the terminal
+  // only fires when the action actually awaits, so gate-ordering proofs
+  // ("MUST_NOT_BE_REACHED before any select") stay honest.
+  const makeChain = () => {
+    const node: {
+      then: (onF?: (v: unknown) => unknown, onR?: (e: unknown) => unknown) => Promise<unknown>;
+      leftJoin: (...a: unknown[]) => unknown;
+      where: (...a: unknown[]) => unknown;
+      orderBy: (...a: unknown[]) => unknown;
+      limit: (...a: unknown[]) => unknown;
+      offset: (...a: unknown[]) => unknown;
+    } = {} as typeof node;
+    node.then = (onF, onR) =>
+      Promise.resolve()
+        .then(() => selectPostMock())
+        .then(onF, onR);
+    node.leftJoin = (...a: unknown[]) => {
+      leftJoinArgsMock(...a);
+      return node;
+    };
+    node.where = (...a: unknown[]) => {
+      whereArgsMock(...a);
+      return node;
+    };
+    node.orderBy = (...a: unknown[]) => {
+      orderByArgsMock(...a);
+      return node;
+    };
+    node.limit = (...a: unknown[]) => {
+      limitArgsMock(...a);
+      return node;
+    };
+    node.offset = (...a: unknown[]) => {
+      offsetArgsMock(...a);
+      return node;
+    };
+    return node;
+  };
   return {
     db: {
       select: vi.fn(() => ({
-        from: vi.fn(() => chainableSelect()),
+        from: vi.fn(() => makeChain()),
       })),
       insert: vi.fn(() => ({
         values: (v: unknown) => {
@@ -133,6 +196,7 @@ vi.mock("@/lib/db", () => {
     schema: {
       posts: {
         id: "id",
+        title: "title",
         slug: "slug",
         status: "status",
         authorId: "author_id",
@@ -154,7 +218,9 @@ vi.mock("@/lib/db", () => {
         ogImage: "og_image",
         canonicalUrl: "canonical_url",
       },
-      user: { id: "id" },
+      // 260827-se8 Task 4 — name/email/role markers: the author ilike filter
+      // and the editor+admin recipient select reference these columns.
+      user: { id: "id", name: "name", email: "email", role: "role" },
       settings: { key: "key", value: "value" },
     },
   };
@@ -164,15 +230,39 @@ import {
   savePost,
   getPost,
   listPosts,
+  countPosts,
   submitForReview,
   autosavePost,
   rotatePreviewToken,
   publishPost,
+  returnForRevision,
   setSchedule,
   revokePreviewToken,
 } from "../posts";
 
 const adminSession = () => ({ user: { id: "u-admin", role: "admin" }, session: { id: "s1" } });
+
+/**
+ * deepContains — walk an object graph looking for an exact value (260827-se8).
+ * drizzle eq()/ilike()/and() embed the runtime value inside SQL nodes of the
+ * captured WHERE/ORDER BY arguments; this helper proves a filter value reached
+ * the query without depending on drizzle internals. Copied verbatim from
+ * src/actions/__tests__/notifications.test.ts.
+ */
+function deepContains(value: unknown, needle: unknown): boolean {
+  const seen = new Set<unknown>();
+  const walk = (v: unknown): boolean => {
+    if (v === null || v === undefined) return false;
+    if (typeof v === "string") return v === needle;
+    if (typeof v === "number") return v === needle;
+    if (typeof v !== "object") return false;
+    if (seen.has(v)) return false;
+    seen.add(v);
+    if (Array.isArray(v)) return v.some(walk);
+    return Object.values(v).some(walk);
+  };
+  return walk(value);
+}
 
 describe("T-03-01 / Pitfall #1: every posts.ts mutating action calls requireCan/assertOwnsPost FIRST", () => {
   beforeEach(() => {
@@ -563,5 +653,295 @@ describe("D-19: revokePreviewToken clears the preview token", () => {
     });
     await expect(revokePreviewToken(7)).rejects.toThrow("FORBIDDEN");
     expect(updateMock).not.toHaveBeenCalled();
+  });
+});
+
+// ===========================================================================
+// 260827-se8 Task 4 — URL-driven list mechanics (listPosts/countPosts),
+// returnForRevision, and the submit/publish/return notify hooks
+// [CITED: 260827-se8-PLAN.md Task 4 <behavior>]
+// [CITED: research — ILIKE not FTS for the dashboard list (drafts/pending must
+//  be findable; admin tables are small); T-Q-se8-07 awaited-swallow notify]
+// ===========================================================================
+
+describe("260827-se8 Task 4: listPosts — URL-filter mechanics (ILIKE, desc(updatedAt), page math)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    requireCanMock.mockResolvedValue(adminSession());
+    selectPostMock.mockResolvedValue([]);
+  });
+
+  it("non-privileged call → requireCan throws BEFORE any db select (MUST_NOT_BE_REACHED)", async () => {
+    requireCanMock.mockImplementation(() => {
+      throw new Error("FORBIDDEN");
+    });
+    selectPostMock.mockImplementation(() => {
+      throw new Error("MUST_NOT_BE_REACHED");
+    });
+
+    await expect(listPosts({ q: "x" })).rejects.toThrow("FORBIDDEN");
+    expect(selectPostMock).not.toHaveBeenCalled();
+    expect(requireCanMock).toHaveBeenCalledWith({ post: ["read"] });
+  });
+
+  it("q='hello' → WHERE embeds %hello% (title OR slug ilike); page 1 defaults → limit 20 / offset 0", async () => {
+    await listPosts({ q: "hello" });
+
+    expect(whereArgsMock).toHaveBeenCalled();
+    expect(deepContains(whereArgsMock.mock.calls[0][0], "%hello%")).toBe(true);
+    expect(limitArgsMock).toHaveBeenCalledWith(20);
+    expect(offsetArgsMock).toHaveBeenCalledWith(0);
+  });
+
+  it("status + categoryId equality reach the WHERE clause", async () => {
+    await listPosts({ status: "draft", categoryId: 12 });
+
+    const whereArg = whereArgsMock.mock.calls[0][0];
+    expect(deepContains(whereArg, "draft")).toBe(true);
+    expect(deepContains(whereArg, 12)).toBe(true);
+  });
+
+  it("author='jane' → leftJoin user + WHERE embeds %jane% (joined name OR email ilike)", async () => {
+    await listPosts({ author: "jane" });
+
+    expect(leftJoinArgsMock).toHaveBeenCalled();
+    expect(deepContains(whereArgsMock.mock.calls[0][0], "%jane%")).toBe(true);
+  });
+
+  it("deterministic desc(updatedAt) ordering", async () => {
+    await listPosts({});
+
+    expect(orderByArgsMock).toHaveBeenCalled();
+    expect(deepContains(orderByArgsMock.mock.calls[0][0], "updated_at")).toBe(true);
+  });
+
+  it("page 3 → offset (3-1)×20 = 40; explicit pageSize 50 passes through; pageSize 500 → Zod REJECTS (>100 gate)", async () => {
+    await listPosts({ page: 3 });
+    expect(limitArgsMock).toHaveBeenCalledWith(20);
+    expect(offsetArgsMock).toHaveBeenCalledWith(40);
+
+    vi.clearAllMocks();
+    selectPostMock.mockResolvedValue([]);
+    await listPosts({ pageSize: 50 });
+    expect(limitArgsMock).toHaveBeenCalledWith(50);
+
+    // The 1-100 window is a hard gate (bounds DB work), not a silent clamp.
+    selectPostMock.mockClear();
+    await expect(listPosts({ pageSize: 500 })).rejects.toThrow();
+    expect(selectPostMock).not.toHaveBeenCalled();
+  });
+
+  it("invalid status enum → Zod throws BEFORE any db select", async () => {
+    // typed as never at the boundary — the URL layer hands raw strings in
+    await expect(listPosts({ status: "bogus" } as never)).rejects.toThrow();
+    expect(selectPostMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("260827-se8 Task 4: countPosts — same gate + same WHERE, count(*) shape, NO page window", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    requireCanMock.mockResolvedValue(adminSession());
+    selectPostMock.mockResolvedValue([{ value: 7 }]);
+  });
+
+  it("non-privileged call → FORBIDDEN before any db select", async () => {
+    requireCanMock.mockImplementation(() => {
+      throw new Error("FORBIDDEN");
+    });
+    selectPostMock.mockImplementation(() => {
+      throw new Error("MUST_NOT_BE_REACHED");
+    });
+
+    await expect(countPosts({})).rejects.toThrow("FORBIDDEN");
+    expect(selectPostMock).not.toHaveBeenCalled();
+  });
+
+  it("applies the SAME q filter and returns Number(row.value) — never limit/offset (no page window)", async () => {
+    const n = await countPosts({ q: "hello" });
+
+    expect(n).toBe(7);
+    expect(deepContains(whereArgsMock.mock.calls[0][0], "%hello%")).toBe(true);
+    expect(limitArgsMock).not.toHaveBeenCalled();
+    expect(offsetArgsMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("260827-se8 Task 4: returnForRevision — assertOwnsPost FIRST, notify author (minus actor), single 2-arg revalidation", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    assertOwnsPostMock.mockResolvedValue(adminSession()); // actor u-admin
+    transitionPostMock.mockResolvedValue(undefined);
+    selectPostMock.mockResolvedValue([
+      { title: "Hello", slug: "hello", authorId: "u-author" },
+    ]);
+    notifyUsersMock.mockResolvedValue(undefined);
+    revalidatePathMock.mockReturnValue(undefined);
+    revalidateTagMock.mockReturnValue(undefined);
+  });
+
+  it("assertOwnsPost fires FIRST — UNAUTHORIZED before transition/notify/select (MUST_NOT_BE_REACHED)", async () => {
+    assertOwnsPostMock.mockRejectedValue(new Error("UNAUTHORIZED"));
+    transitionPostMock.mockImplementation(() => {
+      throw new Error("MUST_NOT_BE_REACHED");
+    });
+    selectPostMock.mockImplementation(() => {
+      throw new Error("MUST_NOT_BE_REACHED");
+    });
+    notifyUsersMock.mockImplementation(() => {
+      throw new Error("MUST_NOT_BE_REACHED");
+    });
+
+    await expect(returnForRevision(5)).rejects.toThrow("UNAUTHORIZED");
+    expect(transitionPostMock).not.toHaveBeenCalled();
+    expect(notifyUsersMock).not.toHaveBeenCalled();
+  });
+
+  it("happy path → transitionPost(5,'draft'), notify the author 'post_returned' with postId+postTitle, EXACTLY ONE revalidateTag('posts-list','max') and NO revalidatePath", async () => {
+    const result = await returnForRevision(5);
+
+    expect(result).toEqual({ ok: true });
+    expect(transitionPostMock).toHaveBeenCalledWith(5, "draft");
+    expect(notifyUsersMock).toHaveBeenCalledTimes(1);
+    expect(notifyUsersMock).toHaveBeenCalledWith(
+      ["u-author"],
+      "post_returned",
+      { postId: 5, postTitle: "Hello" },
+    );
+    expect(revalidateTagMock).toHaveBeenCalledTimes(1);
+    expect(revalidateTagMock).toHaveBeenCalledWith("posts-list", "max");
+    expect(revalidatePathMock).not.toHaveBeenCalled();
+  });
+
+  it("actor IS the author → no self-notify, action still ok", async () => {
+    selectPostMock.mockResolvedValue([
+      { title: "Mine", slug: "mine", authorId: "u-admin" },
+    ]);
+
+    await expect(returnForRevision(5)).resolves.toEqual({ ok: true });
+    expect(notifyUsersMock).not.toHaveBeenCalled();
+  });
+
+  it("notifyUsers rejection → action STILL returns ok (T-Q-se8-07 awaited-swallow, action-level catch)", async () => {
+    notifyUsersMock.mockRejectedValue(new Error("insert failed"));
+
+    await expect(returnForRevision(5)).resolves.toEqual({ ok: true });
+    expect(revalidateTagMock).toHaveBeenCalledWith("posts-list", "max");
+  });
+
+  it("null authorId → no notify, still ok + revalidated", async () => {
+    selectPostMock.mockResolvedValue([{ title: "T", slug: "t", authorId: null }]);
+
+    await expect(returnForRevision(5)).resolves.toEqual({ ok: true });
+    expect(notifyUsersMock).not.toHaveBeenCalled();
+    expect(revalidateTagMock).toHaveBeenCalledWith("posts-list", "max");
+  });
+});
+
+describe("260827-se8 Task 4: submitForReview notifies editors+admins (actor excluded)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    assertOwnsPostMock.mockResolvedValue(adminSession()); // actor u-admin
+    transitionPostMock.mockResolvedValue(undefined);
+    notifyUsersMock.mockResolvedValue(undefined);
+  });
+
+  it("after the transition → notifyUsers fires with reviewer ids EXCLUDING the actor, 'post_submitted' + postId/postTitle", async () => {
+    // First select: the post title fetch; second: the editor+admin id rows.
+    selectPostMock
+      .mockResolvedValueOnce([{ title: "Draft T" }])
+      .mockResolvedValueOnce([{ id: "u-e1" }, { id: "u-admin" }]);
+
+    const result = await submitForReview(9);
+
+    expect(result).toEqual({ ok: true });
+    expect(transitionPostMock).toHaveBeenCalledWith(9, "pending_review");
+    expect(notifyUsersMock).toHaveBeenCalledTimes(1);
+    expect(notifyUsersMock).toHaveBeenCalledWith(
+      ["u-e1"],
+      "post_submitted",
+      { postId: 9, postTitle: "Draft T" },
+    );
+  });
+
+  it("notifyUsers rejection → submit STILL returns ok (T-Q-se8-07)", async () => {
+    selectPostMock
+      .mockResolvedValueOnce([{ title: "T" }])
+      .mockResolvedValueOnce([{ id: "u-e1" }]);
+    notifyUsersMock.mockRejectedValue(new Error("insert failed"));
+
+    await expect(submitForReview(9)).resolves.toEqual({ ok: true });
+  });
+
+  it("transitionPost rejection → notify NEVER fires (funnel-first ordering)", async () => {
+    transitionPostMock.mockImplementation(() => {
+      throw new Error("FORBIDDEN");
+    });
+    notifyUsersMock.mockImplementation(() => {
+      throw new Error("MUST_NOT_BE_REACHED");
+    });
+
+    await expect(submitForReview(9)).rejects.toThrow("FORBIDDEN");
+    expect(notifyUsersMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("260827-se8 Task 4: publishPost notifies the author (actor excluded)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    assertOwnsPostMock.mockResolvedValue(adminSession()); // actor u-admin
+    requireCanMock.mockResolvedValue(adminSession());
+    transitionPostMock.mockResolvedValue(undefined);
+    updateMock.mockResolvedValue(undefined);
+    revalidatePathMock.mockReturnValue(undefined);
+    revalidateTagMock.mockReturnValue(undefined);
+    notifyUsersMock.mockResolvedValue(undefined);
+    selectPostMock.mockResolvedValue([
+      {
+        id: 7,
+        title: "Hello World",
+        slug: "hello-world",
+        authorId: "u-author-1",
+        categoryId: 3,
+        categorySlug: "news",
+      },
+    ]);
+  });
+
+  it("after revalidation → notifyUsers fires for the post's authorId with 'post_published' + postTitle", async () => {
+    const result = await publishPost(7);
+
+    expect(result).toEqual({ ok: true });
+    expect(notifyUsersMock).toHaveBeenCalledTimes(1);
+    expect(notifyUsersMock).toHaveBeenCalledWith(
+      ["u-author-1"],
+      "post_published",
+      { postId: 7, postTitle: "Hello World" },
+    );
+    // Revalidation is UNTOUCHED by the notify hook.
+    expect(revalidateTagMock.mock.calls.length).toBeGreaterThan(0);
+  });
+
+  it("notifyUsers rejection → publish still ok and revalidation already fired (T-Q-se8-07)", async () => {
+    notifyUsersMock.mockRejectedValue(new Error("insert failed"));
+
+    await expect(publishPost(7)).resolves.toEqual({ ok: true });
+    expect(revalidateTagMock.mock.calls.length).toBeGreaterThan(0);
+  });
+
+  it("actor IS the author → no self-notify", async () => {
+    selectPostMock.mockResolvedValue([
+      {
+        id: 7,
+        title: "Mine",
+        slug: "mine",
+        authorId: "u-admin",
+        categoryId: 3,
+        categorySlug: "news",
+      },
+    ]);
+
+    await publishPost(7);
+    expect(notifyUsersMock).not.toHaveBeenCalled();
   });
 });

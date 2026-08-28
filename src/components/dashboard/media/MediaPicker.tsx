@@ -74,7 +74,10 @@ export default function MediaPicker({
   // ["media"] query key so it shares state with the /dashboard/media page.
   const { data: rows = [], isLoading } = useQuery({
     queryKey: ["media"],
-    queryFn: async () => (await listMedia({ limit: 100 })) as MediaRow[],
+    queryFn: async () =>
+      // 260827-se8 Task 7: raw limit/offset fields are gone from mediaListSchema —
+      // the picker fetches one max-cap page (pageSize 100).
+      (await listMedia({ pageSize: 100 })) as MediaRow[],
     enabled: isOpen,
     staleTime: 30_000,
   });

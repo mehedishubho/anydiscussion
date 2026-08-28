@@ -18,15 +18,16 @@
 import { revalidatePath, revalidateTag } from "next/cache";
 import { randomUUID } from "node:crypto";
 import { db, schema } from "@/lib/db";
-import { eq } from "drizzle-orm";
+import { and, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
 import { log } from "@/lib/log";
+import { notifyUsers } from "@/lib/notifications";
 import { assertOwnsPost, requireCan } from "@/lib/permissions";
 import { transitionPost } from "@/lib/permissions/post-transitions";
 import { assertUniqueSlug } from "@/lib/slug";
 import { deriveExcerpt } from "@/lib/excerpt";
 import { sanitizeBeforeStore } from "@/lib/sanitize";
 import { seoMetaSchema } from "@/lib/seo/validation";
-import { postSchema } from "./posts-schema";
+import { postListSchema, postSchema, type PostListInput, type PostListQuery } from "./posts-schema";
 
 type PostStatus = "draft" | "pending_review" | "published";
 
@@ -246,25 +247,166 @@ export async function getPost(postId: number) {
 }
 
 /**
- * listPosts — read all posts (dashboard list page). Editor/admin see all;
- * authors see only their own. requireCan({post:["read"]}) gates the call.
+ * buildPostListWhere — 260827-se8 Task 4. The shared WHERE builder for
+ * listPosts + countPosts (identical filters ⇒ the count always matches the
+ * page window). ILIKE, NOT posts.searchVector FTS: searchPosts is
+ * published-only and wrong for the dashboard where drafts/pending_review
+ * must be findable; admin tables are small, ILIKE is the verified decision.
  */
-export async function listPosts(opts?: { status?: PostStatus; authorId?: string; limit?: number }) {
-  await requireCan({ post: ["read"] });
-  // NOTE: scoping by authorId/status is built incrementally by the dashboard.
-  // For now the simple select-all is gated by the read capability.
-  const rows = await db.select().from(schema.posts).limit(opts?.limit ?? 50);
-  return rows;
+function buildPostListWhere(filters: PostListQuery) {
+  const conds = [];
+  if (filters.q) {
+    const pattern = `%${filters.q}%`;
+    conds.push(
+      or(ilike(schema.posts.title, pattern), ilike(schema.posts.slug, pattern)),
+    );
+  }
+  if (filters.status) conds.push(eq(schema.posts.status, filters.status));
+  if (filters.categoryId) {
+    conds.push(eq(schema.posts.categoryId, filters.categoryId));
+  }
+  if (filters.author) {
+    // The author free-text filter matches the JOINED user's name OR email.
+    const pattern = `%${filters.author}%`;
+    conds.push(
+      or(ilike(schema.user.name, pattern), ilike(schema.user.email, pattern)),
+    );
+  }
+  return conds.length > 0 ? and(...conds) : undefined;
+}
+
+/**
+ * listPosts — 260827-se8 Task 4: the URL-driven dashboard list. Permission
+ * gate FIRST, then the shared Zod parse (defaults page=1/pageSize=20, cap 100).
+ * Deterministic desc(updatedAt) ordering; limit/offset from the parsed page.
+ * The user leftJoin (always applied — deterministic row shape) supports the
+ * author filter; rows are mapped back to plain post rows.
+ * Editor/admin see all; authors see only their own (requireCan + the row
+ * projection is the existing contract).
+ */
+export async function listPosts(opts?: PostListInput) {
+  await requireCan({ post: ["read"] }); // FIRST (Pitfall #1)
+  const filters = postListSchema.parse(opts ?? {});
+  const where = buildPostListWhere(filters);
+  const base = db
+    .select()
+    .from(schema.posts)
+    .leftJoin(schema.user, eq(schema.posts.authorId, schema.user.id));
+  const filtered = where ? base.where(where) : base;
+  const rows = await filtered
+    .orderBy(desc(schema.posts.updatedAt))
+    .limit(filters.pageSize)
+    .offset((filters.page - 1) * filters.pageSize);
+  // leftJoin nests each row as { posts, user } — return the plain post rows.
+  return rows.map((row) => row.posts);
+}
+
+/**
+ * countPosts — 260827-se8 Task 4. Identical gate + identical WHERE as
+ * listPosts (shared builder), `select({ value: sql`count(*)` })` shape —
+ * never counts by materializing rows (newsletter.ts countSubscribers
+ * precedent). No page window: the count is the TOTAL for pagination math.
+ */
+export async function countPosts(opts?: PostListInput): Promise<number> {
+  await requireCan({ post: ["read"] }); // FIRST (Pitfall #1)
+  const filters = postListSchema.parse(opts ?? {});
+  const where = buildPostListWhere(filters);
+  const base = db
+    .select({ value: sql<number>`count(*)` })
+    .from(schema.posts)
+    .leftJoin(schema.user, eq(schema.posts.authorId, schema.user.id));
+  const [row] = await (where ? base.where(where) : base);
+  return Number(row?.value ?? 0);
+}
+
+/**
+ * returnForRevision — 260827-se8 Task 4. Editor/admin sends a pending_review
+ * post back to draft (the verified missing wrapper: TRANSITIONS already
+ * legalizes pending_review → draft for editor/admin). assertOwnsPost FIRST —
+ * the server stays correct even though the Return button is editor/admin-only
+ * UI (authors can only affect their own posts).
+ */
+export async function returnForRevision(postId: number) {
+  // 1. Ownership/authority FIRST (Pitfall #1).
+  const session = await assertOwnsPost(postId);
+
+  // 2. R7 funnel — transitionPost enforces role + TRANSITIONS + requireCan.
+  await transitionPost(postId, "draft");
+
+  // 3. Fetch the post for the notification payload.
+  const [post] = await db
+    .select({
+      title: schema.posts.title,
+      slug: schema.posts.slug,
+      authorId: schema.posts.authorId,
+    })
+    .from(schema.posts)
+    .where(eq(schema.posts.id, postId))
+    .limit(1);
+
+  // 4. Notify the author — never the actor (self-return is silent).
+  //    T-Q-se8-07 awaited-swallow: a notify failure NEVER fails the action.
+  if (post?.authorId && post.authorId !== session.user.id) {
+    try {
+      await notifyUsers([post.authorId], "post_returned", {
+        postId,
+        postTitle: post.title,
+      });
+    } catch (err) {
+      log.error("post_returned notify failed", { postId, err: String(err) });
+    }
+  }
+
+  // 5. Dashboard list only. A pending_review post has NO public cache surface
+  //    (public feeds filter status='published'), so the single 2-arg
+  //    revalidateTag("posts-list", "max") is the COMPLETE invalidation
+  //    (Pitfall 5: the 2-arg form is mandatory in Next.js 16.2.9).
+  revalidateTag("posts-list", "max");
+
+  return { ok: true };
 }
 
 /**
  * submitForReview — author path. Calls transitionPost(postId, 'pending_review')
  * (R7 funnel). Authors CAN reach pending_review; they CANNOT reach published
  * (Phase-2 TRANSITIONS table + requireCan double enforcement).
+ *
+ * 260827-se8 Task 4: after the transition, every editor+admin (minus the
+ * actor) gets a post_submitted notification — the review queue is no longer
+ * discoverable only by re-visiting the list.
  */
 export async function submitForReview(postId: number) {
-  await assertOwnsPost(postId); // FIRST (Pitfall #1)
+  const session = await assertOwnsPost(postId); // FIRST (Pitfall #1)
   await transitionPost(postId, "pending_review");
+
+  // Title for the notification payload.
+  const [post] = await db
+    .select({ title: schema.posts.title })
+    .from(schema.posts)
+    .where(eq(schema.posts.id, postId))
+    .limit(1);
+
+  // Every editor + admin EXCLUDING the actor (an editor submitting their own
+  // post is not waiting on themselves). T-Q-se8-07 awaited-swallow: a notify
+  // failure never fails the submit.
+  const reviewers = await db
+    .select({ id: schema.user.id })
+    .from(schema.user)
+    .where(inArray(schema.user.role, ["editor", "admin"]));
+  const recipients = reviewers
+    .map((r) => r.id)
+    .filter((id) => id !== session.user.id);
+  if (recipients.length > 0) {
+    try {
+      await notifyUsers(recipients, "post_submitted", {
+        postId,
+        postTitle: post?.title,
+      });
+    } catch (err) {
+      log.error("post_submitted notify failed", { postId, err: String(err) });
+    }
+  }
+
   return { ok: true };
 }
 
@@ -329,7 +471,7 @@ export async function rotatePreviewToken(postId: number) {
  */
 export async function publishPost(postId: number) {
   // 1. Ownership check FIRST (Pitfall #1). Admin/editor bypass.
-  await assertOwnsPost(postId);
+  const session = await assertOwnsPost(postId);
 
   // 2. R7 funnel — transitionPost enforces role + TRANSITIONS + requireCan(post:publish).
   //    Authors fail here (double enforcement: TRANSITIONS.author excludes published
@@ -338,10 +480,12 @@ export async function publishPost(postId: number) {
 
   // 3. Fetch the post + category slug for revalidation. transitionPost already
   //    confirmed the post exists; this select gets the fields needed for the
-  //    concrete revalidatePath / revalidateTag calls below.
+  //    concrete revalidatePath / revalidateTag calls below (+ title for the
+  //    260827-se8 author notification).
   const [post] = await db
     .select({
       id: schema.posts.id,
+      title: schema.posts.title,
       slug: schema.posts.slug,
       authorId: schema.posts.authorId,
       categoryId: schema.posts.categoryId,
@@ -375,6 +519,22 @@ export async function publishPost(postId: number) {
   // 6. D-19 — rotate the preview token so the old /preview/[token] link 404s.
   //    This invalidates any shared draft-preview link on publish.
   await rotatePreviewToken(postId);
+
+  // 7. 260827-se8 Task 4 — notify the post's author (never the actor: an
+  //    author-publishing-own is impossible per TRANSITIONS, but an editor
+  //    publishing their own post must not self-notify) that the post is live.
+  //    T-Q-se8-07 awaited-swallow: a notify failure NEVER fails the publish —
+  //    the revalidation above already happened and stays untouched.
+  if (post.authorId && post.authorId !== session.user.id) {
+    try {
+      await notifyUsers([post.authorId], "post_published", {
+        postId,
+        postTitle: post.title,
+      });
+    } catch (err) {
+      log.error("post_published notify failed", { postId, err: String(err) });
+    }
+  }
 
   return { ok: true };
 }

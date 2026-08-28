@@ -30,6 +30,7 @@ import { z } from "zod";
 import { requireRole } from "@/lib/permissions";
 import { log } from "@/lib/log";
 import { getClientIpFromXff, newsletterLimiter } from "@/lib/rate-limit";
+import { notifyUsers } from "@/lib/notifications";
 import {
   newsletterSettingsSchema,
   subscribeSchema,
@@ -140,7 +141,8 @@ export async function saveNewsletterSettings(
  * action escapes to the error boundary instead of rendering inline; returned
  * states keep the public footer resilient.
  *
- * Order of operations mirrors contact.ts steps 1-3:
+ * Order of operations mirrors contact.ts steps 1-3 (plus the 260827-se8
+ * notify hook):
  *   1. Zod parse (email normalized: trim + lowercase — no citext) → INVALID_EMAIL.
  *   2. Honeypot ("website" non-empty after trim) → SILENT success WITHOUT
  *      inserting (bots that see errors retry with mutated payloads — D-05).
@@ -150,13 +152,18 @@ export async function saveNewsletterSettings(
  *      RATE_LIMITED. A limiter REJECTION (Redis outage — limit() propagates
  *      Redis errors, WR-01) maps to the SAME returned RATE_LIMITED state,
  *      keeping this action's returned-state (never thrown) resilience contract.
- *   4. The D-01 upsert, ONE statement, no read-check-write race:
+ *   4. Pre-read the subscriber row (260827-se8): status "active" → idempotent
+ *      duplicate, NO notify later; missing/unsubscribed → real new subscriber.
+ *   5. The D-01 upsert, ONE statement, no read-check-write race:
  *      insert({ email, token: crypto.randomUUID() }).onConflictDoUpdate({
  *        target: email, set: { status: "active", updatedAt: new Date() } })
  *      Covers all three branches: first subscribe inserts active; existing
  *      active is an idempotent no-op success; previously unsubscribed flips
  *      back to active. The explicit updatedAt in set is REQUIRED — Drizzle's
  *      $onUpdate does not reliably fire on the conflict path.
+ *   6. When step 4 found NO active row: notifyUsers(all admin ids,
+ *      "new_subscriber", { subscriberEmail }) — awaited, double-swallowed
+ *      (helper + local catch), never failing the subscribe (T-Q-se8-07).
  *
  * Uniform success on every success path (T-3l2-04): duplicate emails are NEVER
  * an error and the response never leaks whether the email already existed.
@@ -205,7 +212,29 @@ export async function subscribeNewsletter(
     return { status: "error", message: "RATE_LIMITED" };
   }
 
-  // 4. The D-01 upsert in a single statement. The token is generated at
+  // 4. Pre-read the subscriber row (260827-se8 — new-subscriber → admins
+  //    notify). BEFORE the D-01 upsert: an existing row with status "active"
+  //    means this submit is an idempotent duplicate that must NOT re-notify;
+  //    a missing row (first subscribe) or an "unsubscribed" row
+  //    (re-subscribe-after-unsubscribe) both mean a REAL new subscriber.
+  //    The tiny pre-read/upsert race (two concurrent first-subscribes both
+  //    notify) is acceptable — display-only data, and the per-IP limiter
+  //    already bounds volume (research A1).
+  let wasActive = false;
+  try {
+    const [existing] = await db
+      .select({ status: schema.subscribers.status })
+      .from(schema.subscribers)
+      .where(eq(schema.subscribers.email, parsed.data.email))
+      .limit(1);
+    wasActive = existing?.status === "active";
+  } catch {
+    // Pre-read failure degrades to "assume new" — the notify below is
+    // best-effort display data; it must never block the subscribe itself.
+    wasActive = false;
+  }
+
+  // 5. The D-01 upsert in a single statement. The token is generated at
   //    REQUEST time inside this action — never inside the footer component
   //    (D-04: every row needs the unsubscribe credential from birth).
   try {
@@ -216,13 +245,37 @@ export async function subscribeNewsletter(
         target: schema.subscribers.email,
         set: { status: "active", updatedAt: new Date() },
       });
-    return { status: "success" };
   } catch (err) {
     log.error("newsletter subscribe failed", {
       message: err instanceof Error ? err.message : String(err),
     });
     return { status: "error", message: "UNKNOWN" };
   }
+
+  // 6. New-subscriber → admins notification (260827-se8 decision). Only when
+  //    the pre-read found NO active row. notifyUsers swallows insert failures
+  //    internally; the local try/catch is defense-in-depth so a notify-layer
+  //    failure can NEVER flip the returned subscribe state (T-Q-se8-07).
+  if (!wasActive) {
+    try {
+      const admins = await db
+        .select({ id: schema.user.id })
+        .from(schema.user)
+        .where(eq(schema.user.role, "admin"));
+      await notifyUsers(
+        admins.map((a) => a.id),
+        "new_subscriber",
+        { subscriberEmail: parsed.data.email },
+      );
+    } catch (err) {
+      log.error("new-subscriber notify failed", {
+        email: parsed.data.email,
+        err: String(err),
+      });
+    }
+  }
+
+  return { status: "success" };
 }
 
 // === 260824-3l2 D-03: admin subscriber management (Wave 4) ====================

@@ -72,7 +72,9 @@ export default function MediaGrid({ initialMedia }: MediaGridProps) {
   const { data: rows = initialMedia } = useQuery({
     queryKey,
     queryFn: async () => {
-      const fresh = (await listMedia({ limit: 100 })) as MediaRow[];
+      // 260827-se8 Task 7: raw limit/offset fields are gone from mediaListSchema —
+      // a full-library refresh is now a single max-cap page (pageSize 100).
+      const fresh = (await listMedia({ pageSize: 100 })) as MediaRow[];
       return fresh;
     },
     initialData: initialMedia,

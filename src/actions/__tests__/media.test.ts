@@ -36,6 +36,11 @@ const {
   insertReturningMock,
   selectMediaMock,
   updateMediaMock,
+  // 260827-se8 Task 7 — WHERE/limit/offset/orderBy arg capture
+  whereArgsMock,
+  orderByArgsMock,
+  limitArgsMock,
+  offsetArgsMock,
 } = vi.hoisted(() => ({
   requireCanMock: vi.fn(),
   getActiveProviderMock: vi.fn(),
@@ -48,6 +53,10 @@ const {
   insertReturningMock: vi.fn(),
   selectMediaMock: vi.fn(),
   updateMediaMock: vi.fn(),
+  whereArgsMock: vi.fn(),
+  orderByArgsMock: vi.fn(),
+  limitArgsMock: vi.fn(),
+  offsetArgsMock: vi.fn(),
 }));
 
 vi.mock("@/lib/permissions", () => ({
@@ -62,16 +71,16 @@ vi.mock("@/lib/auth", () => ({
   auth: { api: { getSession: vi.fn() } },
 }));
 
-// ./media-schema — the Zod schema + MEDIA_MAX_SIZE_BYTES constant.
-// mediaUploadSchema.parse returns the input shape; MEDIA_MAX_SIZE_BYTES = 10MB.
-vi.mock("../media-schema", () => ({
+// ./media-schema — 260827-se8 Task 7: PARTIAL mock via importOriginal.
+// mediaUploadSchema stays a File-passthrough stub (File construction stays
+// outside Zod); mediaListSchema is now the REAL module export so the new
+// q/kind/page/pageSize contract (defaults + the 1-100 pageSize cap) is
+// exercised by the actual Zod schema, not a stub (same approach as
+// posts.test.ts keeping postListSchema real).
+vi.mock("../media-schema", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../media-schema")>()),
   mediaUploadSchema: {
     parse: (input: { file: File; altText?: string }) => input,
-  },
-  MEDIA_MAX_SIZE_BYTES: 10 * 1024 * 1024,
-  mediaListSchema: {
-    parse: (input: unknown) =>
-      input ?? { limit: 20, offset: 0, mimeType: undefined },
   },
 }));
 
@@ -120,6 +129,8 @@ vi.mock("@/lib/db", () => {
     // the chain IS thenable — resolving to selectMediaMock(). This supports
     // .where(...).limit(1) (deleteMedia), .where(...).orderBy(...).limit(...).offset(...)
     // (listMedia), and any partial chain the action may build.
+    // 260827-se8 Task 7: each step ALSO mirrors its args into a hoisted mock so
+    // WHERE/ORDER BY/limit/offset can be asserted structurally (deepContains).
     const chain: {
       orderBy: (...a: unknown[]) => unknown;
       limit: (...a: unknown[]) => unknown;
@@ -127,9 +138,18 @@ vi.mock("@/lib/db", () => {
       then: (resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) => unknown;
       catch: (reject: (e: unknown) => unknown) => unknown;
     } = {
-      orderBy: () => chain,
-      limit: () => chain,
-      offset: () => chain,
+      orderBy: (...a: unknown[]) => {
+        orderByArgsMock(...a);
+        return chain;
+      },
+      limit: (...a: unknown[]) => {
+        limitArgsMock(...a);
+        return chain;
+      },
+      offset: (...a: unknown[]) => {
+        offsetArgsMock(...a);
+        return chain;
+      },
       then: (resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) =>
         Promise.resolve(selectMediaMock()).then(resolve, reject),
       catch: (reject: (e: unknown) => unknown) =>
@@ -141,7 +161,10 @@ vi.mock("@/lib/db", () => {
     db: {
       select: vi.fn(() => ({
         from: vi.fn(() => ({
-          where: vi.fn(() => chainableWhere()),
+          where: vi.fn((...a: unknown[]) => {
+            whereArgsMock(...a);
+            return chainableWhere();
+          }),
         })),
       })),
       insert: vi.fn(() => ({
@@ -176,7 +199,7 @@ vi.mock("@/lib/db", () => {
   };
 });
 
-import { uploadMedia, listMedia, deleteMedia, findMediaReferences } from "../media";
+import { uploadMedia, listMedia, deleteMedia, findMediaReferences, countMedia } from "../media";
 
 const adminSession = () => ({
   user: { id: "u-admin", role: "admin" },
@@ -375,8 +398,99 @@ describe("listMedia: requires media:read capability (dashboard-only)", () => {
   it("returns media rows when authorized", async () => {
     requireCanMock.mockResolvedValue(adminSession());
     selectMediaMock.mockResolvedValue([{ id: 1, providerKey: "k" }]);
-    const rows = await listMedia({ limit: 10, offset: 0 });
+    // 260827-se8 Task 7: raw limit/offset fields are gone — page/pageSize shape.
+    const rows = await listMedia({ page: 1, pageSize: 10 });
     expect(rows).toEqual([{ id: 1, providerKey: "k" }]);
+  });
+});
+
+// ============================================================
+// 260827-se8 Task 7 — URL-driven media list mechanics.
+// listMedia(opts) gains q (ilike on altText OR providerKey) + kind (mimeType
+// PREFIX match like 'image/%' — the column stores full types) and converts to
+// page/pageSize (default 20, cap 100) computed to limit/offset; the exact
+// mimeType filter stays available. NEW countMedia(opts): identical gate +
+// WHERE + count(*) shape. mediaListSchema is the REAL module export (partial
+// importOriginal mock above) so defaults + the pageSize cap are exercised.
+// ============================================================
+
+/** Structural walker — proves primitive values reach the drizzle SQL graph. */
+function deepContainsNode(node: unknown, needle: string | number | boolean): boolean {
+  if (node === needle) return true;
+  if (Array.isArray(node)) return node.some((n) => deepContainsNode(n, needle));
+  if (node !== null && typeof node === "object") {
+    return Object.values(node as Record<string, unknown>).some((v) => deepContainsNode(v, needle));
+  }
+  return false;
+}
+const deepContains = (node: unknown, ...needles: (string | number | boolean)[]) =>
+  needles.every((n) => deepContainsNode(node, n));
+
+describe("260827-se8 Task 7: listMedia/countMedia — q/kind/mimeType filters + page/pageSize pagination", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    requireCanMock.mockResolvedValue(adminSession());
+    selectMediaMock.mockResolvedValue([{ id: 1, providerKey: "k" }]);
+  });
+
+  it("gate FIRST: countMedia throws FORBIDDEN before db.select when requireCan denies (MUST_NOT_BE_REACHED)", async () => {
+    requireCanMock.mockImplementation(() => {
+      throw new Error("FORBIDDEN");
+    });
+    selectMediaMock.mockImplementation(() => {
+      throw new Error("MUST_NOT_BE_REACHED");
+    });
+    await expect(countMedia({})).rejects.toThrow("FORBIDDEN");
+    expect(requireCanMock).toHaveBeenCalledWith({ media: ["read"] });
+    expect(selectMediaMock).not.toHaveBeenCalled();
+  });
+
+  it("q reaches WHERE as %q% (ilike on altText OR providerKey) with the soft-delete filter preserved", async () => {
+    await listMedia({ q: "logo" });
+    const whereArgs = whereArgsMock.mock.calls.at(-1);
+    expect(whereArgs).toBeTruthy();
+    expect(deepContains(whereArgs, "%logo%")).toBe(true);
+    expect(deepContains(whereArgs, "deleted_at")).toBe(true);
+  });
+
+  it("kind applies a mimeType PREFIX match (like 'image/%') — the column stores full types", async () => {
+    await listMedia({ kind: "image" });
+    expect(deepContains(whereArgsMock.mock.calls.at(-1), "image/%")).toBe(true);
+  });
+
+  it("exact mimeType filter stays available alongside kind (replaces nothing)", async () => {
+    await listMedia({ mimeType: "image/png" });
+    expect(deepContains(whereArgsMock.mock.calls.at(-1), "image/png")).toBe(true);
+  });
+
+  it("page 3 + pageSize 10 → limit 10, offset 20; orderBy desc(created_at)", async () => {
+    await listMedia({ page: 3, pageSize: 10 });
+    expect(limitArgsMock).toHaveBeenCalledWith(10);
+    expect(offsetArgsMock).toHaveBeenCalledWith(20);
+    expect(deepContains(orderByArgsMock.mock.calls.at(-1), "created_at")).toBe(true);
+  });
+
+  it("bare listMedia() defaults to page 1 / pageSize 20 — raw limit/offset fields are gone", async () => {
+    await listMedia();
+    expect(limitArgsMock).toHaveBeenCalledWith(20);
+    expect(offsetArgsMock).toHaveBeenCalledWith(0);
+  });
+
+  it("pageSize > 100 is Zod-rejected BEFORE any db access", async () => {
+    await expect(listMedia({ pageSize: 101 })).rejects.toThrow();
+    expect(whereArgsMock).not.toHaveBeenCalled();
+    expect(selectMediaMock).not.toHaveBeenCalled();
+  });
+
+  it("countMedia: same WHERE (q + soft-delete), count(*) Number coercion, never paginates", async () => {
+    selectMediaMock.mockResolvedValue([{ value: 9 }]);
+    const n = await countMedia({ q: "logo" });
+    expect(n).toBe(9);
+    const whereArgs = whereArgsMock.mock.calls.at(-1);
+    expect(deepContains(whereArgs, "%logo%")).toBe(true);
+    expect(deepContains(whereArgs, "deleted_at")).toBe(true);
+    expect(limitArgsMock).not.toHaveBeenCalled();
+    expect(offsetArgsMock).not.toHaveBeenCalled();
   });
 });
 

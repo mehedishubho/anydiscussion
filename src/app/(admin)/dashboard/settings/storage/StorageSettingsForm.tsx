@@ -17,9 +17,10 @@
 // Non-secret fields (bucket, cloud_name, region, endpoint, cdnBaseUrl) ARE
 // pre-filled from getStorageSettings.
 //
-// Each provider section is conditionally rendered — only the active provider's
-// section is visible (cleaner UX than four stacked sections; the admin focuses on
-// one provider at a time). Selecting a different provider flips the section.
+// 260827-se8 — ALL four provider sections render simultaneously so an admin
+// can review every provider's non-secret config in one pass; the section
+// matching the selector carries the Active badge + brand border ring.
+// Selecting a different provider only changes where uploads route.
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { useMutation } from "@tanstack/react-query";
@@ -91,7 +92,11 @@ export default function StorageSettingsForm({ initial }: StorageSettingsFormProp
     },
   });
 
-  const activeProvider = watch("activeProvider");
+  // 260827-se8 — the selected destination drives the Active badge + brand
+  // border on ITS section. All four sections stay mounted; only the upload
+  // routing follows the selector.
+  const selectedProvider = watch("activeProvider");
+  const isActiveProvider = (p: string) => selectedProvider === p;
 
   // D-27 — NOT optimistic. High-stakes mutation (credentials); server confirms.
   const mutation = useMutation({
@@ -165,94 +170,101 @@ export default function StorageSettingsForm({ initial }: StorageSettingsFormProp
         </p>
       </div>
 
-      {/* Conditional per-provider section — only the active provider is visible */}
-      {activeProvider === "cloudinary" && (
-        <ProviderSection
-          title="Cloudinary credentials"
-          help="Cloudinary owns image transforms at delivery time. The api_key + api_secret are required to upload; the cloud_name is your account identifier."
-          onTest={() => handleTest("cloudinary")}
-          probe={probe.cloudinary ?? { state: "idle" }}
-        >
-          <Field label="Cloud name" {...register("cloudinary.cloud_name")} placeholder="my-cloud" />
-          <Field
-            label="API key"
-            type="password"
-            {...register("cloudinary.api_key")}
-            placeholder="•••••••• (enter new value to change)"
-          />
-          <Field
-            label="API secret"
-            type="password"
-            {...register("cloudinary.api_secret")}
-            placeholder="•••••••• (enter new value to change)"
-          />
-        </ProviderSection>
-      )}
+      {/* 260827-se8 — ALL provider sections render simultaneously (an admin
+          can review every provider's non-secret config in one pass); the
+          section matching the selector carries the Active badge + brand
+          border. Uploads still route through the SELECTED provider only. */}
+      <ProviderSection
+        title="Cloudinary credentials"
+        help="Cloudinary owns image transforms at delivery time. The api_key + api_secret are required to upload; the cloud_name is your account identifier."
+        onTest={() => handleTest("cloudinary")}
+        probe={probe.cloudinary ?? { state: "idle" }}
+        isActive={isActiveProvider("cloudinary")}
+      >
+        <Field label="Cloud name" {...register("cloudinary.cloud_name")} placeholder="my-cloud" />
+        <Field
+          label="API key"
+          type="password"
+          {...register("cloudinary.api_key")}
+          placeholder="•••••••• (enter new value to change)"
+        />
+        <Field
+          label="API secret"
+          type="password"
+          {...register("cloudinary.api_secret")}
+          placeholder="•••••••• (enter new value to change)"
+        />
+      </ProviderSection>
 
-      {activeProvider === "r2" && (
-        <ProviderSection
-          title="Cloudflare R2 credentials"
-          help="R2 is itself a CDN (Cloudflare's edge). Images served via ${NEXT_PUBLIC_CDN_URL}/<key>."
-          onTest={() => handleTest("r2")}
-          probe={probe.r2 ?? { state: "idle" }}
-        >
-          <Field label="Endpoint" {...register("r2.endpoint")} placeholder="https://<account>.r2.cloudflarestorage.com" />
-          <Field label="Region" {...register("r2.region")} placeholder="auto" />
-          <Field label="Access key ID" {...register("r2.accessKeyId")} placeholder="AKIA..." />
-          <Field
-            label="Secret access key"
-            type="password"
-            {...register("r2.secretAccessKey")}
-            placeholder="•••••••• (enter new value to change)"
-          />
-          <Field label="Bucket" {...register("r2.bucket")} placeholder="anydiscussion-media" />
-          <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
-            <input type="checkbox" {...register("r2.forcePathStyle")} />
-            Force path-style addressing (MinIO: yes; R2: usually no)
-          </label>
-        </ProviderSection>
-      )}
+      <ProviderSection
+        title="Cloudflare R2 credentials"
+        help="R2 is itself a CDN (Cloudflare's edge). Images served via ${NEXT_PUBLIC_CDN_URL}/<key>."
+        onTest={() => handleTest("r2")}
+        probe={probe.r2 ?? { state: "idle" }}
+        isActive={isActiveProvider("r2")}
+      >
+        <Field label="Endpoint" {...register("r2.endpoint")} placeholder="https://<account>.r2.cloudflarestorage.com" />
+        <Field label="Region" {...register("r2.region")} placeholder="auto" />
+        <Field label="Access key ID" {...register("r2.accessKeyId")} placeholder="AKIA..." />
+        <Field
+          label="Secret access key"
+          type="password"
+          {...register("r2.secretAccessKey")}
+          placeholder="•••••••• (enter new value to change)"
+        />
+        <Field label="Bucket" {...register("r2.bucket")} placeholder="anydiscussion-media" />
+        <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+          <input type="checkbox" {...register("r2.forcePathStyle")} />
+          Force path-style addressing (MinIO: yes; R2: usually no)
+        </label>
+      </ProviderSection>
 
-      {activeProvider === "push-cdn" && (
-        <ProviderSection
-          title="Push-CDN credentials (S3-compatible origin + CDN overlay)"
-          help="Origin is any S3-compatible storage (Bunny/KeyCDN/Wasabi/DO Spaces). Images are uploaded to the origin + served via the configured cdnBaseUrl. NOTE: also add the CDN hostname to next.config.ts images.remotePatterns — next/image 400s on unknown hostnames."
-          onTest={() => handleTest("push-cdn")}
-          probe={probe["push-cdn"] ?? { state: "idle" }}
-        >
-          <Field label="Origin endpoint" {...register("push_cdn.endpoint")} placeholder="https://origin.example.com" />
-          <Field label="Region" {...register("push_cdn.region")} placeholder="us-east-1" />
-          <Field label="Access key ID" {...register("push_cdn.accessKeyId")} placeholder="AKIA..." />
-          <Field
-            label="Secret access key"
-            type="password"
-            {...register("push_cdn.secretAccessKey")}
-            placeholder="•••••••• (enter new value to change)"
-          />
-          <Field label="Bucket" {...register("push_cdn.bucket")} placeholder="media-origin" />
-          <Field
-            label="CDN base URL"
-            {...register("push_cdn.cdnBaseUrl")}
-            placeholder="https://cdn.example.com"
-          />
-          <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
-            <input type="checkbox" {...register("push_cdn.forcePathStyle")} />
-            Force path-style addressing
-          </label>
-        </ProviderSection>
-      )}
+      <ProviderSection
+        title="Push-CDN credentials (S3-compatible origin + CDN overlay)"
+        help="Origin is any S3-compatible storage (Bunny/KeyCDN/Wasabi/DO Spaces). Images are uploaded to the origin + served via the configured cdnBaseUrl. NOTE: also add the CDN hostname to next.config.ts images.remotePatterns — next/image 400s on unknown hostnames."
+        onTest={() => handleTest("push-cdn")}
+        probe={probe["push-cdn"] ?? { state: "idle" }}
+        isActive={isActiveProvider("push-cdn")}
+      >
+        <Field label="Origin endpoint" {...register("push_cdn.endpoint")} placeholder="https://origin.example.com" />
+        <Field label="Region" {...register("push_cdn.region")} placeholder="us-east-1" />
+        <Field label="Access key ID" {...register("push_cdn.accessKeyId")} placeholder="AKIA..." />
+        <Field
+          label="Secret access key"
+          type="password"
+          {...register("push_cdn.secretAccessKey")}
+          placeholder="•••••••• (enter new value to change)"
+        />
+        <Field label="Bucket" {...register("push_cdn.bucket")} placeholder="media-origin" />
+        <Field
+          label="CDN base URL"
+          {...register("push_cdn.cdnBaseUrl")}
+          placeholder="https://cdn.example.com"
+        />
+        <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+          <input type="checkbox" {...register("push_cdn.forcePathStyle")} />
+          Force path-style addressing
+        </label>
+      </ProviderSection>
 
-      {activeProvider === "local" && (
-        <div className="rounded-lg border border-gray-200 p-4 dark:border-gray-800">
+      <div
+        className={`rounded-lg border p-4 ${
+          isActiveProvider("local")
+            ? "border-brand-500 ring-1 ring-brand-500/30"
+            : "border-gray-200 dark:border-gray-800"
+        }`}
+      >
+        <div className="flex items-center gap-2">
           <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
             Local filesystem
           </h3>
-          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-            Files are written to <code>storage/local/</code> and served via the{" "}
-            <code>/api/media</code> Route Handler. No credentials required.
-          </p>
+          {isActiveProvider("local") && <ActiveBadge />}
         </div>
-      )}
+        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+          Files are written to <code>storage/local/</code> and served via the{" "}
+          <code>/api/media</code> Route Handler. No credentials required.
+        </p>
+      </div>
 
       {submitError && (
         <div className="rounded-lg border border-error-300 bg-error-50 p-3 text-sm text-error-700 dark:border-error-700 dark:bg-error-900/20 dark:text-error-300">
@@ -303,26 +315,47 @@ function Field({
   );
 }
 
+/** Small "Active" badge (260827-se8) marking the selected provider's section. */
+function ActiveBadge() {
+  return (
+    <span className="inline-flex items-center rounded-full border border-brand-500 bg-brand-500/10 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-brand-600 dark:border-brand-400 dark:text-brand-300">
+      Active
+    </span>
+  );
+}
+
 function ProviderSection({
   title,
   help,
   onTest,
   probe,
+  isActive,
   children,
 }: {
   title: string;
   help: string;
   onTest: () => void;
   probe: ProbeStatus;
+  /** True when this provider is the selected upload destination. */
+  isActive?: boolean;
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-lg border border-gray-200 p-4 dark:border-gray-800">
+    <div
+      className={`rounded-lg border p-4 ${
+        isActive
+          ? "border-brand-500 ring-1 ring-brand-500/30 dark:border-brand-400"
+          : "border-gray-200 dark:border-gray-800"
+      }`}
+    >
       <div className="mb-3 flex items-start justify-between gap-3">
         <div>
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
-            {title}
-          </h3>
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+              {title}
+            </h3>
+            {isActive && <ActiveBadge />}
+          </div>
           <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{help}</p>
         </div>
         <button

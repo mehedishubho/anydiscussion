@@ -20,11 +20,16 @@
 "use server";
 import { revalidatePath, revalidateTag } from "next/cache";
 import { db, schema } from "@/lib/db";
-import { asc, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, ilike, isNull, or, sql } from "drizzle-orm";
 import { log } from "@/lib/log";
 import { requireCan } from "@/lib/permissions";
 import { assertUniqueSlug, validateSlug } from "@/lib/slug";
-import { categorySchema, categoryUpdateSchema } from "./taxonomy-schema";
+import {
+  categorySchema,
+  categoryUpdateSchema,
+  categoryListSchema,
+  type CategoryListInput,
+} from "./taxonomy-schema";
 
 interface CategoryInput {
   name: string;
@@ -71,16 +76,81 @@ export async function createCategory(input: CategoryInput) {
   return { id: row?.id };
 }
 
-export async function listCategories() {
+// ============================================================
+// 260827-se8 Task 6 — URL-driven list mechanics (q + optional pagination)
+// [CITED: 260827-se8-PLAN.md Task 6 <behavior>/<action> step 2]
+//
+// BACK-COMAT CONTRACT: listCategories() with NO opts returns the FULL list
+// exactly as before — the post-editor CategoryPicker and the posts-page
+// options fetch depend on it. limit/offset apply ONLY when `page` is present
+// (categoryListSchema's optional page is the "no pagination" signal).
+// Both reads stay ungated — the proxy + (admin) route-group gate is the
+// boundary here (mirrors the pre-existing comment below).
+// ============================================================
+
+/**
+ * buildCategoryListWhere — shared WHERE builder so listCategories and
+ * countCategories always carry the SAME filter graph: the soft-delete
+ * exclusion (D-08) plus, when q is present, an OR of ilike matches on
+ * name and slug (the dashboard search box searches both — a user typing
+ * "tech" finds both the category named "Technology" and the one merely
+ * slugged "tech").
+ */
+function buildCategoryListWhere(filters: { q?: string }) {
+  const softDelete = isNull(schema.categories.deletedAt);
+  if (!filters.q) return softDelete;
+  return and(
+    softDelete,
+    or(
+      ilike(schema.categories.name, `%${filters.q}%`),
+      ilike(schema.categories.slug, `%${filters.q}%`),
+    ),
+  );
+}
+
+export async function listCategories(opts?: CategoryListInput) {
   // Read is open to the dashboard — no permission check (mirrors users.ts pattern
   // for listX where the proxy gate + (admin) route group gate are sufficient).
   // Hard-deleted rows (deletedAt IS NULL) are excluded. Sorted by name (D-22 UX
   // for the category picker).
+  const parsed = categoryListSchema.safeParse(opts ?? {});
+  if (!parsed.success) {
+    throw new Error("INVALID_INPUT");
+  }
+  const filters = parsed.data;
+  const where = buildCategoryListWhere({ q: filters.q });
+  // `page` present → paginated dashboard read (pageSize defaulted to 20 by the
+  // schema). `page` ABSENT → bare picker/options read: full list, no limit.
+  if (filters.page !== undefined) {
+    return await db
+      .select()
+      .from(schema.categories)
+      .where(where)
+      .orderBy(asc(schema.categories.name))
+      .limit(filters.pageSize)
+      .offset((filters.page - 1) * filters.pageSize);
+  }
   return await db
     .select()
     .from(schema.categories)
-    .where(isNull(schema.categories.deletedAt))
+    .where(where)
     .orderBy(asc(schema.categories.name));
+}
+
+export async function countCategories(opts?: CategoryListInput) {
+  // Same ungated dashboard read + the SAME WHERE builder as listCategories
+  // (soft-delete exclusion + optional q leg) — the count(*) shape the
+  // dashboard pagination math consumes (totalPages = ceil(total / pageSize)).
+  const parsed = categoryListSchema.safeParse(opts ?? {});
+  if (!parsed.success) {
+    throw new Error("INVALID_INPUT");
+  }
+  const filters = parsed.data;
+  const [row] = await db
+    .select({ value: sql<number>`count(*)` })
+    .from(schema.categories)
+    .where(buildCategoryListWhere({ q: filters.q }));
+  return Number(row?.value ?? 0);
 }
 
 export async function updateCategory(id: number, input: Partial<CategoryInput>) {
