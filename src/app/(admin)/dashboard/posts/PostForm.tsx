@@ -45,15 +45,24 @@
 // (error toast + focus/scroll to the first offending field). The slug field
 // also auto-derives from the title while the user has not typed a slug
 // (derive-on-empty, never overwrite — D-12/D-20: slug is content identity).
+//
+// 260828-gyt additions: the submit button only SAVES — label reads "Save"
+// when the post is published (edits to a live post) and "Save draft"
+// otherwise (status actions are the explicit Publish/Submit/Unpublish
+// buttons); an Unpublish button (editor/admin, published edits only) flips
+// the form back to draft via unpublishPost; after CREATING a new post the
+// form router.pushes to /dashboard/posts/{id}/edit so the Schedule +
+// Preview sidebar controls become reachable (edit-saves stay put).
 import { useEffect, useRef, useState } from "react";
 import { useForm, type FieldErrors } from "react-hook-form";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { toast } from "sonner";
 import { EditorProvider } from "@/components/editor/EditorProvider";
 import { deriveSlugFromTitle } from "@/lib/slug/derive";
 import { postSchema, zodResolver, type PostSchemaInput } from "./schema-client";
-import { savePost, publishPost, submitForReview } from "@/actions/posts";
+import { savePost, publishPost, submitForReview, unpublishPost } from "@/actions/posts";
 import TaxonomyPicker from "./components/TaxonomyPicker";
 import MediaPicker from "@/components/dashboard/media/MediaPicker";
 import SeoPanel from "@/components/dashboard/posts/SeoPanel";
@@ -84,6 +93,9 @@ interface PostFormProps {
 
 export default function PostForm(props: PostFormProps) {
   const queryClient = useQueryClient();
+  // 260828-gyt — create-redirect: after a NEW post is saved, navigate to its
+  // edit page (the /dashboard/posts/new form otherwise just sits there).
+  const router = useRouter();
   const {
     register,
     handleSubmit,
@@ -147,9 +159,17 @@ export default function PostForm(props: PostFormProps) {
   const mutation = useMutation({
     mutationFn: (values: PostSchemaInput) =>
       savePost(values as Parameters<typeof savePost>[0]),
-    onSuccess: () => {
+    onSuccess: (data) => {
       toast.success("Post saved");
       void queryClient.invalidateQueries({ queryKey: ["posts"] });
+      // 260828-gyt — create-redirect. Living in the GLOBAL onSuccess (not a
+      // per-call mutate callback) covers the plain-save, publish-chain, and
+      // submit-chain paths uniformly: TanStack v5 fires per-call callbacks IN
+      // ADDITION to this one, and every path shares this mutation. The
+      // initialId == null guard keeps edit-saves in place.
+      if (props.initialId == null && data?.id != null) {
+        router.push(`/dashboard/posts/${data.id}/edit`);
+      }
     },
     onError: (err: Error) => {
       toast.error(err.message);
@@ -219,6 +239,21 @@ export default function PostForm(props: PostFormProps) {
     },
   });
 
+  // 260828-gyt — Unpublish (clones submitReviewMutation's shape): on success
+  // the form flips to draft so Publish reappears and the submit label drops
+  // back to "Save draft". D-27 non-optimistic — server confirms first.
+  const unpublishMutation = useMutation({
+    mutationFn: (postId: number) => unpublishPost(postId),
+    onSuccess: () => {
+      toast.success("Unpublished");
+      setCurrentStatus("draft");
+      void queryClient.invalidateQueries({ queryKey: ["posts"] });
+    },
+    onError: (err: Error) => {
+      toast.error(err.message);
+    },
+  });
+
   // Save-then-act chains: RHF validation + savePost run exactly like the save
   // path (same mutation — same toasts + ["posts"] invalidation), then the
   // per-call onSuccess hands the SAVED id to publishPost/submitForReview.
@@ -254,8 +289,20 @@ export default function PostForm(props: PostFormProps) {
   const canSubmitForReview =
     props.role === "author" &&
     (currentStatus === undefined || currentStatus === "draft");
+  // 260828-gyt — Unpublish: editor/admin on a PUBLISHED EDIT only (a new post
+  // has nothing to unpublish). UX-only gating — unpublishPost's assertOwnsPost
+  // + TRANSITIONS (D-14b: published→draft is legal for every role) is the
+  // authority.
+  const canUnpublish =
+    (props.role === "admin" || props.role === "editor") &&
+    currentStatus === "published" &&
+    props.initialId != null;
 
-  const anyPending = mutation.isPending || publishMutation.isPending || submitReviewMutation.isPending;
+  const anyPending =
+    mutation.isPending ||
+    publishMutation.isPending ||
+    submitReviewMutation.isPending ||
+    unpublishMutation.isPending;
 
   // RHF still owns the featureImage value — the picker calls setValue('featureImage', url).
   // The hidden register call keeps the field in the form schema; the visible UI is the
@@ -408,15 +455,38 @@ export default function PostForm(props: PostFormProps) {
         >
           Cancel
         </button>
-        {/* Save draft — neutral secondary (brand-500 is reserved for the
-            Publish/Submit primary per the 05-06 button conventions). */}
+        {/* Save — neutral secondary (brand-500 is reserved for the
+            Publish/Submit primary per the 05-06 button conventions).
+            260828-gyt: the submit ONLY SAVES — never was a status action.
+            Label reads "Save" on a published post (edits to live content)
+            and "Save draft" otherwise; status changes are the explicit
+            Publish / Submit / Unpublish buttons. */}
         <button
           type="submit"
           disabled={anyPending}
           className="inline-flex items-center justify-center rounded-lg bg-white px-5 py-3.5 text-sm font-medium text-gray-700 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-gray-800 dark:text-gray-400 dark:ring-gray-700"
         >
-          {mutation.isPending ? "Saving…" : "Save draft"}
+          {mutation.isPending
+            ? "Saving…"
+            : currentStatus === "published"
+              ? "Save"
+              : "Save draft"}
         </button>
+        {/* 260828-gyt — Unpublish (editor/admin, published edits only):
+            muted-gray secondary, type="button" (no RHF validation needed —
+            it acts on the SAVED post via its id, not the form fields). */}
+        {canUnpublish && (
+          <button
+            type="button"
+            disabled={anyPending}
+            onClick={() => {
+              if (props.initialId != null) unpublishMutation.mutate(props.initialId);
+            }}
+            className="inline-flex items-center justify-center rounded-lg bg-white px-5 py-3.5 text-sm font-medium text-gray-700 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-gray-800 dark:text-gray-400 dark:ring-gray-700"
+          >
+            {unpublishMutation.isPending ? "Unpublishing…" : "Unpublish"}
+          </button>
+        )}
         {/* Publish (editor/admin) or Submit for review (author) — brand-500
             primary, type="button" so RHF validation runs through each one's
             own handleSubmit wrapper before the save-then-act chain. */}

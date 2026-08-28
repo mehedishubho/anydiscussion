@@ -7,18 +7,25 @@
 // [CITED: 04-CONTEXT.md D-27 — status flips are high-stakes: NOT optimistic; the
 //        mutation waits for server confirmation, then invalidates ["posts"]]
 // [CITED: 260827-se8-PLAN.md Task 4 step 6 — the Return button]
+// [CITED: 260828-gyt-PLAN.md Task 2 — the Unpublish button]
 //
 // Renders a Publish link-button (editor/admin; draft or pending_review — on
 // pending_review it doubles as "approve and publish"), a Submit-for-review
-// link-button (author; draft only), and a Return link-button (editor/admin;
-// pending_review only — sends the post back to draft via returnForRevision).
-// Rendered in the posts list Actions cell next to Edit. Every outcome fires a
-// sonner toast (05-06 gap 2) — including server rejections (FORBIDDEN /
-// NOT_FOUND / INVALID_TRANSITION), whose raw message makes the failure
-// diagnosable.
+// link-button (author; draft only), a Return link-button (editor/admin;
+// pending_review only — sends the post back to draft via returnForRevision),
+// and an Unpublish link-button (260828-gyt; editor/admin; published only —
+// takes the post offline via unpublishPost). Rendered in the posts list
+// Actions cell next to Edit. Every outcome fires a sonner toast (05-06 gap 2)
+// — including server rejections (FORBIDDEN / NOT_FOUND / INVALID_TRANSITION),
+// whose raw message makes the failure diagnosable.
+//
+// 260828-gyt Unpublish gating note (D-14b): published→draft is legal for ALL
+// roles server-side (TRANSITIONS legalizes author-own unpublish too) — the
+// editor/admin-only button is the owner-requested UX-only gating (Pitfall #1:
+// unpublishPost's assertOwnsPost + TRANSITIONS is the authority).
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { publishPost, returnForRevision, submitForReview } from "@/actions/posts";
+import { publishPost, returnForRevision, submitForReview, unpublishPost } from "@/actions/posts";
 
 interface PostRowActionsProps {
   postId: number;
@@ -64,6 +71,20 @@ export default function PostRowActions({ postId, status, role }: PostRowActionsP
     },
   });
 
+  // 260828-gyt — Unpublish. Same non-optimistic D-27 shape (clones the Return
+  // mutation): the server confirms (assertOwnsPost + transitionPost funnel +
+  // public-surface revalidation), then invalidate ["posts"].
+  const unpublishMutation = useMutation({
+    mutationFn: (id: number) => unpublishPost(id),
+    onSuccess: () => {
+      toast.success("Unpublished");
+      void queryClient.invalidateQueries({ queryKey: ["posts"] });
+    },
+    onError: (err: Error) => {
+      toast.error(err.message);
+    },
+  });
+
   // UX-only gating — mirrors the PostForm rules. Authors NEVER see Publish
   // (they lack post:publish; the server rejects it anyway).
   const canPublish =
@@ -74,10 +95,20 @@ export default function PostRowActions({ postId, status, role }: PostRowActionsP
   // draft. UX-only — returnForRevision re-checks authority server-side.
   const canReturn =
     (role === "admin" || role === "editor") && status === "pending_review";
+  // 260828-gyt — Unpublish: editor/admin on a PUBLISHED row (owner-requested
+  // UX gating; unpublishPost's assertOwnsPost + TRANSITIONS/D-14b is the
+  // server-side authority for every role).
+  const canUnpublish =
+    (role === "admin" || role === "editor") && status === "published";
 
-  if (!canPublish && !canSubmitForReview && !canReturn) return null;
+  if (!canPublish && !canSubmitForReview && !canReturn && !canUnpublish) {
+    return null;
+  }
 
-  const pending = publishMutation.isPending || submitMutation.isPending;
+  const pending =
+    publishMutation.isPending ||
+    submitMutation.isPending ||
+    unpublishMutation.isPending;
 
   return (
     <div className="inline-flex items-center gap-3">
@@ -108,6 +139,16 @@ export default function PostRowActions({ postId, status, role }: PostRowActionsP
           className="text-sm font-medium text-gray-500 hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-400 dark:hover:text-gray-300"
         >
           {returnMutation.isPending ? "Returning…" : "Return"}
+        </button>
+      )}
+      {canUnpublish && (
+        <button
+          type="button"
+          disabled={unpublishMutation.isPending}
+          onClick={() => unpublishMutation.mutate(postId)}
+          className="text-sm font-medium text-gray-500 hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-400 dark:hover:text-gray-300"
+        >
+          {unpublishMutation.isPending ? "Unpublishing…" : "Unpublish"}
         </button>
       )}
     </div>

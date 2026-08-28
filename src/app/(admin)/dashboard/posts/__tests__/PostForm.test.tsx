@@ -23,20 +23,42 @@
 // SeoPanel renders real (leaf register-prop inputs). A QueryClientProvider
 // wraps the form because the save path uses TanStack useMutation.
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { render, fireEvent, waitFor, cleanup, act } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, cleanup, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 // --- Hoisted action spies (mock factory needs them at hoist time) ---
-const { savePostMock, publishPostMock, submitForReviewMock } = vi.hoisted(() => ({
-  savePostMock: vi.fn(),
-  publishPostMock: vi.fn(),
-  submitForReviewMock: vi.fn(),
-}));
+const { savePostMock, publishPostMock, submitForReviewMock, unpublishPostMock } =
+  vi.hoisted(() => ({
+    savePostMock: vi.fn(),
+    publishPostMock: vi.fn(),
+    submitForReviewMock: vi.fn(),
+    unpublishPostMock: vi.fn(),
+  }));
 
 vi.mock("@/actions/posts", () => ({
   savePost: (...a: unknown[]) => savePostMock(...a),
   publishPost: (...a: unknown[]) => publishPostMock(...a),
   submitForReview: (...a: unknown[]) => submitForReviewMock(...a),
+  unpublishPost: (...a: unknown[]) => unpublishPostMock(...a),
+}));
+
+// 260828-gyt — next/navigation stub (AdminShell.test precedent): PostForm's
+// create-redirect uses useRouter; jsdom has no app router. The captured
+// pushMock lets the redirect tests assert the destination.
+const { pushMock, replaceMock, backMock, prefetchMock } = vi.hoisted(() => ({
+  pushMock: vi.fn(),
+  replaceMock: vi.fn(),
+  backMock: vi.fn(),
+  prefetchMock: vi.fn(),
+}));
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    push: pushMock,
+    replace: replaceMock,
+    back: backMock,
+    prefetch: prefetchMock,
+  }),
 }));
 
 // PostForm imports the NAMED export { EditorProvider } — provide it too.
@@ -56,14 +78,17 @@ vi.mock("../components/TaxonomyPicker", () => ({
 }));
 
 import PostForm from "../PostForm";
+import type { ComponentProps } from "react";
 
-function renderForm() {
+type PostFormProps = Partial<ComponentProps<typeof PostForm>>;
+
+function renderForm(props: PostFormProps = {}) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   return render(
     <QueryClientProvider client={client}>
-      <PostForm />
+      <PostForm {...props} />
     </QueryClientProvider>,
   );
 }
@@ -139,5 +164,120 @@ describe("05-REVIEW WR-02: slug ownership signal is onChange, not onBlur", () =>
       await new Promise((resolve) => setTimeout(resolve, 20));
     });
     expect(slug.value).toBe("my-custom-slug");
+  });
+});
+
+// ===========================================================================
+// 260828-gyt Task 3 — status-driven submit label, Unpublish action,
+// create-redirect after a NEW post save
+// [CITED: 260828-gyt-PLAN.md Task 3 <behavior>]
+// ===========================================================================
+
+function submitButton(): HTMLButtonElement {
+  const el = document.querySelector('button[type="submit"]');
+  if (!el) throw new Error("submit button not rendered");
+  return el as HTMLButtonElement;
+}
+
+function formElement(): HTMLFormElement {
+  const el = document.querySelector("form");
+  if (!el) throw new Error("form not rendered");
+  return el as HTMLFormElement;
+}
+
+describe("260828-gyt: PostForm — status-driven submit label + Unpublish", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    savePostMock.mockResolvedValue({ id: 42 });
+    unpublishPostMock.mockResolvedValue({ ok: true });
+  });
+
+  it("submit reads 'Save' on a published post and 'Save draft' otherwise", () => {
+    renderForm({ initialId: 7, initialStatus: "published", role: "admin" });
+    expect(submitButton().textContent).toBe("Save");
+
+    cleanup();
+    renderForm();
+    expect(submitButton().textContent).toBe("Save draft");
+  });
+
+  it("Unpublish renders for admin/editor on a published EDIT; author+published and admin+draft render none", () => {
+    const { queryByText } = renderForm({
+      initialId: 7,
+      initialStatus: "published",
+      role: "admin",
+    });
+    expect(queryByText("Unpublish")).not.toBeNull();
+
+    cleanup();
+    renderForm({ initialId: 7, initialStatus: "published", role: "author" });
+    expect(screen.queryByText("Unpublish")).toBeNull();
+
+    cleanup();
+    renderForm({ initialId: 7, initialStatus: "draft", role: "admin" });
+    expect(screen.queryByText("Unpublish")).toBeNull();
+  });
+
+  it("clicking Unpublish calls unpublishPost(initialId); after success the form flips to draft (Publish appears, submit reads 'Save draft')", async () => {
+    renderForm({ initialId: 7, initialStatus: "published", role: "admin" });
+
+    fireEvent.click(screen.getByText("Unpublish"));
+
+    await waitFor(() => {
+      expect(unpublishPostMock).toHaveBeenCalledWith(7);
+    });
+    // The status flip re-renders: Publish (brand primary) reappears and the
+    // submit label drops back to "Save draft".
+    await waitFor(() => {
+      expect(screen.getByText("Publish")).toBeTruthy();
+      expect(submitButton().textContent).toBe("Save draft");
+    });
+  });
+});
+
+describe("260828-gyt: PostForm — create-redirect to /dashboard/posts/{id}/edit", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("NEW post save resolving { id: 42 } → router.push('/dashboard/posts/42/edit')", async () => {
+    savePostMock.mockResolvedValue({ id: 42 });
+    // Only initialCategoryId — no initialId (the /dashboard/posts/new shape).
+    renderForm({ initialCategoryId: 5 });
+
+    const title = field("title");
+    fireEvent.change(title, { target: { value: "Hello World" } });
+    // Slug auto-derives from the title (the existing derive-on-empty effect).
+    await waitFor(() => {
+      expect(field("slug").value).toBe("hello-world");
+    });
+
+    fireEvent.submit(formElement());
+
+    await waitFor(() => {
+      expect(pushMock).toHaveBeenCalledWith("/dashboard/posts/42/edit");
+    });
+    expect(savePostMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("EDIT save (initialId 7) NEVER pushes — the form stays put", async () => {
+    savePostMock.mockResolvedValue({ id: 7 });
+    renderForm({
+      initialId: 7,
+      initialTitle: "Existing",
+      initialSlug: "existing",
+      initialCategoryId: 5,
+      role: "admin",
+    });
+
+    fireEvent.submit(formElement());
+
+    await waitFor(() => {
+      expect(savePostMock).toHaveBeenCalledTimes(1);
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    expect(pushMock).not.toHaveBeenCalled();
   });
 });

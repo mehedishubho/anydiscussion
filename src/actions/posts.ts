@@ -280,7 +280,10 @@ function buildPostListWhere(filters: PostListQuery) {
  * gate FIRST, then the shared Zod parse (defaults page=1/pageSize=20, cap 100).
  * Deterministic desc(updatedAt) ordering; limit/offset from the parsed page.
  * The user leftJoin (always applied — deterministic row shape) supports the
- * author filter; rows are mapped back to plain post rows.
+ * author filter; rows are mapped back to plain post rows, 260828-gyt: with
+ * authorName added from the joined user (null when no match) — the posts
+ * list Author column needs it; the full post row (slug, previewToken,
+ * publishedAt included) was ALWAYS returned.
  * Editor/admin see all; authors see only their own (requireCan + the row
  * projection is the existing contract).
  */
@@ -297,8 +300,10 @@ export async function listPosts(opts?: PostListInput) {
     .orderBy(desc(schema.posts.updatedAt))
     .limit(filters.pageSize)
     .offset((filters.page - 1) * filters.pageSize);
-  // leftJoin nests each row as { posts, user } — return the plain post rows.
-  return rows.map((row) => row.posts);
+  // leftJoin nests each row as { posts, user } — return the plain post rows
+  // spread with authorName (260828-gyt: every post field remains; the joined
+  // user's name rides along, null when the join has no match).
+  return rows.map((row) => ({ ...row.posts, authorName: row.user?.name ?? null }));
 }
 
 /**
@@ -458,6 +463,61 @@ export async function rotatePreviewToken(postId: number) {
 }
 
 /**
+ * revalidatePublicPostSurfaces — 260828-gyt. The publishPost-parity revalidation
+ * set shared by unpublishPost + the setSchedule unpublish path. Selects the
+ * fields needed for the concrete paths/tags (the publishPost step-3 select
+ * shape: posts leftJoin categories), then fires the exact parity set —
+ * revalidatePath /blog/{slug}, /, /blog, /category/{categorySlug} (when
+ * present), /sitemap.xml, /rss.xml + 2-arg revalidateTag post-{id},
+ * author-{authorId}, category-{id} (when present), posts-list — ALL "max".
+ *
+ * Module-local and NON-exported: "use server" files can only export async
+ * functions, and this helper is not an action. publishPost deliberately does
+ * NOT call it — its behavior is pinned by existing tests and stays
+ * byte-identical; this helper exists so the NEW paths share one parity set.
+ *
+ * Best-effort: if the lookup returns no row, log and return — the transition
+ * already succeeded at the caller; never fail the action over a revalidation
+ * lookup (the dashboard list's posts-list tag keeps the UI convergent).
+ */
+async function revalidatePublicPostSurfaces(postId: number): Promise<void> {
+  const [post] = await db
+    .select({
+      id: schema.posts.id,
+      slug: schema.posts.slug,
+      authorId: schema.posts.authorId,
+      categoryId: schema.posts.categoryId,
+      categorySlug: schema.categories.slug,
+    })
+    .from(schema.posts)
+    .leftJoin(schema.categories, eq(schema.posts.categoryId, schema.categories.id))
+    .where(eq(schema.posts.id, postId))
+    .limit(1);
+  if (!post) {
+    log.error("revalidatePublicPostSurfaces: post not found", { postId });
+    return;
+  }
+
+  // D-25 / Pitfall #3 — concrete literal paths, NEVER template-string patterns.
+  revalidatePath(`/blog/${post.slug}`);
+  revalidatePath("/");
+  revalidatePath("/blog");
+  if (post.categorySlug) {
+    revalidatePath(`/category/${post.categorySlug}`);
+  }
+  revalidatePath("/sitemap.xml");
+  revalidatePath("/rss.xml");
+
+  // 2-arg revalidateTag(tag, "max") — single-arg is DEPRECATED in Next 16.
+  revalidateTag(`post-${post.id}`, "max");
+  revalidateTag(`author-${post.authorId}`, "max");
+  if (post.categoryId) {
+    revalidateTag(`category-${post.categoryId}`, "max");
+  }
+  revalidateTag("posts-list", "max");
+}
+
+/**
  * publishPost — the user-facing publish action. Editor/admin path (authors fail
  * inside transitionPost via requireCan post:publish — D-15 double enforcement).
  *
@@ -540,9 +600,60 @@ export async function publishPost(postId: number) {
 }
 
 /**
+ * unpublishPost — 260828-gyt. Takes a published post offline: published→draft
+ * through the transitionPost funnel (R7). TRANSITIONS/D-14b legalizes the move
+ * for EVERY role (author-own included) — assertOwnsPost runs FIRST (Pitfall #1)
+ * and is this action's authority; the editor/admin-only Unpublish buttons are
+ * UX-only gating (the server never relies on UI hiding).
+ *
+ * Revalidation: FULL publishPost parity via revalidatePublicPostSurfaces — the
+ * post WAS public (cached /blog/{slug} page, feeds, sitemap), so taking it
+ * offline must invalidate those surfaces or the "unpublished" post stays
+ * publicly cached (T-Q-gyt-03).
+ *
+ * v1 scope: NO notifyUsers (unpublish is a quiet operation — the owner takes
+ * their own content offline; no notification contract was requested). NO
+ * rotatePreviewToken — the token rotated at publish stays valid so the
+ * now-draft post remains previewable at /preview/{token}.
+ */
+export async function unpublishPost(postId: number) {
+  // 1. Ownership/authority FIRST (Pitfall #1). Author-own passes (D-14b);
+  //    editor/admin bypass inside the helper.
+  await assertOwnsPost(postId);
+
+  // 2. R7 funnel — transitionPost enforces TRANSITIONS (published→draft is
+  //    legal for all roles per D-14b). CR-02 preserves the existing
+  //    publishedAt through the flip, so unpublish-then-republish keeps the
+  //    original publish date.
+  await transitionPost(postId, "draft");
+
+  // 3. Publish-parity revalidation — the post just left the public site.
+  await revalidatePublicPostSurfaces(postId);
+
+  return { ok: true };
+}
+
+/**
  * setSchedule — set the publishedAt timestamp on a post. D-15: only editor/admin
  * can schedule (scheduling = deferred publish, which authors lack). The action
  * calls requireCan({post:["publish"]}) — authors fail here.
+ *
+ * 260828-gyt semantics (status-aware — the old action only wrote the date,
+ * which was invisible on a published post since public pages filter on
+ * status='published'):
+ *   - PUBLISHED + FUTURE date: writes the date FIRST, then funnels
+ *     published→draft through transitionPost (R7 — never a direct status
+ *     write here) and revalidates the public surfaces. The post goes offline
+ *     NOW; the every-minute publishDueScheduledPosts worker (unchanged) flips
+ *     draft + publishedAt<=now back to published at due time. Returns
+ *     { ok: true, unpublished: true } so SchedulePicker can toast the
+ *     take-offline side effect.
+ *   - PUBLISHED + PAST date: rejected with SCHEDULE_IN_PAST BEFORE any write
+ *     (T-Q-gyt-05) — a past date would either be a silent no-op or churn
+ *     state; the SchedulePicker toast shows err.message raw.
+ *   - DRAFT (any date): unchanged behavior — writes the date only (the
+ *     worker owns draft→published). No revalidation: a draft post has no
+ *     public cache surface.
  *
  * D-14: publishedAt is stored as UTC. The SchedulePicker client component displays
  * in the site-configured timezone (read via getSetting("site.timezone")); the
@@ -552,13 +663,56 @@ export async function setSchedule(postId: number, publishedAt: Date) {
   // D-15 — scheduling requires the publish capability. Authors lack post:publish.
   await requireCan({ post: ["publish"] });
 
+  // 260828-gyt — fetch the CURRENT status: the write semantics below are
+  // status-aware (only a published post needs the unpublish-on-schedule path).
+  const [post] = await db
+    .select({ status: schema.posts.status })
+    .from(schema.posts)
+    .where(eq(schema.posts.id, postId))
+    .limit(1);
+  if (!post) {
+    log.error("setSchedule not found", { postId });
+    throw new Error("NOT_FOUND");
+  }
+
+  // T-Q-gyt-05 — a published post can only move its publish date FORWARD.
+  // Reject BEFORE any write (the SchedulePicker toast shows err.message raw).
+  if (post.status === "published" && publishedAt.getTime() <= Date.now()) {
+    throw new Error(
+      "SCHEDULE_IN_PAST — pick a future date for a published post, or unpublish it first",
+    );
+  }
+
+  // Date FIRST (before the transition) so the worker never observes draft +
+  // a stale past date (it would immediately republish at the next tick).
+  // CR-02 preserves this just-written future publishedAt through the
+  // published→draft flip below. Status is NEVER written here (R7 / T-Q-gyt-02).
   await db
     .update(schema.posts)
     .set({ publishedAt, updatedAt: new Date() })
     .where(eq(schema.posts.id, postId));
 
-  log.info("schedule-set", { postId, publishedAt: publishedAt.toISOString() });
-  return { ok: true };
+  // FUTURE date on a PUBLISHED post → also take the post offline now. Only
+  // editor/admin reach this line (requireCan post:publish already filtered
+  // authors). The worker republishes at due time; without the revalidation
+  // the cached public /blog/{slug} page would stay live (T-Q-gyt-03).
+  if (post.status === "published") {
+    await transitionPost(postId, "draft");
+    await revalidatePublicPostSurfaces(postId);
+    log.info("schedule-set", {
+      postId,
+      publishedAt: publishedAt.toISOString(),
+      unpublished: true,
+    });
+    return { ok: true, unpublished: true };
+  }
+
+  log.info("schedule-set", {
+    postId,
+    publishedAt: publishedAt.toISOString(),
+    unpublished: false,
+  });
+  return { ok: true, unpublished: false };
 }
 
 /**
